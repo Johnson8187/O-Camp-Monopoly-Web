@@ -1,82 +1,61 @@
-# Cloudflare Workers Builds 部署指南
+# Cloudflare 部署設定
 
-## 專案內容
+## 目前資源
 
-本專案是純靜態 HTML 網站。首頁檔案位於 `public/index.html`，Cloudflare 設定位於 `wrangler.toml`。本專案沒有 npm 依賴，也不需要建置工具；Wrangler 會直接把 `public/` 作為 Workers Assets 部署。
+本專案使用下列 Cloudflare 資源：
 
-## GitHub repository
-
-建議使用 repository 名稱 `preview`，預設分支使用 `main`。如果 GitHub 上的 repository 尚未建立，請先建立一個空的 repository，然後上傳本資料夾內的所有檔案，保留以下結構：
-
-```text
-.
-├── .gitignore
-├── CLOUDFLARE_DEPLOY.md
-├── README.md
-├── public/
-│   └── index.html
-└── wrangler.toml
-```
-
-## Cloudflare Dashboard 設定
-
-在 Cloudflare Dashboard 選擇 **Workers & Pages**，建立新的 Worker 或選取現有 Worker，然後進入 **Settings → Builds → Connect**，連接 GitHub repository。Worker 名稱請設定為 `preview`，並將專案根目錄設為 repository 根目錄 `/`。
-
-請使用以下 Build 設定：
-
-| 欄位 | 值 |
+| 資源 | 設定 |
 |---|---|
-| Production branch | `main` |
-| Root directory | `/` |
-| Build command | 留空 |
-| Deploy command | `npx wrangler@latest deploy` |
-| Non-production branch builds | 開啟 |
-| Preview URLs | 開啟（若 Dashboard 顯示此選項） |
+| Worker | `preview` |
+| D1 database | `preview-history` |
+| D1 UUID | `8bff07c3-bffd-433a-adc9-1ea0a2b7c350` |
+| D1 primary region | `APAC` |
+| Durable Object | `GameRoom`，binding 名稱 `GAME_ROOMS` |
+| GitHub | `Johnson8187/preview`，`main` 分支 |
 
-由於本專案是純靜態 HTML，**Build command 必須留空**。如果 Dashboard 強制要求填寫，可以使用 `echo "No build step required"`，但正常情況下不需要這一欄。
+D1 schema 已套用到遠端資料庫，包含 `games`、`game_events` 及必要索引。`wrangler.toml` 已經寫入實際 D1 UUID，Cloudflare Builds 不需要再替換 placeholder。
 
-## 如何觸發 preview
+## 1. 連接 GitHub
 
-將 `main` 以外的 branch 推送到 GitHub，例如：
+在 Cloudflare Workers & Pages 中選擇建立或開啟 Worker，連接 `Johnson8187/preview` 的 `main` 分支。Root directory 使用 `/`，Build command 留空，Deploy command 使用 `npx wrangler@latest deploy`。這不是傳統前端框架，不需要 `npm install` 或 bundler build。
 
-```bash
-git checkout -b preview-test
-git add .
-git commit -m "Test preview deployment"
-git push -u origin preview-test
-```
+請啟用 production branch `main` 的部署；如要測試其他分支，可開啟 non-production branch builds 與 preview URLs。每次 push 到 `main` 都會觸發正式 Worker 部署。
 
-啟用 non-production branch builds 後，Cloudflare 會為該 branch 建立預覽部署。預覽網址通常會依照 branch 與 Worker 名稱產生，例如：
+## 2. 部署與驗證
 
-```text
-https://preview-test-preview.<你的-account-subdomain>.workers.dev
-```
-
-每次對同一 branch 推送新 commit，該 branch preview URL 會指向最新版本。Pull request 的留言中也可能同時提供 commit preview URL 與 branch preview URL；實際網址以 Cloudflare Dashboard 或 Pull request 留言顯示為準。
-
-## 本機驗證
-
-在 repository 根目錄執行：
-
-```bash
-npx wrangler@latest deploy --dry-run
-```
-
-這只會驗證設定並列出要上傳的靜態資產，不會部署。正式部署命令是：
+正式部署命令：
 
 ```bash
 npx wrangler@latest deploy
 ```
 
-## 注意事項
+部署完成後，請先開啟 Worker 首頁，再確認：
 
-`wrangler.toml` 中的 `name = "preview"` 必須與 Cloudflare Worker 名稱一致。若你在 Dashboard 使用其他 Worker 名稱，請同步修改 `wrangler.toml` 的 `name`，再提交一次 Git commit。
+```text
+/api/lobby
+```
 
-Cloudflare 的 Workers preview URL 不是裸的 `preview.workers.dev`。它會包含你的帳號子網域，以及 branch 或 commit 前綴；如果你需要固定的自訂網址，則要另外設定自有網域與 custom domain 或 route。
+它應回傳 JSON 格式的開放活動清單。首頁會定期更新活動清單；WebSocket 端點由前端自動使用同一個 Worker 網址的 `/ws/{活動識別}`。
 
-## 官方參考資料
+## 3. 使用流程
 
-[1]: https://developers.cloudflare.com/workers/ci-cd/builds/ "Cloudflare Workers Builds"
-[2]: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/ "Cloudflare Workers Builds configuration"
-[3]: https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/ "Cloudflare Workers build branches"
-[4]: https://developers.cloudflare.com/changelog/post/2025-07-23-workers-preview-urls/ "Cloudflare Workers preview URLs"
+主持人從首頁建立活動並設定隊伍數。建立完成後，主持人控制台會顯示各隊一次性 PIN，請私下交給對應隊輔。隊輔在公開活動清單選擇活動、選擇隊伍並輸入 PIN；觀眾直接選擇「進入觀戰」。
+
+主持人的活動控制台可以重新抽籤、開始遊戲、切換階段、調整隊伍名稱與資源、公布股市、解封關卡、查看 D1 歷史紀錄及結束活動。觀眾為唯讀，隊輔只能操作自己的隊伍。
+
+## 4. Schema migration
+
+目前遠端 D1 migration 已完成。日後修改 `migrations/` 時，先在具備 Cloudflare 授權的環境套用新的版本，再部署 Worker：
+
+```bash
+npx wrangler@latest d1 migrations apply preview-history --remote
+npx wrangler@latest deploy
+```
+
+不要把 API token 寫入 repository。Workers Builds 若不允許在 build 階段執行遠端 migration，請把 migration 與 deployment 分成兩個步驟，完成 migration 後再 push 一個觸發 commit。
+
+## 5. 權限、WebSocket 與成本注意事項
+
+主持人 token 與隊伍 PIN 只在建立活動時回傳給主持人，D1 只保存 SHA-256 hash。Durable Object 會驗證主持人、隊輔與觀眾的角色，再接受動作並廣播狀態；WebSocket 使用 Hibernation API，以降低閒置連線的執行成本。
+
+80–100 人同房、低頻遊戲操作時，通常不會因單純的靜態檔案傳輸產生額外頻寬費，但 Workers、Durable Objects 與 D1 的請求、執行時間、WebSocket 活躍時間、D1 讀寫量仍受方案額度與計費規則約束。正式活動前請查看 Cloudflare Usage／Analytics，並設定用量通知；不要把「預估在免費額度內」當成費用保證。

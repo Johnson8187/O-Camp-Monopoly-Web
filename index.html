@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fbf7ec">
+<title>人生大富翁 — 營隊連線版</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@font-face{font-family:'Zpix';src:url('https://cdn.jsdelivr.net/gh/SolidZORO/zpix-pixel-font@master/dist/Zpix.woff2') format('woff2');font-display:swap}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#fbf7ec;color:#26200f;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:15px;padding:12px 12px 60px}
+#wrap{max-width:600px;margin:0 auto}
+@media (min-width:900px){
+  body{padding:18px 18px 60px}
+  #wrap{max-width:1180px}
+  .cols{display:grid;grid-template-columns:1fr 400px;gap:16px;align-items:start}
+  .cols>div{min-width:0}
+}
+@media (min-width:1400px){ #wrap{max-width:1340px} .cols{grid-template-columns:1fr 440px} }
+.hd{text-align:center;padding:22px 0 14px}
+.t1{font-family:'Press Start 2P',monospace;font-size:19px;color:#f2c12e;text-shadow:3px 3px 0 #1a2340}
+.t2{font-size:14px;color:#e23b3b;margin-top:9px;text-shadow:2px 2px 0 #1a2340}
+.card{border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;background:#fffef5;margin-bottom:14px}
+.ch{background:#14110f;color:#f2c12e;font-family:'Press Start 2P',monospace;font-size:10px;padding:8px 9px;line-height:1.5}
+.cb{padding:12px}
+.btn{display:block;width:100%;border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;background:#e23b3b;color:#fff;
+     font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:15px;padding:11px 12px;margin-bottom:9px;cursor:pointer;line-height:1.2}
+.btn:active{transform:translate(4px,4px);box-shadow:none}
+.btn:disabled{background:#a8a49a;color:#efeee6;cursor:not-allowed;opacity:.85}
+.btn:disabled:active{transform:none;box-shadow:4px 4px 0 #1a2340}
+.btn.sm{font-size:13px;padding:9px 10px}
+.btn.xs{width:auto;font-size:12px;padding:6px 8px;margin:0 0 0 4px;border-width:3px;box-shadow:3px 3px 0 #1a2340}
+.btn.green{background:#3fbf5a;color:#14110f}.btn.blue{background:#3f86e0}.btn.purple{background:#9450d8}
+.btn.dark{background:#c0392b}.btn.ink{background:#14110f}.btn.gray{background:#8a8676}.btn.gold{background:#f2c12e;color:#14110f}
+.row{display:flex;gap:6px;margin-bottom:10px}
+.row.wrap{flex-wrap:wrap}
+.row .btn{margin-bottom:0}
+.tg{flex:1;border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;background:#e8e2d0;color:#14110f;
+    font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:13px;padding:10px 4px;cursor:pointer}
+.tg.on{background:#f2c12e}
+.tg:active{transform:translate(4px,4px);box-shadow:none}
+.tabs{margin-bottom:12px}
+input{border:4px solid #14110f;padding:10px 9px;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:14px;background:#fff;width:100%;margin-bottom:9px}
+input.code{font-family:'Press Start 2P',monospace;font-size:19px;letter-spacing:5px;text-align:center}
+.fl{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.fl span:first-child{flex:1;font-size:14px}
+.fl input{width:88px;margin:0;border-width:3px;padding:6px 7px}
+.fl .u{width:24px;font-size:12px;color:#7a6a45}
+.note{font-size:12.5px;color:#6a5c35;line-height:1.8;margin-top:6px}
+.warn{color:#c0392b}
+code{background:#efe9d4;padding:2px 5px;font-size:11px;word-break:break-all}
+.bar{border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;background:#141414;padding:9px 11px;margin-bottom:12px;
+     display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.code2{font-family:'Press Start 2P',monospace;font-size:10px;color:#f2c12e}
+.ph{font-size:13px;color:#8ee6a0}.bk{font-size:12px;color:#c9c4b4}
+.mecard{border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;padding:12px;margin-bottom:12px}
+.mn{font-size:17px;margin-bottom:7px;text-shadow:2px 2px 0 #1a2340}
+.mr{font-size:14px;line-height:1.7}.mr.sm2{font-size:12px;opacity:.95}
+.bwrap{padding-bottom:8px}
+.bwrap.fit{overflow:hidden}
+.bwrap.zoomed{overflow-x:auto}
+.board{position:relative}
+.tile{position:absolute;width:46px;height:46px;border:3px solid #14110f;box-shadow:3px 3px 0 #1a2340;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
+.tl{font-size:9px;line-height:1;margin-top:2px}
+.lock{position:absolute;inset:0;background:rgba(60,190,80,.28)}
+.ow{position:absolute;top:0;left:0;min-width:15px;height:14px;border:2px solid #14110f;border-top:0;border-left:0;
+    font-size:10px;line-height:12px;text-align:center;font-family:'Press Start 2P',monospace;padding:0 1px}
+.pins{position:absolute;bottom:0;right:0;display:flex;gap:1px;flex-wrap:wrap;justify-content:flex-end;max-width:100%}
+.pins i{min-width:15px;height:15px;border:2px solid #14110f;display:flex;align-items:center;justify-content:center;
+        font-style:normal;font-size:10px;font-family:'Press Start 2P',monospace;color:#fff;
+        text-shadow:1px 1px 0 rgba(0,0,0,.6)}
+.pins i.more{background:#14110f;color:#f2c12e}
+.big{font-size:19px;color:#e23b3b}
+.dice{width:84px;height:84px;margin:4px auto 14px;border:5px solid #14110f;box-shadow:5px 5px 0 #1a2340;background:#fff;
+      display:flex;align-items:center;justify-content:center;font-family:'Press Start 2P',monospace;font-size:32px}
+.rk{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:3px solid #e5dcc2}
+.rk:last-child{border:none}
+.rn{font-family:'Press Start 2P',monospace;font-size:13px;width:26px}
+.sw{width:16px;height:16px;border:3px solid #14110f;flex:0 0 auto}
+.rname{flex:1;font-size:14px}
+.rval{text-align:right;font-size:13px}
+.dim{font-size:11px;color:#8a7c55}
+.lg{font-size:13px;padding:6px 0;border-bottom:2px solid #ece4cf;line-height:1.6}
+.adj{display:flex;align-items:center;gap:5px;margin-bottom:8px}
+.an{flex:1;font-size:13px}
+.cfgbox{margin-top:12px}
+.sub{font-size:13px;color:#6a5c35;margin:12px 0 6px}
+.grp{border:3px solid #d8cfae;padding:8px;margin-bottom:7px}
+.grp b{display:block;font-size:13px;margin-bottom:5px}
+#modal{display:none;position:fixed;inset:0;background:rgba(20,17,15,.72);align-items:center;justify-content:center;padding:20px;z-index:50}
+#modalCard{background:#fffef5;border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;max-width:330px;width:100%}
+.mrow{display:flex;gap:12px;align-items:flex-start;font-size:13px;line-height:1.7}
+#toast{display:none;position:fixed;left:12px;right:12px;bottom:12px;max-width:576px;margin:0 auto;
+       border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;padding:11px;font-size:13px;z-index:60}
+#bHome{position:fixed;right:12px;bottom:12px;width:auto;margin:0;font-size:12px;padding:8px 11px;
+       border:3px solid #14110f;box-shadow:3px 3px 0 #1a2340;background:#14110f;color:#f2c12e;cursor:pointer;z-index:40;
+       font-family:'Zpix','Microsoft JhengHei',sans-serif}
+
+/* 點數不足 */
+.btn.lack{background:#efe9d8 !important;color:#a09880 !important;border-style:dashed !important;
+          border-color:#b6ad92 !important;box-shadow:none !important;opacity:1 !important;
+          position:relative;filter:grayscale(1)}
+.btn.lack .need{display:inline-block;background:#c0392b;color:#fff;font-size:11px;padding:2px 6px;
+                margin-left:6px;filter:none;vertical-align:middle}
+.btn:disabled:not(.lack){background:#c9c4b6;color:#f3f1ea}
+
+/* 主控台自由輸入 */
+.adj2{display:grid;grid-template-columns:26px 1fr auto auto;gap:6px;align-items:center;
+      padding:8px 0;border-bottom:2px solid #ece4cf}
+.adj2:last-child{border-bottom:0}
+.adj2 .sw{width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+          font-family:'Press Start 2P',monospace;font-size:10px}
+.an2{font-size:13px;line-height:1.5;min-width:0}
+.an2 .dim{display:block}
+.ain{display:flex;gap:3px;align-items:center}
+.ain input{width:62px;margin:0;border-width:3px;padding:5px 5px;font-size:13px}
+.ain .btn{margin:0;white-space:nowrap}
+
+/* 股市五檔 */
+.mkrow .tg{flex:1 1 18%;min-width:64px;font-size:12px;padding:8px 2px;line-height:1.4}
+.mkrow .mx{font-size:10px;opacity:.75;font-family:'Press Start 2P',monospace}
+
+/* 確認彈窗 */
+#confirm{display:none;position:fixed;inset:0;background:rgba(20,17,15,.78);align-items:center;
+         justify-content:center;padding:20px;z-index:70}
+#confirmCard{background:#fffef5;border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;max-width:340px;width:100%}
+#cfBody{font-size:14px;line-height:1.8;margin-bottom:14px;min-height:20px}
+#cfBody:empty{display:none;margin:0}
+.cfrow{display:flex;gap:8px}
+.cfrow .btn{margin:0;flex:1}
+
+/* 區段標題 */
+.seg{font-family:'Press Start 2P',monospace;font-size:10px;color:#8a7c55;margin:16px 0 8px;padding-left:2px}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="app"></div></div>
+<div id="modal"><div id="modalCard">
+  <div class="ch" id="modalTitle"></div>
+  <div class="cb"><div id="modalBody"></div>
+    <button class="btn ink" id="modalClose" style="margin-top:12px">關閉</button></div>
+</div></div>
+<div id="confirm"><div id="confirmCard">
+  <div class="ch" id="cfTitle"></div>
+  <div class="cb"><div id="cfBody"></div>
+    <div class="cfrow"><button class="btn ink" id="cfNo">取消</button>
+    <button class="btn green" id="cfYes">確定</button></div></div>
+</div></div>
+<div id="toast"></div>
+<button id="bHome">回首頁</button>
+<script>
+
+const G = (function(){
+/* ===== 人生大富翁 — 遊戲核心邏輯（可獨立測試） ===== */
+
+const TRACK = [
+  ["black",5,0],["safe",6,0],["base",7,0],["tax",7,1],
+  ["stage",8,1],["fate",8,2],["base",9,2],["casino",9,3],
+  ["safe",10,3],["fate",10,4],["base",10,5],["stage",10,6],
+  ["worm",10,7],["exch",10,8],["tax",9,8],["base",9,9],
+  ["safe",8,9],["base",7,9],["fate",7,8],["casino",6,8],
+  ["bank",6,7],["base",5,7],["black",4,7],["safe",4,8],
+  ["stage",4,9],["safe",3,9],["casino",2,9],["safe",1,9],
+  ["base",0,9],["tax",0,8],["fate",0,7],["start",0,6],
+  ["fate",0,5],["exch",1,5],["stage",2,5],["base",2,4],
+  ["fate",3,4],["worm",4,4],["base",5,4],["fate",6,4],
+  ["stage",6,3],["base",6,2],["jail",5,2],["fate",5,1],
+];
+const N = TRACK.length;
+const START_IDX = TRACK.findIndex(t => t[0] === "start");
+const BASE_IDX = TRACK.map((t,i)=>t[0]==="base"?i:-1).filter(i=>i>=0);
+const STAGE_IDX = TRACK.map((t,i)=>t[0]==="stage"?i:-1).filter(i=>i>=0);
+const WORM_IDX = TRACK.map((t,i)=>t[0]==="worm"?i:-1).filter(i=>i>=0);
+
+const TILE = {
+  base:{n:"基地",bg:"#3fbf5a",fg:"#0f3d18"}, fate:{n:"命運",bg:"#f2c12e",fg:"#5a3d05"},
+  tax:{n:"稅收",bg:"#3f86e0",fg:"#0b2c55"},  black:{n:"黑市",bg:"#6d72b0",fg:"#141033"},
+  casino:{n:"賭場",bg:"#9450d8",fg:"#ffffff"},stage:{n:"關卡",bg:"#ffffff",fg:"#1f7a2e"},
+  worm:{n:"蟲洞",bg:"#2a0a0a",fg:"#f0908a"}, exch:{n:"交易所",bg:"#57a3a3",fg:"#0d2e2e"},
+  jail:{n:"監獄",bg:"#5f5f5f",fg:"#ffffff"}, bank:{n:"銀行",bg:"#2bb0b0",fg:"#0a3838"},
+  start:{n:"起點",bg:"#141414",fg:"#ffe14d"},safe:{n:"安全",bg:"#e4d8ad",fg:"#5a4d1f"},
+};
+
+const TEAM_COLORS = ["#e23b3b","#3f86e0","#3fbf5a","#f2c12e","#9450d8",
+                     "#e6832a","#17a2a2","#d13f8c","#6b7fd0","#8a6a2a"];
+const LIGHT_FG = [3];
+
+const DEFAULTS = {
+  startCash:2000, lapBonus:300, taxAmount:200,
+  casinoCost:150, casinoPayouts:[0,150,300,600],
+  blackDiscount:50, bankShare:50, round1Fraction:3,
+  levels:[{name:"空地",stay:0,up:0,sell:200},
+          {name:"商店",stay:300,up:6,sell:500},
+          {name:"賭場",stay:800,up:12,sell:1000}],
+  passRatio:20,
+  market:{bubble:250,hot:150,flat:100,slump:70,crash:40},
+  marketOrder:["bubble","hot","flat","slump","crash"],
+  marketNames:{bubble:"泡沫",hot:"熱絡",flat:"平穩",slump:"低迷",crash:"崩盤"},
+  attacks:{
+    quake:{name:"地震",cost:4,repair:300},
+    missile:{name:"飛彈",cost:3,repair:400},
+    typhoon:{name:"颱風",cost:4,repair:300,eyeBonus:200},
+    wildfire:{name:"野火",cost:3,repair:250},
+  },
+  gambles:[{name:"紅包",cost:1},{name:"戳戳樂",cost:2},
+           {name:"樂透",cost:4},{name:"全押",cost:6}],
+  buffs:{pass:{name:"通行證",cost:3},reroll:{name:"重骰卡",cost:2},shield:{name:"防災卡",cost:4}},
+  battlesPerTeam:2, inflateThreshold:5, diceSides:6,
+};
+
+const FATE_CARDS = [
+  {t:"關主心情好，發放獎金",cash:300,pts:0},
+  {t:"被抓到偷懶，罰款",cash:-200,pts:0},
+  {t:"諂媚成功，獲得點點",cash:0,pts:2},
+  {t:"營服洗壞了，賠償",cash:-150,pts:0},
+  {t:"撿到隊輔的零錢包",cash:250,pts:0},
+  {t:"團康表現優異，加碼",cash:400,pts:1},
+  {t:"遲到集合，扣款",cash:-250,pts:0},
+  {t:"幫忙搬器材，工資入袋",cash:200,pts:1},
+  {t:"手機沒電找不到人，罰款",cash:-100,pts:0},
+  {t:"夜教勇氣獎",cash:350,pts:0},
+  {t:"被關主吐槽，扣點點",cash:0,pts:-2},
+  {t:"隊呼喊得最大聲",cash:150,pts:1},
+];
+
+/* ---------- 工具 ---------- */
+const clone = o => JSON.parse(JSON.stringify(o));
+const money = n => "$" + Number(n).toLocaleString();
+
+function freshState(code, teamCount, names) {
+  return {
+    rev:1, code, phase:"setup", round:1,
+    teams: Array.from({length:teamCount}, (_,i) => ({
+      id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
+      cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
+      jail:0, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
+      buffs:{pass:0,reroll:0,shield:0}, discount:false, rolled:false, joined:false,
+    })),
+    bank:0, market:"flat", disasters:0, unlocked:[], log:[],
+    settings: clone(DEFAULTS), lastRoll:null,
+  };
+}
+
+// 過夜費：停在別人基地要付
+function stayFee(s, team) {
+  let fee = s.settings.levels[team.level-1].stay;
+  if (s.round === 1) fee = Math.round(fee / Math.max(1, s.settings.round1Fraction));
+  return fee;
+}
+// 通行費：僅經過，為過夜費的一定比例
+function passFee(s, team) {
+  return Math.round(stayFee(s, team) * s.settings.passRatio / 100);
+}
+function sellValue(s, team) {
+  const lv = s.settings.levels[team.level-1];
+  return Math.round(lv.sell * (s.settings.market[s.market]/100));
+}
+function netWorth(s, t) {
+  return t.cash + ((t.sold || t.baseIdx === null) ? 0 : sellValue(s, t));
+}
+function ownerOf(s, idx) {
+  return s.teams.find(t => t.baseIdx === idx && !t.sold) || null;
+}
+function pay(s, from, to, amt) {
+  if (amt <= 0) return 0;
+  s.teams[from].cash -= amt;
+  if (to === "bank") s.bank += amt; else s.teams[to].cash += amt;
+  return amt;
+}
+
+/* ---------- 抽籤 ---------- */
+function assignBases(s, rnd = Math.random) {
+  const pool = [...BASE_IDX];
+  for (let i = pool.length-1; i > 0; i--) {
+    const j = Math.floor(rnd()*(i+1)); [pool[i],pool[j]] = [pool[j],pool[i]];
+  }
+  s.teams.forEach((t,i) => { t.baseIdx = pool[i % pool.length]; t.level = 1; });
+  s.log.unshift("抽籤完成，各隊領地已分配");
+  return s;
+}
+
+/* ---------- 移動 ---------- */
+function applyMove(s, ti, steps, rnd = Math.random) {
+  const t = s.teams[ti];
+  const notes = [];
+  if (t.jail > 0) {
+    t.jail -= 1; t.rolled = true;
+    s.lastRoll = {team:ti, n:steps, note:"在監獄中，本回合不移動"};
+    s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
+    return s;
+  }
+  const from = t.pos;
+  let usedPass = false;
+  const hasPass = t.buffs.pass > 0;
+
+  // 經過的格子（不含終點）
+  for (let k = 1; k < steps; k++) {
+    const p = (from + k) % N;
+    if (p === START_IDX) { t.cash += s.settings.lapBonus; notes.push(`經過起點 +${money(s.settings.lapBonus)}`); }
+    const own = ownerOf(s, p);
+    if (own && own.id !== ti) {
+      const amt = passFee(s, own);
+      if (amt > 0) {
+        if (hasPass) { usedPass = true; }
+        else { pay(s, ti, own.id, amt); notes.push(`通行費 ${money(amt)} → ${own.name}`); }
+      }
+    }
+  }
+  // 終點
+  const dest = (from + steps) % N;
+  if (dest === START_IDX) { t.cash += s.settings.lapBonus; notes.push(`停在起點 +${money(s.settings.lapBonus)}`); }
+  t.pos = dest;
+
+  landEffect(s, ti, notes, {hasPass, markPass:() => { usedPass = true; }}, rnd);
+
+  if (usedPass) { t.buffs.pass -= 1; notes.push("通行證生效，免付費用"); }
+  t.rolled = true;
+  s.lastRoll = {team:ti, n:steps, note:notes.join("；") || "平安無事"};
+  s.log.unshift(`${t.name} 骰出 ${steps} → ${TILE[TRACK[t.pos][0]].n}${notes.length ? "：" + notes.join("；") : ""}`);
+  return s;
+}
+
+function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
+  const t = s.teams[ti];
+  const S = s.settings;
+  const kind = TRACK[t.pos][0];
+
+  if (kind === "base") {
+    const own = ownerOf(s, t.pos);
+    if (own && own.id !== ti) {
+      const amt = stayFee(s, own);
+      if (amt > 0) {
+        if (passCtl.hasPass) { passCtl.markPass(); notes.push("通行證抵銷過夜費"); }
+        else { pay(s, ti, own.id, amt); notes.push(`過夜費 ${money(amt)} → ${own.name}`); }
+      }
+    } else if (own) notes.push("回到自己的基地");
+    else notes.push("無主空地");
+
+  } else if (kind === "tax") {
+    pay(s, ti, "bank", S.taxAmount); notes.push(`稅收 −${money(S.taxAmount)}`);
+
+  } else if (kind === "fate") {
+    const c = FATE_CARDS[Math.floor(rnd()*FATE_CARDS.length)];
+    t.cash += c.cash; t.pts = Math.max(0, t.pts + c.pts);
+    notes.push(`命運「${c.t}」${c.cash ? ` ${c.cash>0?"+":""}${money(c.cash)}` : ""}${c.pts ? ` 點點${c.pts>0?"+":""}${c.pts}` : ""}`);
+
+  } else if (kind === "black") {
+    t.discount = true; notes.push(`黑市：下次商店消費打 ${S.blackDiscount/10} 折`);
+
+  } else if (kind === "casino") {
+    // 賭資先進銀行池，獎金再從池中支付；池子不足則只能領到池中餘額
+    t.cash -= S.casinoCost;
+    s.bank += S.casinoCost;
+    const draw = S.casinoPayouts[Math.floor(rnd()*S.casinoPayouts.length)];
+    const win = Math.min(draw, s.bank);
+    s.bank -= win; t.cash += win;
+    notes.push(`賭場：押 ${money(S.casinoCost)}，${win ? `拿回 ${money(win)}` : "全數落空"}${win < draw ? "（銀行餘額不足）" : ""}`);
+
+  } else if (kind === "bank") {
+    const take = Math.max(0, Math.round(s.bank * S.bankShare/100));
+    s.bank -= take; t.cash += take;
+    notes.push(`銀行密道：幹走 ${money(take)}`);
+
+  } else if (kind === "worm") {
+    const other = WORM_IDX.find(i => i !== t.pos);
+    t.pos = other; notes.push("蟲洞傳送");
+
+  } else if (kind === "jail") {
+    t.jail = 1; notes.push("滾進監獄，下回合停留");
+
+  } else if (kind === "exch") {
+    notes.push("交易所：可查看命運卡前三張");
+
+  } else if (kind === "stage") {
+    notes.push(s.unlocked.includes(t.pos) ? "關卡已解封，觸發關卡技能" : "關卡尚未解封");
+  }
+  return notes;
+}
+
+/* ---------- 商店 ---------- */
+function costWithDiscount(s, t, base) {
+  return t.discount ? Math.max(1, Math.ceil(base * s.settings.blackDiscount/100)) : base;
+}
+function buyGamble(s, ti, gi) {
+  const t = s.teams[ti], g = s.settings.gambles[gi];
+  const cost = costWithDiscount(s, t, g.cost);
+  if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
+  t.pts -= cost; if (t.discount) t.discount = false;
+  s.log.unshift(`${t.name} 買了「${g.name}」（扣 ${cost} 點，獎項由關主現場發放）`);
+  return {ok:true};
+}
+function buyBuff(s, ti, bk) {
+  const t = s.teams[ti], b = s.settings.buffs[bk];
+  const cost = costWithDiscount(s, t, b.cost);
+  if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
+  t.pts -= cost; t.buffs[bk] += 1; if (t.discount) t.discount = false;
+  s.log.unshift(`${t.name} 取得「${b.name}」`);
+  return {ok:true};
+}
+function upgradeBase(s, ti) {
+  const t = s.teams[ti];
+  if (t.sold) return {ok:false, msg:"基地已賣出"};
+  if (t.level >= s.settings.levels.length) return {ok:false, msg:"已達最高等級"};
+  const need = s.settings.levels[t.level].up;
+  if (t.pts < need) return {ok:false, msg:"諂媚之點不足"};
+  t.pts -= need; t.level += 1;
+  s.log.unshift(`${t.name} 基地升級為「${s.settings.levels[t.level-1].name}」`);
+  return {ok:true};
+}
+function sellBase(s, ti) {
+  const t = s.teams[ti];
+  if (t.sold || t.baseIdx === null) return {ok:false, msg:"沒有可賣的基地"};
+  const v = sellValue(s, t);
+  t.cash += v; t.sold = true; t.soldRound = s.round;
+  s.log.unshift(`${t.name} 賣出基地 +${money(v)}`);
+  return {ok:true};
+}
+function buyBackBase(s, ti) {
+  const t = s.teams[ti];
+  if (!t.sold) return {ok:false, msg:"目前持有基地"};
+  if (s.round <= t.soldRound) return {ok:false, msg:"須繞完一圈才可買回"};
+  const v = sellValue(s, t);
+  if (t.cash < v) return {ok:false, msg:"現金不足"};
+  t.cash -= v; t.sold = false;
+  s.log.unshift(`${t.name} 買回基地 −${money(v)}`);
+  return {ok:true};
+}
+
+/* ---------- 災害 ---------- */
+function tilesInSquare(col, row, half) {
+  const out = [];
+  for (let i = 0; i < N; i++) {
+    const [,c,r] = TRACK[i];
+    if (Math.abs(c-col) <= half && Math.abs(r-row) <= half) out.push(i);
+  }
+  return out;
+}
+function playAttack(s, ti, kind, rnd = Math.random) {
+  const t = s.teams[ti], A = s.settings.attacks[kind];
+  const cost = costWithDiscount(s, t, A.cost);
+  if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
+  t.pts -= cost; if (t.discount) t.discount = false;
+  s.disasters += 1;
+  let hit = [], msg = "";
+
+  const damage = (idx, amt) => {
+    const o = ownerOf(s, idx);
+    if (!o) return;
+    if (s.teams[o.id].buffs.shield > 0) { s.teams[o.id].buffs.shield -= 1; return; }
+    pay(s, o.id, "bank", amt);
+  };
+
+  if (kind === "quake") {
+    const ep = Math.floor(rnd()*N); const [,c,r] = TRACK[ep];
+    hit = tilesInSquare(c, r, 3);
+    msg = `震央第 ${ep+1} 格`;
+    hit.forEach(i => damage(i, i === ep ? Math.round(A.repair*1.5) : A.repair));
+
+  } else if (kind === "typhoon") {
+    const ep = Math.floor(rnd()*N); const [,c,r] = TRACK[ep];
+    const eye = tilesInSquare(c, r, 1);
+    hit = tilesInSquare(c, r, 3);
+    msg = `颱風眼第 ${ep+1} 格`;
+    hit.forEach(i => {
+      const o = ownerOf(s, i); if (!o) return;
+      if (eye.includes(i)) { s.teams[o.id].cash += A.eyeBonus; return; }
+      damage(i, A.repair);
+    });
+
+  } else if (kind === "wildfire") {
+    const rows = [...new Set([Math.floor(rnd()*10), Math.floor(rnd()*10)])];
+    hit = TRACK.map((tt,i) => rows.includes(tt[2]) ? i : -1).filter(i => i>=0);
+    msg = `延燒第 ${rows.map(x=>x+1).join("、")} 排`;
+    hit.forEach(i => damage(i, A.repair));
+
+  } else if (kind === "missile") {
+    const rank = [...s.teams].sort((a,b) => netWorth(s,b) - netWorth(s,a));
+    const mine = rank.findIndex(x => x.id === ti);
+    const target = rank[mine-1] || rank[mine+1];
+    if (!target) { t.pts += cost; s.disasters -= 1; return {ok:false, msg:"沒有可攻擊的對手"}; }
+    msg = `鎖定 ${target.name}`;
+    if (s.teams[target.id].buffs.shield > 0) s.teams[target.id].buffs.shield -= 1;
+    else pay(s, target.id, "bank", A.repair);
+    hit = target.baseIdx !== null ? [target.baseIdx] : [];
+  }
+  s.log.unshift(`${t.name} 發動「${A.name}」— ${msg}`);
+  return {ok:true, hit};
+}
+
+/* ---------- 回合流程 ---------- */
+const PHASES = ["market","sell","shop","roll"];
+function nextPhase(s) {
+  const i = PHASES.indexOf(s.phase);
+  if (i < 0) return s;
+  if (i < PHASES.length-1) { s.phase = PHASES[i+1]; return s; }
+  const d = s.disasters, th = s.settings.inflateThreshold;
+  s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
+  s.round += 1; s.disasters = 0; s.phase = "market";
+  s.teams.forEach(t => { t.rolled = false; });
+  s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
+  return s;
+}
+
+
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,netWorth,ownerOf,assignBases,applyMove,landEffect,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount};
+})();
+
+
+G.SPR = {
+base:["....oooo....","...oRRRRo...","..oRRRRRRo..",".oRRRRRRRRo.","oRRRRRRRRRRo","oooooooooooo",".owwwwwwwwo.",".owWWWWWWwo.",".owwddwwwwo.",".owwddwwGwo.",".owwddwwwwo.",".oooooooooo."],
+fate:["oooooooooooo","oyyyyyyyyyyo","oyyqqqqqqyyo","oyqqyyyyqqyo","oyyyyyyyqqyo","oyyyyyyqqyyo","oyyyyyqqyyyo","oyyyyqqyyyyo","oyyyyqqyyyyo","oyyyyyyyyyyo","oyyyyqqyyyyo","oooooooooooo"],
+bag:["....oooo....","...ottttto..","..obbbbbbbo.",".obbbBBbbbbo","obbbBBBBbbbo","obbbbssbbbbo","obbbsssssbbo","obbbbssbbbbo","obbbbssbbbbo","obbbsssssbbo",".obbbbbbbbo.","..oooooooo.."],
+casino:["oooooooooooo","owwwwwwwwwwo","owppwwwwppwo","owppwwwwppwo","owwwwwwwwwwo","owwwwppwwwwo","owwwwppwwwwo","owwwwwwwwwwo","owppwwwwppwo","owppwwwwppwo","owwwwwwwwwwo","oooooooooooo"],
+stage:[".....oo.....","....oBbo....","....oBbo....","....oBbo....","....oBbo....","....oBbo....","..oggggggo..","....ohho....","....ohho....","....oyyo....",".....oo.....","............"],
+worm:["...oooooo...",".oommmmmmoo.","ommPPPPPPmmo","omPPccccPPmo","omPccPPccPmo","omPcPmmPcPmo","omPcPmmPcPmo","omPccPPccPmo","omPPccccPPmo","ommPPPPPPmmo",".oommmmmmoo.","...oooooo..."],
+exch:[".....oo.....","....oggo....","...oggggo...","..oggggggo..",".oggggggggo.","............",".orrrrrrrro.","..orrrrrro..","...orrrro...","....orro....",".....oo.....","............"],
+jail:["oooooooooooo","oBBBBBBBBBBo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","obb..bb..bbo","oBBBBBBBBBBo","oooooooooooo"],
+bank:[".....oo.....","....owwo....","...owwwwo...","..owwwwwwo..",".owwwwwwwwo.","oooooooooooo","owwwwwwwwwwo","owcwcwcwcwwo","owcwcwcwcwwo","owcwcwcwcwwo","owwwwwwwwwwo","oooooooooooo"],
+start:[".oooooooo...",".opwkwkwko..",".opkwkwkwo..",".opwkwkwko..",".opkwkwkwo..",".oooooooo...",".op.........",".op.........",".op.........",".op.........",".opp........",".oooo......."],
+safe:[".oooooooooo.","osSSSSSSSSso","osssssssssso","ossssccsssso","ossssccsssso","osccccccccso","osccccccccso","ossssccsssso","ossssccsssso",".osssssssso.","..osssssso..","...oooooo..."]
+};
+G.PAL = {
+base:{o:"#3a2a1a",R:"#d0473a",w:"#e6d4a8",W:"#f2e6c8",d:"#7a5230",G:"#5b8fc4"},
+fate:{o:"#3a2a1a",y:"#f2c12e",q:"#6b4a05"},
+tax:{o:"#3a2a1a",t:"#8a6a2a",b:"#caa24e",B:"#e6c072",s:"#f5ead0"},
+black:{o:"#241a2e",t:"#2a2545",b:"#33305e",B:"#4a4680",s:"#f2c12e"},
+casino:{o:"#3a2a1a",w:"#f2ead2",p:"#b83232"},
+stage:{o:"#2b2118",B:"#dfe8f0",b:"#9aabbb",g:"#8a6a2a",h:"#7a5230",y:"#f2c12e"},
+worm:{o:"#4a1010",m:"#c0392b",P:"#f0908a",c:"#2a0808"},
+exch:{o:"#2b2118",g:"#3fbf5a",r:"#e23b3b"},
+jail:{o:"#2b2118",b:"#8f8f8f",B:"#c4c4c4"},
+bank:{o:"#3a2a1a",w:"#e6d8b0",c:"#b0a078"},
+start:{o:"#2b2118",p:"#7a5230",w:"#f2f2f2",k:"#222222"},
+safe:{o:"#2b2118",s:"#3fbf5a",S:"#63d67a",c:"#ffffff"}
+};
+G.SPRKEY = {base:"base",fate:"fate",tax:"bag",black:"bag",casino:"casino",stage:"stage",worm:"worm",exch:"exch",jail:"jail",bank:"bank",start:"start",safe:"safe"};
+
+
+/* ===== 連線層 ===== */
+const Net = {
+  mode: "solo", url: "", code: "", etag: null,
+  norm(u){ let s=(u||"").trim().replace(/\/+$/,""); if(s&&!/^https?:\/\//.test(s)) s="https://"+s; return s; },
+  async probe(){
+    if(this.mode!=="url") return true;
+    const r = await fetch(this.url+"/.json?shallow=true",{cache:"no-store"});
+    return r.ok;
+  },
+  async get(code){
+    if(this.mode==="solo"){
+      const raw = localStorage.getItem("mono:"+code);
+      return raw ? JSON.parse(raw) : null;
+    }
+    const r = await fetch(`${this.url}/rooms/${code}.json`,{cache:"no-store",headers:{"X-Firebase-ETag":"true"}});
+    if(!r.ok) throw new Error("read "+r.status);
+    this.etag = r.headers.get("ETag");
+    const j = await r.json();
+    return j || null;
+  },
+  async put(code, obj){
+    if(this.mode==="solo"){ localStorage.setItem("mono:"+code, JSON.stringify(obj)); return {ok:true}; }
+    const h = {"Content-Type":"application/json","X-Firebase-ETag":"true"};
+    if(this.etag) h["if-match"] = this.etag;
+    const r = await fetch(`${this.url}/rooms/${code}.json`,{method:"PUT",headers:h,body:JSON.stringify(obj)});
+    if(r.status===412){ this.etag = r.headers.get("ETag"); return {ok:false,conflict:true}; }
+    if(!r.ok) throw new Error("write "+r.status);
+    this.etag = r.headers.get("ETag");
+    return {ok:true};
+  }
+};
+
+/* ===== App 狀態 ===== */
+const App = { screen:"home", role:null, myTeam:null, S:null, rev:0, tab:"board",
+              dice:null, rolling:false, busy:false, highlight:[], lastRender:-1 };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+/* 統一的確認彈窗 */
+function ask(title, detail, onYes){
+  const m = $("confirm");
+  $("cfTitle").textContent = title;
+  $("cfBody").innerHTML = detail;
+  m.style.display = "flex";
+  $("cfYes").onclick = ()=>{ m.style.display="none"; onYes(); };
+  $("cfNo").onclick  = ()=>{ m.style.display="none"; };
+}
+
+function toast(msg, bad){
+  const el = $("toast"); el.textContent = msg;
+  el.style.background = bad ? "#ffe0e0" : "#e6f6e4";
+  el.style.display = "block";
+  clearTimeout(toast._t); toast._t = setTimeout(()=>{ el.style.display="none"; }, 3200);
+}
+
+/* 讀-改-寫，遇到衝突自動重試 */
+async function commit(mut){
+  if(App.busy || !Net.code) return;
+  App.busy = true;
+  try{
+    for(let attempt=0; attempt<4; attempt++){
+      const cur = await Net.get(Net.code);
+      if(!cur){ toast("找不到房間資料",1); break; }
+      const next = G.clone(cur);
+      const res = mut(next);
+      if(res === false) break;
+      next.rev = (cur.rev||0)+1;
+      const w = await Net.put(Net.code, next);
+      if(w.ok){ App.rev = next.rev; App.S = next; render(true); break; }
+      if(attempt===3) toast("多人同時操作，請再按一次",1);
+    }
+  }catch(e){ toast("連線失敗："+e.message,1); }
+  finally{ App.busy = false; }
+}
+
+let pollTimer = null;
+function startPoll(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    if(App.busy || !Net.code) return;
+    try{
+      const r = await Net.get(Net.code);
+      if(r && r.rev > App.rev){ App.rev = r.rev; App.S = r; render(); }
+    }catch(e){ /* 暫時斷線，下次輪詢再試 */ }
+  }, 2000);
+}
+
+/* ===== 精靈圖 ===== */
+function sprite(type, size){
+  const g = G.SPR[G.SPRKEY[type]], pal = G.PAL[type];
+  let out = `<svg width="${size}" height="${size}" viewBox="0 0 12 12" shape-rendering="crispEdges">`;
+  for(let y=0;y<g.length;y++) for(let x=0;x<g[y].length;x++){
+    const c = pal[g[y][x]];
+    if(c) out += `<rect x="${x}" y="${y}" width="1.05" height="1.05" fill="${c}"/>`;
+  }
+  return out+"</svg>";
+}
+
+/* ===== 首頁 ===== */
+function renderHome(){
+  $("app").innerHTML = `
+  <div class="hd">
+    <div class="t1">人生大富翁</div>
+    <div class="t2">營隊大地遊戲 · 連線版</div>
+  </div>
+  <div class="card"><div class="ch">★ 連線方式</div><div class="cb">
+    <div class="row">
+      <button class="tg on" id="mSolo">單機（一台裝置）</button>
+      <button class="tg" id="mUrl">連線（各隊手機）</button>
+    </div>
+    <div id="soloNote" class="note">所有隊伍共用這一台裝置，輪流過來操作。不需網路，最穩定。</div>
+    <div id="urlBox" style="display:none">
+      <input id="dbUrl" placeholder="https://專案-default-rtdb.asia-southeast1.firebasedatabase.app">
+      <div class="note">主持人與各隊要填<b>完全相同</b>的網址。設定說明見頁面最下方。</div>
+    </div>
+  </div></div>
+  <div class="card"><div class="ch">★ 開新房間（工作人員）</div><div class="cb">
+    <label class="fl"><span>隊伍數</span><input id="tCount" type="number" value="10" min="2" max="10"><span class="u">隊</span></label>
+    <button class="btn green" id="bCreate">建立房間</button>
+  </div></div>
+  <div class="card"><div class="ch">★ 加入房間（各隊）</div><div class="cb">
+    <input id="joinCode" class="code" placeholder="房號" maxlength="4">
+    <button class="btn red" id="bJoin">加入</button>
+  </div></div>
+  <div id="resumeBox"></div>
+  <div class="card"><div class="ch">★ 連線模式設定說明</div><div class="cb note">
+    1. 到 Firebase 主控台建立專案，左側選 Realtime Database<br>
+    2. 建立資料庫，位置選 asia-southeast1，規則選「測試模式」<br>
+    3. 規則貼上：<code>{"rules":{"rooms":{".read":true,".write":true}}}</code><br>
+    4. 複製資料庫網址，主持人與 10 組都填同一個<br>
+    <span class="warn">營隊結束後請把規則改回 false，或刪除專案。</span>
+  </div></div>`;
+
+  const setMode = m => {
+    Net.mode = m;
+    $("mSolo").className = "tg"+(m==="solo"?" on":"");
+    $("mUrl").className  = "tg"+(m==="url"?" on":"");
+    $("soloNote").style.display = m==="solo"?"block":"none";
+    $("urlBox").style.display   = m==="url"?"block":"none";
+  };
+  $("mSolo").onclick = ()=>setMode("solo");
+  $("mUrl").onclick  = ()=>setMode("url");
+
+  const saved = localStorage.getItem("mono:conn");
+  if(saved){ try{ const c=JSON.parse(saved); setMode(c.mode||"solo"); if(c.url) $("dbUrl").value=c.url; }catch(e){} }
+  else setMode("solo");
+
+  const sess = loadSession();
+  if(sess && sess.code){
+    $("resumeBox").innerHTML = `<div class="card"><div class="ch">★ 繼續上次</div><div class="cb">
+      房號 <b class="big">${esc(sess.code)}</b>　身分：${sess.role==="host"?"主持人":"第 "+(sess.team+1)+" 組"}<br><br>
+      <button class="btn green" id="bResume">回到遊戲</button>
+      <button class="btn sm ink" id="bForget">改用別的身分</button>
+    </div></div>`;
+    $("bResume").onclick = ()=>resume(sess);
+    $("bForget").onclick = ()=>{ clearSession(); renderHome(); };
+  }
+  $("bCreate").onclick = createRoom;
+  $("bJoin").onclick = joinRoom;
+  $("joinCode").oninput = e => { e.target.value = e.target.value.toUpperCase(); };
+}
+
+async function resume(sess){
+  Net.mode = sess.mode || "solo"; Net.url = sess.url || ""; Net.etag = null;
+  try{
+    Net.code = sess.code;
+    const r = await Net.get(sess.code);
+    if(!r){ toast("找不到這個房間，可能已被清除",1); Net.code=""; clearSession(); renderHome(); return; }
+    App.S=r; App.rev=r.rev; App.role=sess.role; App.myTeam=(sess.team!==undefined?sess.team:null);
+    App.screen="game"; startPoll(); render(true);
+  }catch(e){ toast("連線失敗："+e.message,1); Net.code=""; }
+}
+
+async function prepNet(){
+  Net.url = Net.norm($("dbUrl") ? $("dbUrl").value : "");
+  if(Net.mode==="url"){
+    if(!Net.url){ toast("請先填入資料庫網址",1); return false; }
+    try{ if(!await Net.probe()){ toast("連不上，請確認網址與讀寫規則",1); return false; } }
+    catch(e){ toast("連不上："+e.message,1); return false; }
+  }
+  localStorage.setItem("mono:conn", JSON.stringify({mode:Net.mode,url:Net.url}));
+  return true;
+}
+
+async function createRoom(){
+  if(!await prepNet()) return;
+  const n = Math.max(2, Math.min(10, Number($("tCount").value)||10));
+  const code = Math.random().toString(36).slice(2,6).toUpperCase();
+  const st = G.freshState(code, n);
+  try{
+    Net.code = code; Net.etag = null;
+    await Net.put(code, st);
+    App.S = st; App.rev = st.rev; App.role="host"; App.myTeam=null; App.screen="game";
+    saveSession(); startPoll(); render(true);
+  }catch(e){ toast("開房失敗："+e.message,1); }
+}
+
+async function joinRoom(){
+  if(!await prepNet()) return;
+  const code = ($("joinCode").value||"").trim().toUpperCase();
+  if(code.length<3){ toast("請輸入房號",1); return; }
+  try{
+    Net.code = code; Net.etag = null;
+    const r = await Net.get(code);
+    if(!r){ toast(Net.mode==="solo" ? "本機沒有這個房號（單機模式無法跨裝置）" : "找不到房號，請確認房號與網址",1); Net.code=""; return; }
+    App.S = r; App.rev = r.rev; App.role="team"; App.screen="pick";
+    localStorage.setItem("mono:conn", JSON.stringify({mode:Net.mode,url:Net.url}));
+    startPoll(); render(true);
+  }catch(e){ toast("加入失敗："+e.message,1); Net.code=""; }
+}
+
+/* ===== 選隊伍 ===== */
+function saveSession(){
+  try{
+    localStorage.setItem("mono:session", JSON.stringify({
+      mode:Net.mode, url:Net.url, code:Net.code, role:App.role, team:App.myTeam
+    }));
+  }catch(e){}
+}
+function clearSession(){ try{ localStorage.removeItem("mono:session"); }catch(e){} }
+function loadSession(){
+  try{ const r=localStorage.getItem("mono:session"); return r?JSON.parse(r):null; }catch(e){ return null; }
+}
+
+function renderPick(){
+  const S = App.S;
+  $("app").innerHTML = `<div class="card"><div class="ch">★ 房號 ${esc(S.code)} — 選擇你的隊伍</div><div class="cb">
+    ${S.teams.map((t,i)=>`<button class="btn slot" data-i="${i}"
+      style="background:${t.joined?"#b9b3a2":t.color};color:${!t.joined&&G.LIGHT_FG.includes(i)?"#14110f":"#fff"}">
+      ${esc(t.name)}${t.joined?"（已有人選，可接手）":""}</button>`).join("")}
+    <div class="note">選錯或手機重整了？直接再點一次同一組就能接手回來，不會被鎖住。</div>
+  </div></div>`;
+  document.querySelectorAll(".slot").forEach(b=>{
+    b.onclick = async ()=>{
+      const i = Number(b.dataset.i);
+      if(App.S.teams[i].joined && !confirm(`${App.S.teams[i].name} 已經有人選了。\n如果那是你自己（手機重整過）就按確定接手；\n如果是別組，請按取消改選其他組。`)) return;
+      App.myTeam = i;
+      await commit(s=>{ s.teams[i].joined = true; });
+      App.screen="game"; saveSession(); render(true);
+    };
+  });
+}
+
+/* ===== 棋盤 ===== */
+function boardHTML(){
+  const S = App.S, cell=46, gap=4;
+  const W = 11*(cell+gap), H = 10*(cell+gap);
+  let out = `<div class="bwrap ${App.zoom?"zoomed":"fit"}" id="bwrap"><div class="board" id="board" style="width:${W}px;height:${H}px">`;
+  G.TRACK.forEach((t,i)=>{
+    const [kind,c,r] = t, T = G.TILE[kind];
+    const own = G.ownerOf(S,i);
+    const here = S.teams.filter(x=>x.pos===i);
+    const hot = App.highlight.includes(i);
+    const locked = kind==="stage" && !S.unlocked.includes(i);
+    out += `<div class="tile" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;
+      background:${hot?"#ffdcdc":T.bg};border-color:${hot?"#e23b3b":"#14110f"}">
+      ${sprite(kind,22)}<div class="tl" style="color:${T.fg}">${T.n}</div>
+      ${locked?'<div class="lock"></div>':""}
+      ${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?"#14110f":"#fff"}">${own.id+1}</div>`:""}
+      ${here.length?`<div class="pins">${here.slice(0,4).map(h=>`<i style="background:${h.color}">${h.id+1}</i>`).join("")}${here.length>4?`<i class="more">+${here.length-4}</i>`:""}</div>`:""}
+    </div>`;
+  });
+  return out+`</div></div><button class="btn sm gold" id="bZoom">${App.zoom?"符合螢幕":"放大檢視"}</button>`;
+}
+
+/* 把棋盤縮放到剛好塞滿畫面寬度 */
+function fitBoard(){
+  const wrap = $("bwrap"), bd = $("board");
+  if(!wrap || !bd) return;
+  if(App.zoom){ bd.style.transform=""; wrap.style.height=""; return; }
+  const avail = wrap.clientWidth;
+  const w = parseFloat(bd.style.width);
+  const k = Math.min(1, avail / w);
+  bd.style.transformOrigin = "top left";
+  bd.style.transform = `scale(${k})`;
+  wrap.style.height = (parseFloat(bd.style.height) * k) + "px";
+}
+
+function tileDesc(i){
+  const S = App.S, kind = G.TRACK[i][0], own = G.ownerOf(S,i);
+  const d = {
+    base: own ? `第 ${own.id+1} 組「${own.name}」的領地<br>Lv${own.level}「${S.settings.levels[own.level-1].name}」<br>通行費 ${G.money(G.passFee(S,own))}　過夜費 ${G.money(G.stayFee(S,own))}` : "無主空地",
+    fate:"抽一張機會與命運卡",
+    tax:`繳 ${G.money(S.settings.taxAmount)} 進銀行池`,
+    black:`下次商店消費打 ${S.settings.blackDiscount/10} 折`,
+    casino:`押 ${G.money(S.settings.casinoCost)} 賭一把，獎金由銀行池支付`,
+    stage: S.unlocked.includes(i) ? "已解封，觸發對應關卡技能" : "尚未解封，關卡結束後由工作人員開啟",
+    worm:"傳送到另一個蟲洞",
+    exch:"查看命運卡最上面三張",
+    jail:"停留一回合",
+    bank:`幹走銀行池 ${S.settings.bankShare}%（目前 ${G.money(S.bank)}）`,
+    start:`每經過一次 +${G.money(S.settings.lapBonus)}`,
+    safe:"安全格，不會發生任何事",
+  }[kind];
+  return d;
+}
+
+/* ===== 主畫面 ===== */
+function renderGame(){
+  const S = App.S, me = App.myTeam!==null ? S.teams[App.myTeam] : null;
+  const isHost = App.role==="host";
+  const phaseName = {setup:"準備中",market:"1. 公布股市",sell:"2. 議論賣房",shop:"3. 商店與道具",roll:"4. 骰骰子與攻擊"}[S.phase];
+  const tabs = [["main","遊戲"],["log","紀錄"]].concat(isHost?[["host","主控"]]:[]);
+  if(App.tab==="board"||App.tab==="play"||App.tab==="rank") App.tab="main";
+
+  let body = "", bodyBoard = "", bodyAct = "", bodyRank = "";
+  if(S.phase==="setup" && !isHost){
+    body += `<div class="card"><div class="ch">★ 等待開始</div><div class="cb">
+      你已經加入${me?"，代表 "+esc(me.name):""}。<br>
+      等主持人抽籤分配基地並開始遊戲。<br><br>
+      <span class="note">手機不小心關掉也沒關係，重開網址會有「回到遊戲」按鈕。</span>
+    </div></div>`;
+  }
+  if(App.tab==="main"){
+    bodyBoard += `<div class="card"><div class="ch">★ 棋盤 — 點格子看說明</div><div class="cb">
+      ${boardHTML()}
+      <div class="note">左上小方塊＝領地擁有者　右下圓點＝隊伍位置　綠色遮罩＝關卡未解封</div>
+    </div></div>`;
+    if(S.lastRoll) bodyBoard += `<div class="card"><div class="ch">★ 最近一次移動</div><div class="cb">
+      ${esc(S.teams[S.lastRoll.team].name)} 骰出 <b class="big">${S.lastRoll.n}</b><br>${esc(S.lastRoll.note)}</div></div>`;
+  }
+
+  if(App.tab==="main"){
+    if(!me){
+      bodyAct += `<div class="card"><div class="ch">★ 主持人視角</div><div class="cb">
+        你正在主持這場遊戲，沒有操作隊伍。<br><br>
+        ${Net.mode==="solo"
+          ? `單機模式下，請用下方按鈕切換到要操作的隊伍。<div class="row wrap" style="margin-top:10px">${
+              S.teams.map((t,i)=>`<button class="btn sm pick2" data-i="${i}" style="background:${t.color};color:${G.LIGHT_FG.includes(i)?"#14110f":"#fff"}">${esc(t.name)}</button>`).join("")
+            }</div>`
+          : `各隊請在自己手機輸入房號 <b class="big">${esc(S.code)}</b> 加入。`}
+      </div></div>`;
+    } else {
+      if(Net.mode==="solo"){
+        bodyAct += `<div class="card"><div class="ch">★ 目前操作</div><div class="cb">
+          <div class="row wrap">${S.teams.map((t,i)=>`<button class="btn sm pick2" data-i="${i}"
+            style="background:${i===App.myTeam?t.color:"#e8e2d0"};color:${i===App.myTeam?(G.LIGHT_FG.includes(i)?"#14110f":"#fff"):"#14110f"}">${esc(t.name)}</button>`).join("")}</div>
+        </div></div>`;
+      }
+      if(S.phase==="roll"){
+        bodyAct += `<div class="card"><div class="ch">★ 骰骰子</div><div class="cb">
+          <div class="dice" id="dice">${App.dice ?? "?"}</div>
+          <button class="btn green" id="bRoll" ${me.rolled||App.rolling?"disabled":""}>
+            ${me.rolled?"本回合已骰過":App.rolling?"滾動中…":"擲骰子"}</button>
+          ${me.buffs.reroll>0 && me.rolled ? `<button class="btn blue" id="bReroll">使用重骰卡（剩 ${me.buffs.reroll}）</button>`:""}
+        </div></div>
+        <div class="card"><div class="ch">★ 攻擊卡</div><div class="cb">
+          ${Object.entries(S.settings.attacks).map(([k,a])=>{const c=G.costWithDiscount(S,me,a.cost);const no=me.pts<c;
+            return `<button class="btn sm dark atk ${no?"lack":""}" data-k="${k}" ${no?"disabled":""}>
+            ${a.name}　${c} 點　修繕 ${G.money(a.repair)}${no?` <span class="need">還差 ${c-me.pts} 點</span>`:""}</button>`;}).join("")}
+          <button class="btn sm ink" id="bBattle" ${me.battles<=0?"disabled":""}>使用 BATTLE（剩 ${me.battles} 次）</button>
+        </div></div>`;
+      } else if(S.phase==="shop"){
+        bodyAct += `<div class="card"><div class="ch">★ 賭一把</div><div class="cb">
+          <div class="note" style="margin-top:0">獎項由關主現場發放，這裡只扣點數。</div>
+          ${S.settings.gambles.map((g,i)=>{const c=G.costWithDiscount(S,me,g.cost);const no=me.pts<c;
+            return `<button class="btn sm purple gam ${no?"lack":""}" data-i="${i}" ${no?"disabled":""}>
+            ${g.name}　${c} 點${no?` <span class="need">還差 ${c-me.pts} 點</span>`:""}</button>`;}).join("")}
+        </div></div>
+        <div class="card"><div class="ch">★ 增益道具</div><div class="cb">
+          ${Object.entries(S.settings.buffs).map(([k,b])=>{const c=G.costWithDiscount(S,me,b.cost);const no=me.pts<c;
+            return `<button class="btn sm blue buf ${no?"lack":""}" data-k="${k}" ${no?"disabled":""}>
+            ${b.name}　${c} 點${no?` <span class="need">還差 ${c-me.pts} 點</span>`:""}</button>`;}).join("")}
+        </div></div>
+        <div class="card"><div class="ch">★ 基地升級</div><div class="cb">
+          目前 Lv${me.level}「${S.settings.levels[me.level-1].name}」${me.level<3?`，升級需 ${S.settings.levels[me.level].up} 點`:"（已滿級）"}<br><br>
+          ${(()=>{const need=S.settings.levels[me.level]?.up??999;const no=me.level>=3||me.sold||me.pts<need;
+            return `<button class="btn green ${no&&me.level<3&&!me.sold?"lack":""}" id="bUp" ${no?"disabled":""}>
+            ${me.level>=3?"已達最高等級":me.sold?"基地已賣出":me.pts<need?`升級基地　還差 ${need-me.pts} 點`:"升級基地"}</button>`;})()}
+        </div></div>`;
+      } else if(S.phase==="sell"){
+        bodyAct += `<div class="card"><div class="ch">★ 房產</div><div class="cb">
+          股市：${S.settings.marketNames[S.market]}（賣價 ×${S.settings.market[S.market]/100}）<br>
+          你的基地賣出價值：${G.money(G.sellValue(S,me))}<br><br>
+          ${!me.sold ? `<button class="btn dark" id="bSell">賣出基地</button>`
+            : `<button class="btn green" id="bBuyBack" ${S.round<=me.soldRound||me.cash<G.sellValue(S,me)?"disabled":""}>
+                ${S.round<=me.soldRound?"須繞完一圈才可買回":`買回基地（${G.money(G.sellValue(S,me))}）`}</button>`}
+        </div></div>`;
+      } else {
+        bodyAct += `<div class="card"><div class="ch">★ 等待中</div><div class="cb">等工作人員推進到下一階段。</div></div>`;
+      }
+    }
+  }
+
+  if(App.tab==="main"){
+    const rk = [...S.teams].sort((a,b)=>G.netWorth(S,b)-G.netWorth(S,a));
+    bodyRank += `<div class="card"><div class="ch">★ 即時排名（現金＋土地價值）</div><div class="cb">
+      ${rk.map((t,i)=>`<div class="rk">
+        <div class="rn" style="color:${i===0?"#f2c12e":"#8a7c55"}">${i+1}</div>
+        <div class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(t.id)?"#14110f":"#fff"}">${t.id+1}</div>
+        <div class="rname">${esc(t.name)}${t.joined?"":'<span class="dim">（未加入）</span>'}</div>
+        <div class="rval">${G.money(G.netWorth(S,t))}<div class="dim">現金 ${G.money(t.cash)} · ${t.pts} 點</div></div>
+      </div>`).join("")}
+    </div></div>`;
+  }
+
+  if(App.tab==="log"){
+    body = `<div class="card"><div class="ch">★ 事件紀錄</div><div class="cb">
+      ${S.log.length?S.log.slice(0,80).map(l=>`<div class="lg">${esc(l)}</div>`).join(""):"還沒有任何事件。"}
+    </div></div>`;
+  }
+
+  if(App.tab==="host" && isHost){
+    body = `<div class="card"><div class="ch">★ 遊戲流程</div><div class="cb">
+      ${S.phase==="setup" ? `
+        已加入 ${S.teams.filter(t=>t.joined).length} / ${S.teams.length} 隊　房號 <b class="big">${esc(S.code)}</b><br><br>
+        <button class="btn blue" id="bAssign">抽籤分配基地</button>
+        <button class="btn green" id="bStart" ${S.teams.some(t=>t.baseIdx===null)?"disabled":""}>開始遊戲</button>`
+      : `目前：${phaseName}<br><br>
+        ${S.phase==="market"?`<div class="row wrap mkrow">${S.settings.marketOrder.map(k=>
+          `<button class="tg mk ${S.market===k?"on":""}" data-k="${k}">${S.settings.marketNames[k]}<br><span class="mx">×${S.settings.market[k]/100}</span></button>`).join("")}</div>`:""}
+        ${S.phase==="roll"?`<div class="note">已骰：${S.teams.filter(t=>t.rolled).map(t=>esc(t.name)).join("、")||"無"}</div>`:""}
+        <button class="btn red" id="bNext">${S.phase==="roll"?"結束本回合":"下一階段"}</button>`}
+    </div></div>
+    <div class="card"><div class="ch">★ 關卡解封</div><div class="cb">
+      ${G.STAGE_IDX.map((idx,i)=>`<button class="btn sm ${S.unlocked.includes(idx)?"gray":"green"} unl" data-i="${idx}"
+        ${S.unlocked.includes(idx)?"disabled":""}>關卡 ${i+1}（第 ${idx+1} 格）${S.unlocked.includes(idx)?" — 已解封":""}</button>`).join("")}
+    </div></div>
+    <div class="card"><div class="ch">★ 隊伍加入狀態</div><div class="cb">
+      <div class="note" style="margin-top:0">有隊伍選錯、或手機換人了，按「釋放」就能讓他們重新選。</div>
+      ${S.teams.map((t,i)=>`<div class="adj">
+        <div class="sw" style="background:${t.color}"></div>
+        <div class="an">${esc(t.name)}<span class="dim"> ${t.joined?"已加入":"未加入"}</span></div>
+        <button class="btn xs ${t.joined?"dark":"gray"} rel" data-i="${i}" ${t.joined?"":"disabled"}>釋放</button>
+      </div>`).join("")}
+      <button class="btn sm dark" id="bRelAll" style="margin-top:8px">全部釋放，讓大家重新選</button>
+    </div></div>
+    <div class="card"><div class="ch">★ 給點點 / 調整現金</div><div class="cb">
+      <div class="note" style="margin-top:0">直接輸入數字，正數為給予、負數為扣除。</div>
+      ${S.teams.map((t,i)=>`<div class="adj2">
+        <div class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(i)?"#14110f":"#fff"}">${i+1}</div>
+        <div class="an2">${esc(t.name)}<span class="dim">${t.pts} 點　${G.money(t.cash)}</span></div>
+        <div class="ain"><input class="ptv" data-i="${i}" type="number" placeholder="點">
+          <button class="btn xs green ptgo" data-i="${i}">給點</button></div>
+        <div class="ain"><input class="csv" data-i="${i}" type="number" placeholder="$" step="50">
+          <button class="btn xs blue csgo" data-i="${i}">改錢</button></div>
+      </div>`).join("")}
+    </div></div>
+    <div class="card"><div class="ch">★ 數值設定</div><div class="cb">
+      <button class="btn sm gold" id="bCfg">${App.cfg?"收起":"展開"}設定</button>
+      ${App.cfg?cfgHTML():""}
+    </div></div>`;
+  }
+
+  const wide = window.innerWidth >= 900 && App.tab === "main";
+  const bodyLeft  = bodyBoard;
+  const bodyRight = bodyAct + bodyRank;
+  if(App.tab === "main") body = bodyBoard + bodyAct + bodyRank;
+  $("app").innerHTML = `
+    <div class="bar">
+      <span class="code2">房號 ${esc(S.code)}</span>
+      <span class="ph">第 ${S.round} 回合 · ${phaseName}</span>
+      <span class="bk">銀行 ${G.money(S.bank)}</span>
+    </div>
+    ${me?`<div class="mecard" style="background:${me.color};color:${G.LIGHT_FG.includes(me.id)?"#14110f":"#fff"}">
+      <div class="mn">${esc(me.name)}</div>
+      <div class="mr">現金 ${G.money(me.cash)}　點點 ${me.pts}　基地 Lv${me.level}${me.sold?"（已賣出）":""}</div>
+      <div class="mr sm2">BATTLE×${me.battles}　通行證×${me.buffs.pass}　重骰×${me.buffs.reroll}　防災×${me.buffs.shield}${me.discount?"　黑市折扣待用":""}${me.jail>0?"　監獄中":""}</div>
+    </div>`:""}
+    <div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?"on":""}" data-k="${k}">${n}</button>`).join("")}</div>
+    ${wide ? `<div class="cols"><div>${bodyLeft}</div><div>${bodyRight}</div></div>` : body}`;
+  bindGame();
+  fitBoard();
+}
+
+function cfgHTML(){
+  const S = App.S;
+  const f = (label,path,val,suf) => `<label class="fl"><span>${label}</span><input class="cfg" data-p="${path}" type="number" value="${val}"><span class="u">${suf||""}</span></label>`;
+  let h = `<div class="cfgbox">`;
+  h += f("繞圈獎勵","lapBonus",S.settings.lapBonus);
+  h += f("稅收扣款","taxAmount",S.settings.taxAmount);
+  h += f("賭場花費","casinoCost",S.settings.casinoCost);
+  h += f("黑市折扣","blackDiscount",S.settings.blackDiscount,"%");
+  h += f("銀行密道取走","bankShare",S.settings.bankShare,"%");
+  h += f("第1回合費用除以","round1Fraction",S.settings.round1Fraction);
+  h += f("骰子面數","diceSides",S.settings.diceSides,"面");
+  h += f("通行費佔過夜費","passRatio",S.settings.passRatio,"%");
+  h += f("通膨門檻（災害數）","inflateThreshold",S.settings.inflateThreshold,"隊");
+  h += `<div class="sub">基地等級</div>`;
+  S.settings.levels.forEach((lv,i)=>{
+    h += `<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`;
+    h += f("過夜費",`levels.${i}.stay`,lv.stay);
+    h += f("升級點數",`levels.${i}.up`,lv.up);
+    h += f("賣出價值",`levels.${i}.sell`,lv.sell);
+    h += `</div>`;
+  });
+  h += `<div class="sub">攻擊卡</div>`;
+  Object.entries(S.settings.attacks).forEach(([k,a])=>{
+    h += `<div class="grp"><b>${a.name}</b>`;
+    h += f("點點花費",`attacks.${k}.cost`,a.cost);
+    h += f("修繕費",`attacks.${k}.repair`,a.repair);
+    h += `</div>`;
+  });
+  h += `<div class="sub">賭一把</div>`;
+  S.settings.gambles.forEach((g,i)=>{
+    h += f(g.name+" 點數",`gambles.${i}.cost`,g.cost);
+  });
+  h += `<div class="sub">增益道具</div>`;
+  Object.entries(S.settings.buffs).forEach(([k,b])=>{ h += f(b.name+" 點數",`buffs.${k}.cost`,b.cost); });
+  h += `<div class="sub">股市倍率</div>`;
+  S.settings.marketOrder.forEach(k=>{
+    h += f(S.settings.marketNames[k],`market.${k}`,S.settings.market[k],"%");
+  });
+  return h+`</div>`;
+}
+
+/* ===== 事件綁定 ===== */
+function bindGame(){
+  const S = App.S;
+  document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{ App.tab=b.dataset.k; render(true); });
+  document.querySelectorAll(".pick2").forEach(b=>b.onclick=()=>{ App.myTeam=Number(b.dataset.i); App.dice=null; render(true); });
+  document.querySelectorAll(".tile").forEach(t=>t.onclick=()=>{
+    const i = Number(t.dataset.i);
+    $("modalTitle").textContent = `第 ${i+1} 格 — ${G.TILE[G.TRACK[i][0]].n}`;
+    $("modalBody").innerHTML = `<div class="mrow">${sprite(G.TRACK[i][0],40)}<div>${tileDesc(i)}</div></div>`;
+    $("modal").style.display = "flex";
+  });
+
+  const bind = (id, fn) => { const e=$(id); if(e) e.onclick=fn; };
+  bind("bZoom", ()=>{ App.zoom=!App.zoom; render(true); });
+
+  bind("bRoll", ()=>ask("擲骰子？", `${esc(S.teams[App.myTeam].name)} 準備移動`, doRollNow));
+  async function doRollNow(){
+    if(App.rolling || App.myTeam===null) return;
+    App.rolling = true; render(true);
+    const d = $("dice"); let n=1;
+    const sides = App.S.settings.diceSides || 6;
+    const iv = setInterval(()=>{ n=1+Math.floor(Math.random()*sides); if(d) d.textContent=n; },70);
+    await new Promise(r=>setTimeout(r,900));
+    clearInterval(iv);
+    n = 1+Math.floor(Math.random()*sides);
+    App.dice = n; App.rolling = false;
+    if(d) d.textContent = n;
+    await commit(s=>{ if(s.teams[App.myTeam].rolled) return false; G.applyMove(s, App.myTeam, n); });
+  }
+  bind("bReroll", ()=>ask("使用重骰卡？", "會清除本次骰點，重新骰一次", ()=>commit(s=>{
+    const t=s.teams[App.myTeam];
+    if(t.buffs.reroll<=0) return false;
+    t.buffs.reroll-=1; t.rolled=false;
+    s.log.unshift(`${t.name} 使用重骰卡`);
+  })));
+  bind("bBattle", ()=>ask("使用 BATTLE？", `整個營期只有 ${S.settings.battlesPerTeam} 次，用掉不能復原`, ()=>commit(s=>{
+    const t=s.teams[App.myTeam];
+    if(t.battles<=0) return false;
+    t.battles-=1; s.log.unshift(`${t.name} 使用 BATTLE（剩 ${t.battles} 次），由關主裁決`);
+  })));
+  document.querySelectorAll(".atk").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, a=S.settings.attacks[k];
+    ask(`發動「${a.name}」？`, `花費 ${G.costWithDiscount(S,S.teams[App.myTeam],a.cost)} 點<br>受災基地要付修繕費 ${G.money(a.repair)}`, ()=>commit(s=>{
+      const r = G.playAttack(s, App.myTeam, k);
+      if(!r.ok){ toast(r.msg,1); return false; }
+      App.highlight = r.hit || [];
+      setTimeout(()=>{ App.highlight=[]; render(true); }, 6000);
+    }));
+  });
+  document.querySelectorAll(".gam").forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.i), g=S.settings.gambles[i];
+    ask(`購買「${g.name}」？`, `扣 ${G.costWithDiscount(S,S.teams[App.myTeam],g.cost)} 點<br>獎項由關主現場發放`, ()=>commit(s=>{
+      const r=G.buyGamble(s,App.myTeam,i); if(!r.ok){toast(r.msg,1);return false;}
+    }));
+  });
+  document.querySelectorAll(".buf").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, bf=S.settings.buffs[k];
+    ask(`購買「${bf.name}」？`, `扣 ${G.costWithDiscount(S,S.teams[App.myTeam],bf.cost)} 點`, ()=>commit(s=>{
+      const r=G.buyBuff(s,App.myTeam,k); if(!r.ok){toast(r.msg,1);return false;}
+    }));
+  });
+  bind("bUp", ()=>{ const me2=S.teams[App.myTeam];
+    ask("升級基地？", `Lv${me2.level} → Lv${me2.level+1}，扣 ${S.settings.levels[me2.level].up} 點`, ()=>commit(s=>{
+      const r=G.upgradeBase(s,App.myTeam); if(!r.ok){toast(r.msg,1);return false;} })); });
+  bind("bSell", ()=>ask("賣出基地？", `入帳 ${G.money(G.sellValue(S,S.teams[App.myTeam]))}<br><b>須繞完一圈才能買回</b>`, ()=>commit(s=>{
+    const r=G.sellBase(s,App.myTeam); if(!r.ok){toast(r.msg,1);return false;} })));
+  bind("bBuyBack", ()=>ask("買回基地？", `支出 ${G.money(G.sellValue(S,S.teams[App.myTeam]))}`, ()=>commit(s=>{
+    const r=G.buyBackBase(s,App.myTeam); if(!r.ok){toast(r.msg,1);return false;} })));
+
+  bind("bAssign", ()=>ask("重新抽籤？", "會重新分配所有隊伍的基地", ()=>commit(s=>{ G.assignBases(s); })));
+  bind("bStart", ()=>ask("開始遊戲？", "開始後進入第 1 回合", ()=>commit(s=>{
+    if(s.teams.some(t=>t.baseIdx===null)){ toast("請先抽籤分配基地",1); return false; }
+    s.phase="market"; s.round=1; s.log.unshift("遊戲開始，第 1 回合");
+  })));
+  bind("bNext", ()=>{
+    const last = S.phase==="roll";
+    const unrolled = S.teams.filter(t=>!t.rolled).map(t=>t.name);
+    ask(last?"結束本回合？":"進入下一階段？",
+        last ? (unrolled.length?`還有 ${unrolled.length} 隊沒骰：${esc(unrolled.join("、"))}`:"全部隊伍都骰過了") : "",
+        ()=>commit(s=>{ G.nextPhase(s); }));
+  });
+  document.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k;
+    ask("公布股市？", `${S.settings.marketNames[k]}　賣出價 ×${S.settings.market[k]/100}`, ()=>commit(s=>{
+      s.market=k; s.log.unshift(`股市公布：${s.settings.marketNames[k]}`);
+    }));
+  });
+  document.querySelectorAll(".unl").forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.i);
+    ask("解封這個關卡格？", `第 ${i+1} 格，解封後隊伍停留會觸發關卡技能`, ()=>commit(s=>{
+      if(!s.unlocked.includes(i)) s.unlocked.push(i);
+      s.log.unshift(`關卡格解封（第 ${i+1} 格）`);
+    }));
+  });
+  document.querySelectorAll(".ptgo").forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.i);
+    const inp=document.querySelector(`.ptv[data-i="${i}"]`);
+    const n=Number(inp.value);
+    if(!n){ toast("請先輸入點數",1); return; }
+    ask(`${n>0?"給予":"扣除"}諂媚之點？`, `${esc(S.teams[i].name)}　${n>0?"+":""}${n} 點`, ()=>{
+      commit(s=>{ s.teams[i].pts=Math.max(0,s.teams[i].pts+n);
+        s.log.unshift(`${s.teams[i].name} 諂媚之點 ${n>0?"+":""}${n}`); });
+      inp.value="";
+    });
+  });
+  document.querySelectorAll(".csgo").forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.i);
+    const inp=document.querySelector(`.csv[data-i="${i}"]`);
+    const n=Number(inp.value);
+    if(!n){ toast("請先輸入金額",1); return; }
+    ask(`${n>0?"給予":"扣除"}現金？`, `${esc(S.teams[i].name)}　${n>0?"+":""}${G.money(n)}`, ()=>{
+      commit(s=>{ s.teams[i].cash+=n;
+        s.log.unshift(`${s.teams[i].name} 現金 ${n>0?"+":""}${G.money(n)}（主持人調整）`); });
+      inp.value="";
+    });
+  });
+  document.querySelectorAll(".rel").forEach(b=>b.onclick=()=>commit(s=>{
+    const i=Number(b.dataset.i); s.teams[i].joined=false;
+    s.log.unshift(`${s.teams[i].name} 的加入狀態已釋放`);
+  }));
+  bind("bRelAll", ()=>{
+    if(!confirm("釋放全部隊伍？各隊需要重新選一次。")) return;
+    commit(s=>{ s.teams.forEach(t=>t.joined=false); s.log.unshift("主持人釋放了全部隊伍"); });
+  });
+  bind("bCfg", ()=>{ App.cfg=!App.cfg; render(true); });
+  document.querySelectorAll(".cfg").forEach(inp=>{
+    inp.onchange = ()=>commit(s=>{
+      const parts = inp.dataset.p.split(".");
+      let o = s.settings;
+      for(let i=0;i<parts.length-1;i++) o = o[parts[i]];
+      o[parts[parts.length-1]] = Number(inp.value);
+    });
+  });
+}
+
+/* ===== 總繪製 ===== */
+function render(force){
+  if(App.screen==="home"){ renderHome(); return; }
+  if(App.screen==="pick"){ renderPick(); return; }
+  if(!force && App.S && App.S.rev===App.lastRender) return;
+  App.lastRender = App.S ? App.S.rev : -1;
+  renderGame();
+}
+
+window.addEventListener("DOMContentLoaded", ()=>{
+  $("modalClose").onclick = ()=>{ $("modal").style.display="none"; };
+  $("modal").onclick = e=>{ if(e.target.id==="modal") $("modal").style.display="none"; };
+  $("bHome").onclick = ()=>{
+    if(!confirm("回到首頁？目前房間資料會保留，可用房號重新加入。")) return;
+    clearInterval(pollTimer); clearSession(); Net.code=""; App.screen="home"; App.S=null; App.myTeam=null; App.role=null;
+    render(true);
+  };
+  render(true);
+  window.addEventListener("resize", fitBoard);
+  window.addEventListener("orientationchange", ()=>setTimeout(fitBoard,300));
+});
+
+
+</script>
+</body>
+</html>

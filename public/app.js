@@ -5,12 +5,37 @@ const App = {
   token: null, gameMeta: null, socket: null, connected: false,
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
   highlight: [], cfg: false, history: [], teamPins: [], lobbyTimer: null,
+  access: {host: '', team: ''}, installPrompt: null,
 };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const phaseNames = {setup:'準備中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', ended:'已結束', paused:'已暫停'};
 const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
+const BUILD_VERSION = '2026.08.19.3';
+
+function accessKey(role){ return role === 'host' ? 'preview:admin-access' : 'preview:team-access'; }
+function loadAccess(){ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; }
+function saveAccess(role,password){ App.access[role]=password; sessionStorage.setItem(accessKey(role),password); }
+function clearAccess(role){ App.access[role]=''; sessionStorage.removeItem(accessKey(role)); }
+function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/'; }
+function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.classList.toggle('active',b.dataset.route===navRolePath())); }
+function showUpdatePrompt(){ const el=$('pwaUpdate'); if(el) el.hidden=false; }
+async function applyPwaUpdate(){ try { const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); const reg=await navigator.serviceWorker?.getRegistration(); reg?.waiting?.postMessage({type:'SKIP_WAITING'}); } finally { location.reload(); } }
+function registerPWA(){
+  if(!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(!window.__pwaReloaded){ window.__pwaReloaded=true; location.reload(); } });
+  navigator.serviceWorker.register(`./sw.js?v=${BUILD_VERSION}`,{updateViaCache:'none'}).then(reg=>{
+    const check=()=>{ if(reg.waiting) showUpdatePrompt(); }; check();
+    reg.addEventListener('updatefound',()=>{ const w=reg.installing; if(w) w.addEventListener('statechange',()=>{ if(w.state==='installed'&&navigator.serviceWorker.controller) showUpdatePrompt(); }); });
+    reg.update().catch(()=>{});
+  }).catch(()=>{});
+}
+function enableInstallPrompt(){
+  const b=$('installPwa'); if(!b) return;
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();App.installPrompt=e;b.hidden=false;});
+  b.onclick=async()=>{ if(App.installPrompt){await App.installPrompt.prompt();App.installPrompt=null;b.hidden=true;} else toast('iPhone 請使用分享選單的「加入主畫面」；Android 請從瀏覽器選單選擇「安裝 App」。'); };
+}
 
 function toast(msg, bad=false){
   const el = $('toast'); if(!el) return;
@@ -32,7 +57,7 @@ async function api(path, options={}){
   return data;
 }
 function saveSession(){
-  localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,teamPins:App.teamPins||[]}));
+  localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,accessToken:App.access[App.role]||'',teamPins:App.teamPins||[]}));
 }
 function loadSession(){ try { return JSON.parse(localStorage.getItem('preview:session') || 'null'); } catch { return null; } }
 function clearSession(){ localStorage.removeItem('preview:session'); }
@@ -42,10 +67,10 @@ function socketURL(gameId){
 }
 
 class LiveSocket {
-  constructor(gameId, role, token, teamId){ this.gameId=gameId; this.role=role; this.token=token; this.teamId=teamId; this.ws=null; }
+  constructor(gameId, role, token, teamId, accessToken=''){ this.gameId=gameId; this.role=role; this.token=token; this.teamId=teamId; this.accessToken=accessToken; this.ws=null; }
   connect(){
     this.ws = new WebSocket(socketURL(this.gameId));
-    this.ws.onopen = () => { App.connected=true; render(true); this.send({type:'hello',role:this.role,token:this.token||'',teamId:this.teamId}); };
+    this.ws.onopen = () => { App.connected=true; render(true); this.send({type:'hello',role:this.role,token:this.token||'',accessToken:this.accessToken||'',teamId:this.teamId}); };
     this.ws.onclose = () => { App.connected=false; render(true); toast('即時連線已中斷，請重新整理或回到首頁', true); };
     this.ws.onerror = () => { App.connected=false; render(true); };
     this.ws.onmessage = (e) => {
@@ -71,9 +96,9 @@ function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return
 function go(path){ App.socket?.close(); App.socket=null; App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':'home'; history.pushState({},'',path); render(true); }
 function setHome(){ App.socket?.close(); App.socket=null; App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
 function entryURL(path){ return `${location.origin}${path}`; }
-function openGame(game, role, token='', teamId=null){
-  clearInterval(App.lobbyTimer); App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId; App.screen='game'; App.tab='main'; App.state=null; App.connected=false;
-  App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId); App.socket.connect(); render(true);
+function openGame(game, role, token='', teamId=null, accessToken=''){
+  clearInterval(App.lobbyTimer); App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId; App.access[role]=accessToken||App.access[role]||''; App.screen='game'; App.tab='main'; App.state=null; App.connected=false;
+  App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId,App.access[role]); App.socket.connect(); render(true);
 }
 
 async function refreshLobby(){
@@ -83,25 +108,30 @@ async function refreshLobby(){
     const data=await api('/api/lobby');
     if(!data.games?.length){ list.innerHTML='<div class="note">目前沒有開放中的活動。主持人建立活動後，這裡會出現可加入的活動。</div>'; return; }
     list.innerHTML=data.games.map(g=>`<div class="lobby-item">
-      <h3>${esc(g.name)}</h3><div class="lobby-meta">活動識別：${esc(g.id)}　隊伍：${g.teamCount} 隊　已加入：${g.joinedCount} 隊<br>狀態：${esc(phaseNames[g.status]||g.status)}　更新：${esc(g.updatedAt||'')}</div>
-      <div class="lobby-actions"><button class="btn blue watch" data-id="${esc(g.id)}">進入觀戰</button><button class="btn green team" data-id="${esc(g.id)}">隊輔加入</button></div>
+      <h3>${esc(g.name)}</h3><div class="lobby-meta">隊伍：${g.teamCount} 隊　已連線：${g.joinedCount} 隊<br>狀態：${esc(phaseNames[g.status]||g.status)}</div>
+      <div class="lobby-actions"><button class="btn blue watch" data-id="${esc(g.id)}">進入觀戰</button></div>
     </div>`).join('');
     list.querySelectorAll('.watch').forEach(b=>b.onclick=()=>{const g=data.games.find(x=>x.id===b.dataset.id)||{id:b.dataset.id,name:'活動'};openGame(g,'viewer');});
-    list.querySelectorAll('.team').forEach(b=>b.onclick=()=>{const g=data.games.find(x=>x.id===b.dataset.id)||{id:b.dataset.id,name:'活動'};showTeamJoin(g);});
   }catch(e){ list.innerHTML=`<div class="note warn">活動清單載入失敗：${esc(e.message)}</div>`; }
 }
 function renderHome(){
   if(App.entry==='admin') return renderAdminHome();
   if(App.entry==='team') return renderTeamHome();
-  $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰入口</div></div>
-  <div class="card"><div class="ch">★ 目前活動</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>
-  <div class="card"><div class="ch">★ 參加方式</div><div class="cb note">隊員與觀眾請使用本頁進入觀戰；隊輔請前往 <button class="link-btn" id="goTeam">隊輔入口</button>；主持人請前往 <button class="link-btn" id="goAdmin">主持人主控台</button>。本活動同一時間只開放一場遊戲。</div></div>`;
-  $('refreshLobby').onclick=refreshLobby; $('goTeam').onclick=()=>go('/team'); $('goAdmin').onclick=()=>go('/admin');
-  clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby();
+  $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰</div></div>
+  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>`;
+  $('refreshLobby').onclick=refreshLobby;
+  clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
+}
+function renderGate(role){
+  const host=role==='host';
+  $('app').innerHTML=`<div class="hd"><div class="t1">${host?'主持人控制台':'隊輔系統'}</div><div class="t2">${host?'請輸入控制台密碼':'請輸入隊輔系統密碼'}</div></div><div class="card"><div class="ch">★ ${host?'主持人登入':'隊輔登入'}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn green" id="accessLogin">登入</button><div class="note">密碼只會在目前瀏覽器工作階段保存，不會寫入網址。</div></div></div>`;
+  $('accessLogin').onclick=async()=>{ const p=$('accessPassword').value||''; if(!p){toast('請輸入密碼',true);return;} try{await api('/api/auth',{method:'POST',body:JSON.stringify({role,password:p})});saveAccess(role,p);render(true);toast(host?'主持人登入成功':'隊輔登入成功');}catch(e){toast('登入失敗：'+e.message,true);} };
+  $('accessPassword').onkeydown=e=>{if(e.key==='Enter')$('accessLogin').click();}; updateNav();
 }
 async function renderTeamHome(){
-  $('app').innerHTML=`<div class="hd"><div class="t1">隊輔入口</div><div class="t2">選擇隊伍後輸入主持人提供的隊伍 PIN</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="backPublic">回到觀戰首頁</button></div></div>`;
-  $('backPublic').onclick=()=>go('/');
+  if(!App.access.team) return renderGate('team');
+  $('app').innerHTML=`<div class="hd"><div class="t1">隊輔入口</div><div class="t2">選擇隊伍後輸入主持人提供的隊伍 PIN</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div>`;
+  $('teamLogout').onclick=()=>{clearAccess('team');go('/');};
   try{
     const data=await api('/api/lobby'); const g=data.games?.[0]; const box=$('teamEntryBox');
     if(!g){box.innerHTML='<div class="note">目前沒有開放中的活動，請等待主持人開啟遊戲。</div>';return;}
@@ -110,31 +140,35 @@ async function renderTeamHome(){
   }catch(e){$('teamEntryBox').innerHTML=`<div class="note warn">活動狀態載入失敗：${esc(e.message)}</div>`;}
 }
 async function renderAdminHome(){
-  $('app').innerHTML=`<div class="hd"><div class="t1">主持人主控台</div><div class="t2">單一活動的建立、開始、暫停、結束與隊伍管理</div></div><div class="card"><div class="cb" id="adminEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="adminPublic">回到觀戰首頁</button></div></div>`;
-  $('adminPublic').onclick=()=>go('/');
+  if(!App.access.host) return renderGate('host');
+  $('app').innerHTML=`<div class="hd"><div class="t1">主持人主控台</div><div class="t2">單一活動的建立、開始、暫停、結束與隊伍管理</div></div><div class="card"><div class="cb" id="adminEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="adminLogout">主持人登出</button></div></div>`;
+  $('adminLogout').onclick=()=>{clearAccess('host');go('/');};
   try{
     const data=await api('/api/lobby'); const g=data.games?.[0]; const box=$('adminEntryBox'); const sess=loadSession();
     if(g){
-      const canResume=sess?.role==='host'&&sess?.gameId===g.id&&sess?.token;
-      box.innerHTML=`<div class="ch">★ ${esc(g.name)}</div><div class="note">目前已有一場活動：${esc(phaseNames[g.status]||g.status)}，${g.teamCount} 隊。</div><br>${canResume?'<button class="btn green" id="resumeAdmin">進入主持人控制台</button>':'<div class="note warn">此活動已被其他主持人建立。請回到建立活動的裝置，或結束該活動後再建立新活動。</div>'}`;
-      if(canResume) $('resumeAdmin').onclick=()=>openGame(g,'host',sess.token,null);
+      box.innerHTML=`<div class="ch">★ ${esc(g.name)}</div><div class="note">目前已有一場活動：${esc(phaseNames[g.status]||g.status)}，${g.teamCount} 隊。</div><br><button class="btn green" id="resumeAdmin">進入主持人控制台</button><button class="btn dark" id="closeExisting">關閉目前活動</button>`;
+      $('resumeAdmin').onclick=()=>openGame(g,'host','',null,App.access.host);
+      $('closeExisting').onclick=()=>ask('關閉目前活動？','即使主持人分頁已關閉，也會由後端關閉活動並保存歷史紀錄。',()=>closeActivity(g.id));
       return;
     }
-    box.innerHTML=`<div class="ch">★ 建立唯一活動</div><input id="gameName" placeholder="活動名稱，例如：2026 夏令營人生大富翁"><label class="fl"><span>隊伍數量</span><input id="teamCount" type="number" value="10" min="2" max="${G.BASE_IDX.length}"><span class="u">隊</span></label><button class="btn green" id="createGame">建立並開放活動</button><div class="note">建立後請將各隊 PIN 私下提供給隊輔；同一時間只會存在一場活動。</div>`;
+    box.innerHTML=`<div class="ch">★ 建立唯一活動</div><input id="gameName" placeholder="活動名稱，例如：2026 夏令營人生大富翁"><label class="fl"><span>隊伍數量</span><input id="teamCount" type="number" value="10" min="2" max="${G.BASE_IDX.length}"><span class="u">隊</span></label><button class="btn green" id="createGame">建立並開放活動</button><div class="note">建立後請將各隊 PIN 私下提供給隊輔；同一時間只會存在一場遊戲。</div>`;
     $('createGame').onclick=createGame;
   }catch(e){$('adminEntryBox').innerHTML=`<div class="note warn">主持人頁面載入失敗：${esc(e.message)}</div>`;}
 }
 async function createGame(){
   const name=($('gameName').value||'未命名活動').trim(); const teamCount=Math.max(2,Math.min(G.BASE_IDX.length,Number($('teamCount').value)||10));
-  try{ const g=await api('/api/games',{method:'POST',body:JSON.stringify({name,teamCount})}); App.teamPins=g.teamPins; openGame(g,'host',g.hostToken,null); toast('活動已建立，請把各隊 PIN 提供給對應隊輔'); } catch(e){ toast('建立活動失敗：'+e.message,true); }
+  try{ const g=await api('/api/games',{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`},body:JSON.stringify({name,teamCount})}); App.teamPins=g.teamPins; openGame(g,'host','',null,App.access.host); toast('活動已建立，請把各隊 PIN 提供給對應隊輔'); } catch(e){ toast('建立活動失敗：'+e.message,true); }
+}
+async function closeActivity(id){
+  try{ await api(`/api/games/${encodeURIComponent(id)}/close`,{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`}}); App.socket?.close(); App.socket=null; clearSession(); App.screen='home'; App.entry='admin'; render(true); toast('活動已關閉，歷史紀錄已保存'); }catch(e){toast('關閉活動失敗：'+e.message,true);}
 }
 function showTeamJoin(game){
   App.screen='join'; App.gameMeta=game; App.gameId=game.id;
   $('app').innerHTML=`<div class="card"><div class="ch">★ ${esc(game.name||'活動')} — 隊輔加入</div><div class="cb"><div class="note">不需要輸入房號；請選擇你的隊伍，並輸入主持人提供的隊伍 PIN。</div><select id="joinTeam">${Array.from({length:Math.max(2,game.teamCount||G.BASE_IDX.length)},(_,i)=>`<option value="${i}">第 ${i+1} 組</option>`).join('')}</select><input id="teamPin" inputmode="numeric" maxlength="6" placeholder="隊伍 PIN"><button class="btn green" id="joinTeamBtn">開始連線</button><button class="btn sm ink" id="backHome">返回活動清單</button></div></div>`;
-  $('joinTeamBtn').onclick=()=>{ const team=Number($('joinTeam').value); const pin=($('teamPin').value||'').trim(); if(!pin){toast('請輸入隊伍 PIN',true);return;} openGame(game,'team',pin,team); };
+  $('joinTeamBtn').onclick=()=>{ const team=Number($('joinTeam').value); const pin=($('teamPin').value||'').trim(); if(!pin){toast('請輸入隊伍 PIN',true);return;} openGame(game,'team',pin,team,App.access.team); };
   $('backHome').onclick=()=>go('/team');
 }
-function resumeSession(sess){ App.teamPins=sess.teamPins||[]; openGame({id:sess.gameId,name:'活動'},sess.role,sess.token,sess.teamId); }
+function resumeSession(sess){ App.teamPins=sess.teamPins||[]; if(sess.accessToken) App.access[sess.role]=sess.accessToken; openGame({id:sess.gameId,name:'活動'},sess.role,sess.token,sess.teamId,App.access[sess.role]); }
 
 function boardHTML(){
   const S=App.state, cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap); let out=`<div class="bwrap ${App.zoom?'zoomed':'fit'}" id="bwrap"><div class="board" id="board" style="width:${W}px;height:${H}px">`;
@@ -156,7 +190,7 @@ function teamControls(){
 function cfgHTML(){ const S=App.state; const f=(label,path,val,suf='')=>`<label class="fl"><span>${label}</span><input class="cfg" data-p="${path}" type="number" value="${val}"><span class="u">${suf}</span></label>`; let h='<div class="cfgbox">'; h+=f('繞圈獎勵','lapBonus',S.settings.lapBonus);h+=f('稅收扣款','taxAmount',S.settings.taxAmount);h+=f('賭場花費','casinoCost',S.settings.casinoCost);h+=f('黑市折扣','blackDiscount',S.settings.blackDiscount,'%');h+=f('銀行密道取走','bankShare',S.settings.bankShare,'%');h+=f('骰子面數','diceSides',S.settings.diceSides,'面');h+=f('通行費佔過夜費','passRatio',S.settings.passRatio,'%');h+='<div class="sub">基地等級</div>';S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});return h+'</div>'; }
 function hostPanel(){
   const S=App.state; let h='<div class="card"><div class="ch">★ 主持人控制台</div><div class="cb">';
-  h+=`<div class="note share-note">隊輔入口：<code>${esc(entryURL('/team'))}</code><br>觀戰入口：<code>${esc(entryURL('/'))}</code></div>`;
+  h+=`<div class="note share-note">請讓隊輔從首頁底部導覽進入「隊輔」，隊員與觀眾直接留在首頁觀戰。</div>`;
   h+=`<div class="connection-row"><span class="role-pill">主持人控制權</span><span class="status ${App.connected?'':'off'}"><i class="status-dot"></i>${App.connected?'已連線':'未連線'}</span></div>`;
   if(App.teamPins?.length){ h+='<div class="sub">請把各隊 PIN 私下提供給對應隊輔</div><div class="pin-list">'+App.teamPins.map((p,i)=>`<div class="pin-item">第 ${i+1} 組：<code>${esc(p)}</code></div>`).join('')+'</div>'; }
   h+=`<div class="sub">活動流程</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}<button class="btn sm dark" id="bEnd">結束並保存紀錄</button></div>`;
@@ -194,6 +228,14 @@ async function loadHistory(){
   try{const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${App.token}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(e.createdAt)}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
 }
 function render(force=false){ if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
-window.addEventListener('DOMContentLoaded',()=>{ App.entry=routeEntry(); $('modalClose').onclick=()=>{$('modal').style.display='none';};$('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};$('bHome').onclick=()=>{if(confirm('回到活動清單？'))setHome();}; const sess=loadSession(); const canResume=(App.entry==='admin'&&sess?.role==='host')||(App.entry==='team'&&sess?.role==='team'); if(canResume&&sess?.gameId&&sess?.token) resumeSession(sess); else render(true); });
+window.addEventListener('DOMContentLoaded',()=>{
+  loadAccess(); App.entry=routeEntry();
+  $('modalClose').onclick=()=>{$('modal').style.display='none';}; $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};
+  document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.onclick=()=>go(b.dataset.route));
+  $('applyUpdate')?.addEventListener('click',applyPwaUpdate); enableInstallPrompt(); registerPWA();
+  const sess=loadSession(); if(sess?.accessToken&&!App.access[sess.role]) App.access[sess.role]=sess.accessToken;
+  const canResume=(App.entry==='admin'&&sess?.role==='host'&&App.access.host)||(App.entry==='team'&&sess?.role==='team'&&App.access.team);
+  if(canResume&&sess?.gameId&&sess?.token) resumeSession(sess); else render(true);
+});
 window.addEventListener('popstate',()=>{App.entry=routeEntry();App.screen='home';render(true);});
 window.addEventListener('resize',fitBoard);window.addEventListener('orientationchange',()=>setTimeout(fitBoard,300));

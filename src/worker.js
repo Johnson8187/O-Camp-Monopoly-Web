@@ -14,6 +14,7 @@ export default {
   async fetch(request, env){
     const url=new URL(request.url);
     try{
+      if(url.pathname==='/api/auth' && request.method==='POST') return authenticate(request,env);
       if(url.pathname==='/api/lobby' && request.method==='GET'){
         const rows=await env.DB.prepare("SELECT id,name,status,team_count,updated_at,state_json FROM games WHERE status IN ('lobby','running','paused') ORDER BY updated_at DESC LIMIT 1").all();
         return json({games:(rows.results||[]).map(r=>{let s={};try{s=JSON.parse(r.state_json||'{}');}catch{}return {id:r.id,name:r.name,status:r.status,teamCount:r.team_count,joinedCount:(s.teams||[]).filter(t=>t.joined).length,updatedAt:r.updated_at};})});
@@ -21,15 +22,30 @@ export default {
       if(url.pathname==='/api/games' && request.method==='POST') return createGame(request,env);
       const historyMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/history$/);
       if(historyMatch && request.method==='GET') return getHistory(historyMatch[1],request,env);
+      const closeMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/close$/);
+      if(closeMatch && request.method==='POST') return closeGame(closeMatch[1],request,env);
       const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
       if(wsMatch){ const id=decodeURIComponent(wsMatch[1]); const headers=new Headers(request.headers); headers.set('x-game-id',id); return getRoom(env,id).fetch(new Request(request,{headers})); }
-      if(env.ASSETS) return env.ASSETS.fetch(request);
+      if(env.ASSETS){
+        const headers=new Headers(request.headers);
+        if(['/','/index.html','/sw.js','/manifest.webmanifest','/version.json'].includes(url.pathname)) headers.set('cache-control','no-cache');
+        return env.ASSETS.fetch(new Request(request,{headers}));
+      }
       return new Response('Not found',{status:404});
     }catch(e){ return json({error:e?.message||'Server error'},500); }
   }
 };
 
+async function authenticate(request,env){
+  const body=await request.json().catch(()=>({})); const role=text(body.role); const password=text(body.password);
+  const hash=role==='host'?env.ADMIN_PASSWORD_HASH:role==='team'?env.TEAM_PASSWORD_HASH:null;
+  if(!hash || !(await verifySecret(password,hash))) return json({error:'密碼錯誤'},401);
+  return json({ok:true,role});
+}
+function bearer(request){ return (request.headers.get('authorization')||'').replace(/^Bearer\s+/i,''); }
+async function isAdmin(request,env){ const token=bearer(request); return Boolean(token && env.ADMIN_PASSWORD_HASH && await verifySecret(token,env.ADMIN_PASSWORD_HASH)); }
 async function createGame(request,env){
+  if(!(await isAdmin(request,env))) return json({error:'需要主持人授權'},401);
   const active=await env.DB.prepare("SELECT id FROM games WHERE status IN ('lobby','running','paused') LIMIT 1").first();
   if(active) return json({error:'目前已有一場活動，請先由主持人結束後再建立新活動'},409);
   const body=await request.json().catch(()=>({}));
@@ -43,11 +59,19 @@ async function createGame(request,env){
   return json({id,name,status:'lobby',teamCount,createdAt:timestamp,hostToken,teamPins,state});
 }
 async function getHistory(id,request,env){
-  const auth=request.headers.get('authorization')||''; const token=auth.replace(/^Bearer\s+/i,'');
+  const token=bearer(request);
   const row=await env.DB.prepare('SELECT host_token_hash FROM games WHERE id=?').bind(id).first();
-  if(!row || !(await verifySecret(token,row.host_token_hash))) return json({error:'需要主持人授權'},401);
+  if(!row || !((await verifySecret(token,row.host_token_hash)) || (env.ADMIN_PASSWORD_HASH && await verifySecret(token,env.ADMIN_PASSWORD_HASH)))) return json({error:'需要主持人授權'},401);
   const rows=await env.DB.prepare('SELECT event_type,actor_role,actor_team,message,state_rev,created_at FROM game_events WHERE game_id=? ORDER BY id DESC LIMIT 500').bind(id).all();
   return json({events:(rows.results||[]).map(r=>({eventType:r.event_type,actorRole:r.actor_role,actorTeam:r.actor_team,message:r.message,stateRev:r.state_rev,createdAt:r.created_at}))});
+}
+async function closeGame(id,request,env){
+  if(!(await isAdmin(request,env))) return json({error:'需要主持人授權'},401);
+  const row=await env.DB.prepare("SELECT id,status FROM games WHERE id=?").bind(id).first();
+  if(!row) return json({error:'找不到活動'},404);
+  if(row.status==='ended') return json({ok:true,status:'ended'});
+  const headers=new Headers({'x-game-id':id,'x-control-action':'endGame'});
+  return getRoom(env,id).fetch(new Request('https://do.internal/control',{method:'POST',headers,body:'{}'}));
 }
 
 const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','endGame','setMarket','unlock','adjustCash','adjustPts','renameTeams','setConfig']);
@@ -69,6 +93,15 @@ export class GameRoom {
   async fetch(request){
     this.gameId=request.headers.get('x-game-id')||this.gameId||this.ctx.id.toString();
     await this.load();
+    const control=request.headers.get('x-control-action');
+    if(control){
+      if(control!=='endGame') return json({error:'不支援的控制操作'},400);
+      if(this.state.phase==='ended') return json({ok:true,status:'ended'});
+      const next=G.clone(this.state); const result=this.applyAction(next,{role:'host',teamId:null},'endGame',{});
+      if(result?.error) return json({error:result.error},400);
+      next.rev=(this.state.rev||0)+1; await this.commit(next,{role:'host',teamId:null},'endGame',{});
+      return json({ok:true,status:'ended'});
+    }
     if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket') return json({error:'WebSocket required'},426);
     const pair=new WebSocketPair(); const client=pair[0],server=pair[1];
     this.ctx.acceptWebSocket(server); server.serializeAttachment({role:'pending',teamId:null}); server.send(JSON.stringify({type:'hello_required'}));
@@ -81,7 +114,10 @@ export class GameRoom {
     if(actor.role==='pending'){
       if(m.type!=='hello') return ws.send(JSON.stringify({type:'error',error:'請先完成登入'}));
       const role=m.role;const teamId=Number.isInteger(m.teamId)?m.teamId:null;
-      let ok=false;if(role==='viewer')ok=true;else if(role==='host')ok=await verifySecret(m.token,this.meta.hostTokenHash);else if(role==='team'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount)ok=await verifySecret(m.token,this.meta.teamPinHashes[teamId]);
+      let ok=false;
+      if(role==='viewer') ok=true;
+      else if(role==='host') ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);
+      else if(role==='team'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount) ok=Boolean(this.env.TEAM_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.TEAM_PASSWORD_HASH)&&await verifySecret(m.token,this.meta.teamPinHashes[teamId]));
       if(!ok){ws.close(1008,'授權失敗');return;}
       actor={role,teamId};ws.serializeAttachment(actor);
       if(role==='team'&&this.state.teams[teamId]&&!this.state.teams[teamId].joined){ this.kickedTeams.delete(teamId); const next=G.clone(this.state);next.teams[teamId].joined=true;next.log.unshift(`${next.teams[teamId].name} 已加入活動`);await this.commit(next,actor,'teamJoin',{}); }

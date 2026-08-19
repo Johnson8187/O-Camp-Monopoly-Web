@@ -27,9 +27,14 @@ export default {
       const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
       if(wsMatch){ const id=decodeURIComponent(wsMatch[1]); const headers=new Headers(request.headers); headers.set('x-game-id',id); return getRoom(env,id).fetch(new Request(request,{headers})); }
       if(env.ASSETS){
-        const headers=new Headers(request.headers);
-        if(['/','/index.html','/sw.js','/manifest.webmanifest','/version.json'].includes(url.pathname)) headers.set('cache-control','no-cache');
-        return env.ASSETS.fetch(new Request(request,{headers}));
+        const requestHeaders=new Headers(request.headers);
+        requestHeaders.set('cache-control','no-store, no-cache, must-revalidate, max-age=0');
+        const asset=await env.ASSETS.fetch(new Request(request,{headers:requestHeaders}));
+        const responseHeaders=new Headers(asset.headers);
+        responseHeaders.set('cache-control','no-store, no-cache, must-revalidate, max-age=0');
+        responseHeaders.set('pragma','no-cache');
+        responseHeaders.set('x-build-version',env.BUILD_VERSION||'unknown');
+        return new Response(asset.body,{status:asset.status,statusText:asset.statusText,headers:responseHeaders});
       }
       return new Response('Not found',{status:404});
     }catch(e){ return json({error:e?.message||'Server error'},500); }

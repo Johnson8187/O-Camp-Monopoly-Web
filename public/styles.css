@@ -1,10 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 @font-face{font-family:'Zpix';src:url('https://cdn.jsdelivr.net/gh/SolidZORO/zpix-pixel-font@master/dist/Zpix.woff2') format('woff2');font-display:swap}
+:root{--safe-bottom:env(safe-area-inset-bottom,0px);--nav-height:78px;--nav-ink:#14110f;--nav-gold:#f2c12e;--nav-blue:#1a2340;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:#fbf7ec;color:#26200f;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:15px;padding:12px 12px calc(92px + env(safe-area-inset-bottom))}
+body{margin:0;background:#fbf7ec;color:#26200f;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:15px;padding:12px 12px calc(var(--nav-height) + var(--safe-bottom) + 14px)}
 #wrap{max-width:600px;margin:0 auto}
 @media (min-width:900px){
-  body{padding:18px 18px calc(92px + env(safe-area-inset-bottom))}
+  body{padding:18px 18px calc(var(--nav-height) + var(--safe-bottom) + 14px)}
   #wrap{max-width:1180px}
   .cols{display:grid;grid-template-columns:1fr 400px;gap:16px;align-items:start}
   .cols>div{min-width:0}
@@ -156,11 +157,27 @@ select{border:4px solid #14110f;padding:10px 9px;font-family:'Zpix','Microsoft J
 
 .link-btn{border:0;background:none;color:#1769aa;text-decoration:underline;font:inherit;cursor:pointer;padding:0}.share-note code{word-break:break-all}.team-connection-list{display:grid;gap:7px}.team-connection{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid #e1d5bf;border-radius:8px;background:#fffaf0}.team-connection small{display:block;color:#766d62;margin-left:7px}.team-connection .kick{margin-left:auto}
 
-.bottom-nav{position:fixed;z-index:45;left:0;right:0;bottom:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;gap:7px;justify-content:center;background:rgba(20,17,15,.97);border-top:4px solid #f2c12e;box-shadow:0 -4px 0 #1a2340}
-.bottom-nav-item{flex:1;max-width:180px;border:3px solid #f2c12e;background:#14110f;color:#fffef5;padding:9px 6px;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:13px;cursor:pointer;box-shadow:3px 3px 0 #3f86e0}
-.bottom-nav-item.active{background:#f2c12e;color:#14110f;box-shadow:3px 3px 0 #e23b3b}
-.bottom-nav-item:active{transform:translate(3px,3px);box-shadow:none}
-.update-prompt{position:fixed;z-index:80;left:12px;right:12px;bottom:82px;max-width:600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#fffef5;border:4px solid #14110f;box-shadow:4px 4px 0 #1a2340;font-size:13px}
+.bottom-nav{position:fixed;z-index:45;left:0;right:0;bottom:0;height:calc(var(--nav-height) + var(--safe-bottom));padding:8px 12px calc(8px + var(--safe-bottom));display:flex;gap:10px;justify-content:center;background:linear-gradient(180deg,rgba(20,17,15,.98),#0d0c0b);border-top:3px solid var(--nav-gold);box-shadow:0 -4px 0 var(--nav-blue)}
+.bottom-nav-item{position:relative;flex:1;max-width:190px;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:2px solid #5c5448;border-radius:12px;background:#211e1b;color:#fffef5;padding:5px 4px;font-family:'Zpix','Microsoft JhengHei',sans-serif;cursor:pointer;box-shadow:0 3px 0 #080808;transition:transform .16s ease-out,background .16s ease-out,border-color .16s ease-out,box-shadow .16s ease-out}
+.bottom-nav-item:hover{border-color:#d7b32b}
+.bottom-nav-item.active{background:linear-gradient(160deg,#f8ce37,#e8ae18);border-color:#ffe77b;color:var(--nav-ink);box-shadow:0 3px 0 #bf3b32}
+.bottom-nav-item:active{transform:translateY(3px);box-shadow:none}
+.nav-icon{display:grid;place-items:center;width:26px;height:26px;color:#f2c12e}
+.nav-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bottom-nav-item.active .nav-icon{color:#14110f}
+.nav-label{font-size:13px;line-height:1.1;font-weight:700;letter-spacing:.08em}
+.nav-caption{font-family:'Microsoft JhengHei',sans-serif;font-size:9px;line-height:1;color:#bdb4a7;letter-spacing:.04em}
+.bottom-nav-item.active .nav-caption{color:#5e4710}
+.bottom-nav-item.active::after{content:'';position:absolute;left:22%;right:22%;bottom:3px;height:2px;border-radius:2px;background:#14110f}
+.pwa-install-fab{position:fixed;z-index:46;right:14px;bottom:calc(var(--nav-height) + var(--safe-bottom) + 12px);border:2px solid #14110f;border-radius:999px;background:#f2c12e;color:#14110f;box-shadow:3px 3px 0 #1a2340;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:12px;padding:8px 11px;cursor:pointer}
+.pwa-install-fab span{font-size:18px;vertical-align:-1px;margin-right:3px}
+.pwa-install-fab[hidden]{display:none}
+.boot-fallback{position:fixed;z-index:90;left:18px;right:18px;top:28%;max-width:420px;margin:auto;display:flex;align-items:flex-start;gap:10px;padding:16px;background:#fffef5;border:3px solid #14110f;border-radius:14px;box-shadow:5px 5px 0 #1a2340;color:#26200f}
+.boot-fallback[hidden]{display:none}
+.boot-fallback-icon{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#f2c12e;color:#14110f;font-size:24px;line-height:1}
+.boot-fallback strong{font-size:15px}.boot-fallback p{margin:4px 0 10px;font-family:'Microsoft JhengHei',sans-serif;font-size:13px;line-height:1.5}.boot-fallback .btn{margin:0}
+.update-prompt{position:fixed;z-index:80;left:12px;right:12px;bottom:calc(var(--nav-height) + var(--safe-bottom) + 12px);max-width:600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#fffef5;border:3px solid #14110f;border-radius:10px;box-shadow:4px 4px 0 #1a2340;font-size:13px}
 .update-prompt[hidden]{display:none}
 .update-prompt .btn{flex:0 0 auto}
-@media (min-width:900px){.bottom-nav{left:50%;right:auto;width:min(640px,calc(100% - 24px));transform:translateX(-50%);border-left:4px solid #f2c12e;border-right:4px solid #f2c12e}}
+@media (max-width:380px){.bottom-nav{gap:6px;padding-left:8px;padding-right:8px}.nav-caption{font-size:8px}.nav-label{font-size:12px}.nav-icon{width:23px;height:23px}.nav-icon svg{width:22px;height:22px}}
+@media (min-width:900px){.bottom-nav{left:50%;right:auto;width:min(640px,calc(100% - 24px));transform:translateX(-50%);border-left:3px solid var(--nav-gold);border-right:3px solid var(--nav-gold)}}

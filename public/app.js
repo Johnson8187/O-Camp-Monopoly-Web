@@ -1,4 +1,5 @@
-import { G } from './game-core.js';
+const BUILD_VERSION = '2026.08.19.4';
+import { G } from './game-core.js?v=2026.08.19.4';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -12,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const phaseNames = {setup:'準備中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', ended:'已結束', paused:'已暫停'};
 const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
-const BUILD_VERSION = '2026.08.19.3';
+
 
 function accessKey(role){ return role === 'host' ? 'preview:admin-access' : 'preview:team-access'; }
 function loadAccess(){ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; }
@@ -21,7 +22,14 @@ function clearAccess(role){ App.access[role]=''; sessionStorage.removeItem(acces
 function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/'; }
 function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.classList.toggle('active',b.dataset.route===navRolePath())); }
 function showUpdatePrompt(){ const el=$('pwaUpdate'); if(el) el.hidden=false; }
-async function applyPwaUpdate(){ try { const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); const reg=await navigator.serviceWorker?.getRegistration(); reg?.waiting?.postMessage({type:'SKIP_WAITING'}); } finally { location.reload(); } }
+async function applyPwaUpdate(){
+  try{
+    const reg=await navigator.serviceWorker?.getRegistration();
+    if(reg?.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+    else if(reg) await reg.update();
+    if('caches' in window){ const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); }
+  }finally{ setTimeout(()=>location.reload(),180); }
+}
 function registerPWA(){
   if(!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(!window.__pwaReloaded){ window.__pwaReloaded=true; location.reload(); } });
@@ -229,13 +237,19 @@ async function loadHistory(){
 }
 function render(force=false){ if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
 window.addEventListener('DOMContentLoaded',()=>{
-  loadAccess(); App.entry=routeEntry();
-  $('modalClose').onclick=()=>{$('modal').style.display='none';}; $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};
-  document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.onclick=()=>go(b.dataset.route));
-  $('applyUpdate')?.addEventListener('click',applyPwaUpdate); enableInstallPrompt(); registerPWA();
-  const sess=loadSession(); if(sess?.accessToken&&!App.access[sess.role]) App.access[sess.role]=sess.accessToken;
-  const canResume=(App.entry==='admin'&&sess?.role==='host'&&App.access.host)||(App.entry==='team'&&sess?.role==='team'&&App.access.team);
-  if(canResume&&sess?.gameId&&sess?.token) resumeSession(sess); else render(true);
+  try{
+    loadAccess(); App.entry=routeEntry();
+    $('modalClose').onclick=()=>{$('modal').style.display='none';}; $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};
+    document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.onclick=()=>go(b.dataset.route));
+    $('applyUpdate')?.addEventListener('click',applyPwaUpdate); enableInstallPrompt(); registerPWA();
+    const sess=loadSession(); if(sess?.accessToken&&!App.access[sess.role]) App.access[sess.role]=sess.accessToken;
+    const canResume=(App.entry==='admin'&&sess?.role==='host'&&App.access.host)||(App.entry==='team'&&sess?.role==='team'&&App.access.team);
+    if(canResume&&sess?.gameId&&sess?.token) resumeSession(sess); else render(true);
+    window.__appBooted=true;
+  }catch(error){
+    console.error('App bootstrap failed',error);
+    window.__showBootFallback?.();
+  }
 });
 window.addEventListener('popstate',()=>{App.entry=routeEntry();App.screen='home';render(true);});
 window.addEventListener('resize',fitBoard);window.addEventListener('orientationchange',()=>setTimeout(fitBoard,300));

@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.19.6';
+const BUILD_VERSION = '2026.08.19.7';
 const CACHE_NAME = `preview-static-${BUILD_VERSION}`;
 const CORE = [
   './?v=' + BUILD_VERSION,
@@ -24,7 +24,6 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => Promise.all(CORE.map(url => cacheOne(cache, url))))
-      .then(() => self.skipWaiting())
   );
 });
 

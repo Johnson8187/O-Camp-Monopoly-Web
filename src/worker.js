@@ -3,10 +3,8 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.19.7';
+const APP_BUILD_VERSION = '2026.08.19.8';
 function randomHex(bytes=18){ const a=new Uint8Array(bytes); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2,'0')).join(''); }
-function randomPin(){ const a=new Uint32Array(1); crypto.getRandomValues(a); return String(100000 + (a[0] % 900000)); }
-function uniquePins(count){ const pins=new Set();while(pins.size<count)pins.add(randomPin());return [...pins]; }
 async function hashSecret(value){ const data=new TextEncoder().encode(String(value)); const digest=await crypto.subtle.digest('SHA-256',data); return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 async function verifySecret(value, hashed){ return Boolean(value && hashed && (await hashSecret(value))===hashed); }
 function statusOf(state){ return state.phase==='ended'?'ended':state.paused?'paused':state.phase==='setup'?'lobby':'running'; }
@@ -21,15 +19,13 @@ export default {
       if(url.pathname==='/api/auth' && request.method==='POST') return authenticate(request,env);
       if(url.pathname==='/api/lobby' && request.method==='GET'){
         const rows=await env.DB.prepare("SELECT id,name,status,team_count,updated_at,state_json FROM games WHERE status IN ('lobby','running','paused') ORDER BY updated_at DESC LIMIT 1").all();
-        return json({games:(rows.results||[]).map(r=>{let s={};try{s=JSON.parse(r.state_json||'{}');}catch{}return {id:r.id,name:r.name,status:r.status,teamCount:r.team_count,joinedCount:(s.teams||[]).filter(t=>t.joined).length,updatedAt:r.updated_at};})});
+        return json({games:(rows.results||[]).map(r=>{let s={};try{s=JSON.parse(r.state_json||'{}');}catch{}const teams=(s.teams||[]).map((t,i)=>({id:i,name:t.name||`第 ${i+1} 組`,color:t.color||'#8a8676',joined:Boolean(t.joined)}));return {id:r.id,name:r.name,status:r.status,teamCount:r.team_count,joinedCount:teams.filter(t=>t.joined).length,teams,updatedAt:r.updated_at};})});
       }
       if(url.pathname==='/api/games' && request.method==='POST') return createGame(request,env);
       const historyMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/history$/);
       if(historyMatch && request.method==='GET') return getHistory(historyMatch[1],request,env);
       const closeMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/close$/);
       if(closeMatch && request.method==='POST') return closeGame(closeMatch[1],request,env);
-      const pinMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/teams\/(\d+)\/pin$/);
-      if(pinMatch && request.method==='POST') return rotateTeamPin(pinMatch[1],Number(pinMatch[2]),request,env);
       const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
       if(wsMatch){ const id=decodeURIComponent(wsMatch[1]); const headers=new Headers(request.headers); headers.delete('x-control-action');headers.set('x-game-id',id); return getRoom(env,id).fetch(new Request(request,{headers})); }
       if(env.ASSETS){
@@ -62,11 +58,11 @@ async function createGame(request,env){
   const body=await request.json().catch(()=>({}));
   const name=text(body.name,'未命名活動').slice(0,80);
   const max=G.BASE_IDX.length; const teamCount=Math.max(2,Math.min(max,Number(body.teamCount)||10));
-  const id=randomHex(6).toUpperCase(); const hostToken=randomHex(24); const teamPins=uniquePins(teamCount);
-  const hostHash=await hashSecret(hostToken); const pinHashes=await Promise.all(teamPins.map(hashSecret));
+  const id=randomHex(6).toUpperCase(); const hostToken=randomHex(24);
+  const hostHash=await hashSecret(hostToken);
   const state=G.freshState(id,teamCount); const timestamp=now();
   await env.DB.prepare('INSERT INTO games (id,name,status,team_count,host_token_hash,team_pin_hashes_json,state_json,created_at,updated_at,ended_at) VALUES (?,?,?,?,?,?,?,?,?,NULL)')
-    .bind(id,name,'lobby',teamCount,hostHash,JSON.stringify(pinHashes),JSON.stringify(state),timestamp,timestamp).run();
+    .bind(id,name,'lobby',teamCount,hostHash,'[]',JSON.stringify(state),timestamp,timestamp).run();
   try{
     const headers=new Headers({'x-game-id':id,'x-control-action':'armIdle'});
     await getRoom(env,id).fetch(new Request('https://do.internal/arm-idle',{method:'POST',headers,body:'{}'}));
@@ -74,7 +70,7 @@ async function createGame(request,env){
     await env.DB.prepare('DELETE FROM games WHERE id=?').bind(id).run();
     return json({error:'活動生命週期初始化失敗，請重新建立'},500);
   }
-  return json({id,name,status:'lobby',teamCount,createdAt:timestamp,hostToken,teamPins,state});
+  return json({id,name,status:'lobby',teamCount,createdAt:timestamp,hostToken,state});
 }
 async function getHistory(id,request,env){
   const token=bearer(request);
@@ -91,13 +87,6 @@ async function closeGame(id,request,env){
   const headers=new Headers({'x-game-id':id,'x-control-action':'endGame'});
   return getRoom(env,id).fetch(new Request('https://do.internal/control',{method:'POST',headers,body:'{}'}));
 }
-async function rotateTeamPin(id,teamId,request,env){
-  if(!(await isAdmin(request,env))) return json({error:'需要主持人授權'},401);
-  if(!Number.isInteger(teamId)||teamId<0) return json({error:'隊伍編號錯誤'},400);
-  const headers=new Headers({'x-game-id':id,'x-control-action':'rotateTeamPin'});
-  return getRoom(env,id).fetch(new Request('https://do.internal/rotate-pin',{method:'POST',headers,body:JSON.stringify({teamId})}));
-}
-
 const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','endGame','setMarket','unlock','adjustCash','adjustPts','renameTeams','setConfig']);
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','attack','gamble','buff','upgrade','sell','buyBack']);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
@@ -120,9 +109,9 @@ export class GameRoom {
       const storedGameId=await this.ctx.storage.get('gameId');
       const storedActivity=Number(await this.ctx.storage.get('lastActivityAt'))||0;
       this.gameId=this.gameId||storedGameId||this.ctx.id.toString();
-      const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,team_pin_hashes_json,state_json,updated_at FROM games WHERE id=?').bind(this.gameId).first();
+      const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,state_json,updated_at FROM games WHERE id=?').bind(this.gameId).first();
       if(!row) throw new Error('找不到活動');
-      this.meta={id:row.id,name:row.name,status:row.status,teamCount:row.team_count,hostTokenHash:row.host_token_hash,teamPinHashes:JSON.parse(row.team_pin_hashes_json||'[]')};
+      this.meta={id:row.id,name:row.name,status:row.status,teamCount:row.team_count,hostTokenHash:row.host_token_hash};
       this.state=cached||JSON.parse(row.state_json||'{}'); this.loaded=true;
       const dbActivity=Date.parse(row.updated_at)||Date.now();
       this.lastActivityAt=Math.max(storedActivity,dbActivity);
@@ -156,17 +145,6 @@ export class GameRoom {
     const control=request.headers.get('x-control-action');
     if(control){
       if(control==='armIdle') return json({ok:true,status:statusOf(this.state)});
-      if(control==='rotateTeamPin'){
-        const body=await request.json().catch(()=>({}));const teamId=Number(body.teamId);
-        if(!Number.isInteger(teamId)||!this.state.teams[teamId]) return json({error:'隊伍編號錯誤'},400);
-        let pin,hash;do{pin=randomPin();hash=await hashSecret(pin);}while(this.meta.teamPinHashes.includes(hash));
-        this.meta.teamPinHashes[teamId]=hash;
-        await this.env.DB.prepare('UPDATE games SET team_pin_hashes_json=? WHERE id=?').bind(JSON.stringify(this.meta.teamPinHashes),this.meta.id).run();
-        this.kickTeam(teamId);
-        const next=G.clone(this.state);next.teams[teamId].joined=false;next.log.unshift(`${next.teams[teamId].name} 的隊伍 PIN 已重新產生`);next.rev=(this.state.rev||0)+1;
-        await this.commit(next,{role:'host',teamId:null},'rotateTeamPin',{teamId});
-        return json({ok:true,teamId,pin});
-      }
       if(control!=='endGame') return json({error:'不支援的控制操作'},400);
       if(this.state.phase==='ended') return json({ok:true,status:'ended'});
       const next=G.clone(this.state); const result=this.applyAction(next,{role:'host',teamId:null},'endGame',{});
@@ -189,7 +167,7 @@ export class GameRoom {
       let ok=false;
       if(role==='viewer') ok=true;
       else if(role==='host') ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);
-      else if(role==='team'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount) ok=Boolean(this.env.TEAM_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.TEAM_PASSWORD_HASH)&&await verifySecret(m.token,this.meta.teamPinHashes[teamId]));
+      else if(role==='team'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount) ok=Boolean(this.env.TEAM_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.TEAM_PASSWORD_HASH));
       if(!ok){ws.close(1008,'授權失敗');return;}
       actor={role,teamId};ws.serializeAttachment(actor);
       if(role==='team'&&this.state.teams[teamId]&&!this.state.teams[teamId].joined){ this.kickedTeams.delete(teamId); const next=G.clone(this.state);next.teams[teamId].joined=true;next.log.unshift(`${next.teams[teamId].name} 已加入活動`);await this.commit(next,actor,'teamJoin',{}); }

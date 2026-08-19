@@ -1,18 +1,18 @@
-const BUILD_VERSION = '2026.08.19.7';
-import { G } from './game-core.js?v=2026.08.19.7';
+const BUILD_VERSION = '2026.08.19.8';
+import { G } from './game-core.js?v=2026.08.19.8';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
   token: null, gameMeta: null, socket: null, connected: false,
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
-  highlight: [], cfg: false, history: [], teamPins: [], lobbyTimer: null,
+  highlight: [], cfg: false, history: [], lobbyTimer: null,
   access: {host: '', team: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
 };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const phaseNames = {setup:'準備中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', ended:'已結束', paused:'已暫停'};
+const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', ended:'已結束', paused:'已暫停'};
 const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
 
 
@@ -73,7 +73,7 @@ async function api(path, options={}){
   return data;
 }
 function saveSession(){
-  localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,accessToken:App.access[App.role]||'',teamPins:App.teamPins||[]}));
+  localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,accessToken:App.access[App.role]||''}));
 }
 function loadSession(){ try { return JSON.parse(localStorage.getItem('preview:session') || 'null'); } catch { return null; } }
 function clearSession(){ localStorage.removeItem('preview:session'); }
@@ -146,19 +146,19 @@ function renderHome(){
 }
 function renderGate(role){
   const host=role==='host';
-  $('app').innerHTML=`<div class="hd"><div class="t1">${host?'主持人控制台':'隊輔系統'}</div><div class="t2">${host?'請輸入控制台密碼':'請輸入隊輔系統密碼'}</div></div><div class="card"><div class="ch">★ ${host?'主持人登入':'隊輔登入'}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn green" id="accessLogin">登入</button><div class="note">這台裝置會保留活動連線，方便斷線或重新整理後恢復；密碼不會寫入網址。</div></div></div>`;
+  $('app').innerHTML=`<div class="hd"><div class="t1">${host?'主持人控制台':'隊輔系統'}</div><div class="t2">${host?'請輸入控制台密碼':'輸入共用密碼後直接選隊'}</div></div><div class="card"><div class="ch">★ ${host?'主持人登入':'隊輔登入'}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn green" id="accessLogin">登入</button><div class="note">${host?'這台裝置會保留活動連線，方便斷線或重新整理後恢復。':'驗證成功後會直接顯示目前隊伍，不需要房號或 PIN。'}密碼不會寫入網址。</div></div></div>`;
   $('accessLogin').onclick=async()=>{ const p=$('accessPassword').value||''; if(!p){toast('請輸入密碼',true);return;} try{await api('/api/auth',{method:'POST',body:JSON.stringify({role,password:p})});saveAccess(role,p);render(true);toast(host?'主持人登入成功':'隊輔登入成功');}catch(e){toast('登入失敗：'+e.message,true);} };
   $('accessPassword').onkeydown=e=>{if(e.key==='Enter')$('accessLogin').click();}; updateNav();
 }
 async function renderTeamHome(){
   if(!App.access.team) return renderGate('team');
-  $('app').innerHTML=`<div class="hd"><div class="t1">隊輔入口</div><div class="t2">選擇隊伍後輸入主持人提供的隊伍 PIN</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div>`;
-  $('teamLogout').onclick=()=>{clearAccess('team');go('/');};
+  $('app').innerHTML=`<div class="hd"><div class="t1">隊輔入口</div><div class="t2">正在取得目前活動與隊伍狀態</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div>`;
+  $('teamLogout').onclick=()=>{clearSession();clearAccess('team');go('/');};
   try{
     const data=await api('/api/lobby'); const g=data.games?.[0]; const box=$('teamEntryBox');
+    if(App.entry!=='team'||App.screen!=='home')return;
     if(!g){box.innerHTML='<div class="note">目前沒有開放中的活動，請等待主持人開啟遊戲。</div>';return;}
-    box.innerHTML=`<div class="ch">★ ${esc(g.name)}</div><div class="note">目前 ${g.teamCount} 隊，活動狀態：${esc(phaseNames[g.status]||g.status)}</div><br><button class="btn green" id="joinCurrent">選擇隊伍並連線</button>`;
-    $('joinCurrent').onclick=()=>showTeamJoin(g);
+    showTeamJoin(g);
   }catch(e){$('teamEntryBox').innerHTML=`<div class="note warn">活動狀態載入失敗：${esc(e.message)}</div>`;}
 }
 async function renderAdminHome(){
@@ -173,25 +173,31 @@ async function renderAdminHome(){
       $('closeExisting').onclick=()=>ask('關閉目前活動？','即使主持人分頁已關閉，也會由後端關閉活動並保存歷史紀錄。',()=>closeActivity(g.id));
       return;
     }
-    box.innerHTML=`<div class="ch">★ 建立唯一活動</div><input id="gameName" placeholder="活動名稱，例如：2026 夏令營人生大富翁"><label class="fl"><span>隊伍數量</span><input id="teamCount" type="number" value="10" min="2" max="${G.BASE_IDX.length}"><span class="u">隊</span></label><button class="btn green" id="createGame">建立並開放活動</button><div class="note">建立後請將各隊 PIN 私下提供給隊輔；同一時間只會存在一場遊戲。</div>`;
+    box.innerHTML=`<div class="ch">★ 建立唯一活動</div><input id="gameName" placeholder="活動名稱，例如：2026 夏令營人生大富翁"><label class="fl"><span>隊伍數量</span><input id="teamCount" type="number" value="10" min="2" max="${G.BASE_IDX.length}"><span class="u">隊</span></label><button class="btn green" id="createGame">建立並開放活動</button><div class="note">建立後，隊輔輸入共用密碼即可直接選擇隊伍；同一時間只會存在一場遊戲。</div>`;
     $('createGame').onclick=createGame;
   }catch(e){$('adminEntryBox').innerHTML=`<div class="note warn">主持人頁面載入失敗：${esc(e.message)}</div>`;}
 }
 async function createGame(){
   const name=($('gameName').value||'未命名活動').trim(); const teamCount=Math.max(2,Math.min(G.BASE_IDX.length,Number($('teamCount').value)||10));
   const button=$('createGame');if(button?.disabled)return;if(button){button.disabled=true;button.textContent='建立中…';}
-  try{ const g=await api('/api/games',{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`},body:JSON.stringify({name,teamCount})}); App.teamPins=g.teamPins; openGame(g,'host',g.hostToken||'',null,App.access.host); toast('活動已建立，請把各隊 PIN 提供給對應隊輔'); } catch(e){ if(button){button.disabled=false;button.textContent='建立並開放活動';}toast('建立活動失敗：'+e.message,true); }
+  try{ const g=await api('/api/games',{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`},body:JSON.stringify({name,teamCount})}); openGame(g,'host',g.hostToken||'',null,App.access.host); toast('活動已建立，隊輔現在可以直接選隊加入'); } catch(e){ if(button){button.disabled=false;button.textContent='建立並開放活動';}toast('建立活動失敗：'+e.message,true); }
 }
 async function closeActivity(id){
   try{ await api(`/api/games/${encodeURIComponent(id)}/close`,{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`}}); App.socket?.close(); App.socket=null; clearSession(); App.screen='home'; App.entry='admin'; render(true); toast('活動已關閉，歷史紀錄已保存'); }catch(e){toast('關閉活動失敗：'+e.message,true);}
 }
 function showTeamJoin(game){
   App.screen='join'; App.gameMeta=game; App.gameId=game.id;
-  $('app').innerHTML=`<div class="card"><div class="ch">★ ${esc(game.name||'活動')} — 隊輔加入</div><div class="cb"><div class="note">不需要輸入房號；請選擇你的隊伍，並輸入主持人提供的隊伍 PIN。</div><select id="joinTeam">${Array.from({length:Math.max(2,game.teamCount||G.BASE_IDX.length)},(_,i)=>`<option value="${i}">第 ${i+1} 組</option>`).join('')}</select><input id="teamPin" inputmode="numeric" maxlength="6" placeholder="隊伍 PIN"><button class="btn green" id="joinTeamBtn">開始連線</button><button class="btn sm ink" id="backHome">返回活動清單</button></div></div>`;
-  $('joinTeamBtn').onclick=()=>{ const team=Number($('joinTeam').value); const pin=($('teamPin').value||'').trim(); if(!pin){toast('請輸入隊伍 PIN',true);return;} openGame(game,'team',pin,team,App.access.team); };
-  $('backHome').onclick=()=>go('/team');
+  const teams=game.teams?.length?game.teams:Array.from({length:Math.max(2,game.teamCount||G.BASE_IDX.length)},(_,i)=>({id:i,name:`第 ${i+1} 組`,color:'#8a8676',joined:false}));
+  $('app').innerHTML=`<div class="hd team-pick-head"><div class="t1">選擇你的隊伍</div><div class="t2">${esc(game.name||'目前活動')} · ${esc(phaseNames[game.status]||game.status)}</div></div><div class="card"><div class="ch">★ 點一下直接加入</div><div class="cb"><div class="note team-pick-note">共用密碼已通過。請確認隊名與顏色；標示「已有裝置」的隊伍仍可加入，但會先再次確認。</div><div class="team-pick-grid">${teams.map((t,i)=>`<button type="button" class="team-pick ${t.joined?'occupied':''}" data-i="${i}"><span class="team-pick-color" style="background:${esc(t.color)};color:${G.LIGHT_FG.includes(i)?'#14110f':'#fff'}">${i+1}</span><span class="team-pick-main"><b>${esc(t.name)}</b><small>第 ${i+1} 組</small></span><span class="team-pick-status ${t.joined?'online':''}">${t.joined?'已有裝置':'可以加入'}</span></button>`).join('')}</div><div class="team-pick-actions"><button class="btn sm outline" id="refreshTeams">更新隊伍狀態</button><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div></div>`;
+  document.querySelectorAll('.team-pick').forEach(button=>button.onclick=()=>{
+    const team=teams[Number(button.dataset.i)];if(!team)return;
+    const enter=()=>openGame(game,'team','',Number(team.id),App.access.team);
+    if(team.joined)ask('這隊已經有裝置連線',`${esc(team.name)} 目前顯示已連線。如果是同隊的第二台裝置或重新接手，可以繼續加入。`,enter);else enter();
+  });
+  $('refreshTeams').onclick=()=>{App.screen='home';render(true);};
+  $('teamLogout').onclick=()=>{clearSession();clearAccess('team');go('/');};
 }
-function resumeSession(sess){ App.teamPins=sess.teamPins||[]; if(sess.accessToken) App.access[sess.role]=sess.accessToken; openGame({id:sess.gameId,name:'活動'},sess.role,sess.token,sess.teamId,App.access[sess.role]); }
+function resumeSession(sess){ if(sess.accessToken) App.access[sess.role]=sess.accessToken; openGame({id:sess.gameId,name:'活動'},sess.role,sess.token||'',sess.teamId,App.access[sess.role]); }
 
 function boardHTML(){
   const S=App.state, cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap); let out=`<div class="bwrap ${App.zoom?'zoomed':'fit'}" id="bwrap"><div class="board" id="board" style="width:${W}px;height:${H}px">`;
@@ -221,7 +227,7 @@ function hostPanel(){
   const S=App.state; let h='<div class="card"><div class="ch">★ 主持人控制台</div><div class="cb">';
   h+=`<div class="note share-note">請讓隊輔從首頁底部導覽進入「隊輔」，隊員與觀眾直接留在首頁觀戰。</div>`;
   h+=`<div class="connection-row"><span class="role-pill">主持人控制權</span><span class="status ${App.connected?'':'off'}"><i class="status-dot"></i>${App.connected?'已連線':'未連線'}</span></div>`;
-  h+='<div class="sub">隊伍 PIN（重新整理後可為個別隊伍重新產生）</div><div class="pin-list">'+S.teams.map((t,i)=>`<div class="pin-item"><span>第 ${i+1} 組</span><code>${App.teamPins?.[i]?esc(App.teamPins[i]):'未保留'}</code><button class="btn xs ink rotate-pin" data-i="${i}">重發 PIN</button></div>`).join('')+'</div>';
+  h+='<div class="note">隊輔輸入共用密碼後即可直接選隊。若有人選錯隊，可在下方將該隊踢出後重新加入。</div>';
   h+=`<div class="sub">活動流程</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}<button class="btn sm dark" id="bEnd">結束並保存紀錄</button></div>`;
   h+='<div class="sub">隊伍名稱</div><textarea id="teamNames">'+esc(S.teams.map(t=>t.name).join('\n'))+'</textarea><button class="btn sm green" id="saveNames">儲存隊伍名稱</button>';
   h+='<div class="sub">隊輔連線</div><div class="team-connection-list">'+S.teams.map((t,i)=>`<div class="team-connection"><span class="sw" style="background:${t.color}">${i+1}</span><span>${esc(t.name)}<small>${t.joined?'已連線':'未連線'}</small></span>${t.joined?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div>`).join('')+'</div>'; h+='<div class="sub">主持人調整</div>'; h+=S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">現金 ${G.money(t.cash)}／點數 ${t.pts}</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">調整</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">調整</button></div></div>`).join('');
@@ -245,15 +251,10 @@ function send(action,payload={}){
   App.pendingAction=actionId;App.busy=true;render(true);
   App.pendingTimer=setTimeout(()=>{if(App.pendingAction===actionId){clearPendingAction();render(true);toast('操作回應較慢，請先確認畫面狀態再重試',true);}},10000);
 }
-async function rotateTeamPin(teamId){
-  if(App.busy)return toast('請等待目前操作完成');App.busy=true;render(true);
-  try{const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/teams/${teamId}/pin`,{method:'POST',headers:{Authorization:`Bearer ${App.access.host}`},body:'{}'});App.teamPins[teamId]=data.pin;saveSession();toast(`第 ${teamId+1} 組 PIN 已重新產生`);}
-  catch(e){toast('PIN 重新產生失敗：'+e.message,true);}finally{App.busy=false;render(true);}
-}
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{App.tab=b.dataset.k;render(true);});
-  bind('leaveGame',()=>{if(confirm('離開目前活動？'))go(App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/');}); bind('bZoom',()=>{App.zoom=!App.zoom;render(true);});
+  bind('leaveGame',()=>{if(confirm('離開目前活動？')){clearSession();go(App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/');}}); bind('bZoom',()=>{App.zoom=!App.zoom;render(true);});
   document.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{const i=Number(t.dataset.i);$('modalTitle').textContent=`第 ${i+1} 格 — ${G.TILE[G.TRACK[i][0]].n}`;$('modalBody').innerHTML=`<div class="mrow">${sprite(G.TRACK[i][0],40)}<div>${tileDesc(i)}</div></div>`;$('modal').style.display='flex';});
   if(App.role==='team'&&App.teamId!==null){
     const me=S.teams[App.teamId];bind('bRoll',()=>ask('擲骰子？',`${esc(me.name)} 準備移動`,()=>send('roll')));bind('bReroll',()=>ask('使用重骰卡？','會清除本回合骰點，重新骰一次',()=>send('reroll')));bind('bBattle',()=>ask('使用 BATTLE？','使用一次 BATTLE 並交由關主裁決',()=>send('battle')));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
@@ -261,7 +262,7 @@ function bindGame(){
   }
   if(App.role==='host'){
     bind('bAssign',()=>ask('重新抽籤？','會重新分配所有隊伍的基地',()=>send('assignBases')));bind('bStart',()=>ask('開始遊戲？','開始後隊伍可以依流程進行操作',()=>send('startGame')));bind('bNext',()=>send('nextPhase'));bind('bPause',()=>ask('暫停活動？','暫停後隊輔暫時不能操作，但觀眾仍可觀看目前狀態。',()=>send('pauseGame')));bind('bResume',()=>send('resumeGame'));bind('bEnd',()=>ask('結束活動？','結束後會保存到 D1 歷史紀錄，活動不再出現在公開入口。',()=>send('endGame')));document.querySelectorAll('.kick').forEach(b=>b.onclick=()=>ask('踢出隊輔？','會關閉該隊目前的 WebSocket 連線，隊伍狀態回到未連線。',()=>send('kickTeam',{teamId:Number(b.dataset.i)})));bind('bCfg',()=>{App.cfg=!App.cfg;render(true);});
-    bind('saveNames',()=>{const names=$('teamNames').value.split(/\r?\n/).map(x=>x.trim());send('renameTeams',{names});});bind('showHistory',loadHistory);document.querySelectorAll('.rotate-pin').forEach(b=>b.onclick=()=>ask('重新產生 PIN？',`第 ${Number(b.dataset.i)+1} 組目前的連線會中斷，請把新 PIN 交給隊輔。`,()=>rotateTeamPin(Number(b.dataset.i))));
+    bind('saveNames',()=>{const names=$('teamNames').value.split(/\r?\n/).map(x=>x.trim());send('renameTeams',{names});});bind('showHistory',loadHistory);
     document.querySelectorAll('.mk').forEach(b=>b.onclick=()=>send('setMarket',{kind:b.dataset.k}));document.querySelectorAll('.unl').forEach(b=>b.onclick=()=>send('unlock',{index:Number(b.dataset.i)}));
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.cash[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustCash',{teamId:Number(b.dataset.i),amount:v});});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.pts[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustPts',{teamId:Number(b.dataset.i),amount:v});});
     document.querySelectorAll('.cfg').forEach(inp=>inp.onchange=()=>send('setConfig',{path:inp.dataset.p,value:Number(inp.value)}));
@@ -280,7 +281,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     $('applyUpdate')?.addEventListener('click',applyPwaUpdate); enableInstallPrompt(); registerPWA();
     const sess=loadSession(); if(sess?.accessToken&&!App.access[sess.role]) App.access[sess.role]=sess.accessToken;
     const canResume=(App.entry==='admin'&&sess?.role==='host'&&App.access.host)||(App.entry==='team'&&sess?.role==='team'&&App.access.team);
-    if(canResume&&sess?.gameId&&(sess.role==='host'||sess.token)) resumeSession(sess); else render(true);
+    if(canResume&&sess?.gameId&&(sess.role==='host'||Number.isInteger(sess.teamId))) resumeSession(sess); else render(true);
     window.__appBooted=true;
   }catch(error){
     console.error('App bootstrap failed',error);

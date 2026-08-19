@@ -36,6 +36,23 @@ async function connect(id, hello) {
   const welcome = await waitFor(ws, message => message.type === 'hello_ok', `${hello.role} hello_ok`);
   return { ws, welcome };
 }
+async function expectRejected(id, hello) {
+  const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws/${encodeURIComponent(id)}`);
+  await new Promise((resolve, reject) => {
+    ws.addEventListener('open', resolve, { once: true });
+    ws.addEventListener('error', () => reject(new Error('WebSocket 開啟失敗')), { once: true });
+  });
+  await waitFor(ws, message => message.type === 'hello_required', 'hello_required');
+  const rejected = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('錯誤共用密碼未被 WebSocket 拒絕')), 3000);
+    ws.addEventListener('close', () => { clearTimeout(timer); resolve(); }, { once: true });
+    ws.addEventListener('message', event => {
+      try { if (JSON.parse(event.data).type === 'hello_ok') { clearTimeout(timer); reject(new Error('錯誤共用密碼通過 WebSocket 驗證')); } } catch {}
+    });
+  });
+  ws.send(JSON.stringify({ type: 'hello', ...hello }));
+  await rejected;
+}
 
 const routes = await Promise.all(['/', '/team', '/admin'].map(get));
 if (routes.some(({ body }) => !body.includes('<script'))) throw new Error('SPA 入口沒有載入前端腳本');
@@ -55,27 +72,24 @@ const createdResponse = await request('/api/games', {
 });
 if (!createdResponse.response.ok) throw new Error(`建立活動失敗：${createdResponse.response.status}`);
 const created = createdResponse.data;
-if (!created.id || !created.hostToken || created.teamPins?.length !== 2) throw new Error('建立活動回應欄位不完整');
+if (!created.id || !created.hostToken || created.teamCount !== 2) throw new Error('建立活動回應欄位不完整');
+if ('teamPins' in created) throw new Error('建立活動不應再產生隊伍 PIN');
 
 const forgedControl = await request(`/ws/${encodeURIComponent(created.id)}`, { headers: { 'x-control-action': 'endGame' } });
 if (forgedControl.response.status !== 426) throw new Error('公開 WebSocket 路由接受了偽造的內部控制標頭');
 const afterForgedControl = await get('/api/lobby');
 if (afterForgedControl.data.games[0]?.id !== created.id) throw new Error('偽造內部控制標頭意外關閉了活動');
-
-const rotatedResponse = await request(`/api/games/${encodeURIComponent(created.id)}/teams/0/pin`, {
-  method: 'POST',
-  headers: { authorization: 'Bearer aaa' },
-  body: '{}'
-});
-if (!rotatedResponse.response.ok || !/^\d{6}$/.test(rotatedResponse.data?.pin || '')) throw new Error('隊伍 PIN 重發失敗');
+if (afterForgedControl.data.games[0]?.teams?.length !== 2) throw new Error('公開大廳缺少快速選隊資料');
+if (afterForgedControl.data.games[0].teams.some(team => team.joined)) throw new Error('尚未加入的隊伍被標示為已連線');
 
 const host = await connect(created.id, { role: 'host', token: created.hostToken, accessToken: 'aaa' });
-const team = await connect(created.id, { role: 'team', teamId: 0, token: rotatedResponse.data.pin, accessToken: 'iii' });
+await expectRejected(created.id, { role: 'team', teamId: 0, accessToken: 'wrong' });
+const team = await connect(created.id, { role: 'team', teamId: 0, accessToken: 'iii' });
 const viewer = await connect(created.id, { role: 'viewer' });
 if (team.welcome.state.teams[0].joined !== true) throw new Error('隊輔加入後狀態未同步');
 if (viewer.welcome.state.teams.length !== 2) throw new Error('觀眾未收到遊戲狀態');
 
-const duplicateTeam = await connect(created.id, { role: 'team', teamId: 0, token: rotatedResponse.data.pin, accessToken: 'iii' });
+const duplicateTeam = await connect(created.id, { role: 'team', teamId: 0, accessToken: 'iii' });
 duplicateTeam.ws.close();
 await new Promise(resolve => setTimeout(resolve, 150));
 const presenceViewer = await connect(created.id, { role: 'viewer' });
@@ -97,9 +111,8 @@ if (afterClose.data.games.length !== 0) throw new Error('活動關閉後仍出�
 const historyResponse = await request(`/api/games/${created.id}/history`, { headers: { authorization: 'Bearer aaa' } });
 if (!historyResponse.response.ok) throw new Error(`歷史紀錄查詢失敗：${historyResponse.response.status}`);
 const history = historyResponse.data;
-if (!history.events.some(event => event.eventType === 'rotateTeamPin')) throw new Error('D1 缺少 rotateTeamPin 歷史事件');
 if (!history.events.some(event => event.eventType === 'kickTeam')) throw new Error('D1 缺少 kickTeam 歷史事件');
 if (!history.events.some(event => event.eventType === 'endGame')) throw new Error('D1 缺少 endGame 歷史事件');
 
 for (const ws of [host.ws, team.ws, viewer.ws]) { try { ws.close(); } catch {} }
-console.log('single-activity auth/reliability e2e test passed');
+console.log('single-activity shared-password/reliability e2e test passed');

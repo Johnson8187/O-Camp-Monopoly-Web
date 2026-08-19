@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker, { teamActionError } from './src/worker.js';
+import worker, { GameRoom, teamActionError } from './src/worker.js';
 
 const state=(phase,paused=false)=>({phase,paused});
 
@@ -23,4 +23,33 @@ assert.equal(response.status,426);
 assert.equal(proxiedRequest.headers.get('x-control-action'),null);
 assert.equal(proxiedRequest.headers.get('x-game-id'),'ROOM123');
 
-console.log('reliability phase-guard and control-header tests passed');
+const lobbyState={teams:[{name:'紅隊',color:'#e23b3b',joined:true},{name:'藍隊',color:'#3f86e0',joined:false}]};
+const lobbyResponse=await worker.fetch(new Request('https://example.test/api/lobby'),{
+  DB:{prepare:()=>({all:async()=>({results:[{id:'GAME1',name:'測試活動',status:'lobby',team_count:2,updated_at:'2026-08-19T00:00:00.000Z',state_json:JSON.stringify(lobbyState)}]})})},
+});
+const lobby=await lobbyResponse.json();
+assert.deepEqual(lobby.games[0].teams,[
+  {id:0,name:'紅隊',color:'#e23b3b',joined:true},
+  {id:1,name:'藍隊',color:'#3f86e0',joined:false},
+]);
+assert.equal(lobby.games[0].joinedCount,1);
+
+const passwordHash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('iii'))).toString('hex');
+const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{TEAM_PASSWORD_HASH:passwordHash});
+room.loaded=true;
+room.lastActivityAt=0;
+room.meta={id:'GAME1',name:'測試活動',teamCount:2,hostTokenHash:'unused'};
+room.state={phase:'setup',paused:false,teams:[{name:'紅隊',joined:true},{name:'藍隊',joined:false}]};
+function pendingSocket(){
+  let attachment={role:'pending',teamId:null};
+  return {sent:[],closed:false,send(data){this.sent.push(JSON.parse(data));},close(){this.closed=true;},deserializeAttachment(){return attachment;},serializeAttachment(value){attachment=value;}};
+}
+const wrongSocket=pendingSocket();
+await room.webSocketMessage(wrongSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'wrong',token:'not-needed'}));
+assert.equal(wrongSocket.closed,true);
+const teamSocket=pendingSocket();
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'iii'}));
+assert.equal(teamSocket.closed,false);
+assert.equal(teamSocket.sent.at(-1).type,'hello_ok');
+
+console.log('reliability phase-guard, team-picker and control-header tests passed');

@@ -22,7 +22,7 @@
 
 前端已拆分為 `index.html`、`styles.css`、`app.js` 與 `game-core.js`；後端為 `src/worker.js`。遊戲規則模組 `game-core.js` 同時供瀏覽器與 Worker 使用，避免前後端規則分叉。
 
-底部導覽採用與棋盤一致的馬賽克像素風：墨黑棋盤底、金色格線、紅色玩家標記、硬陰影與內嵌 crisp SVG 圖示。三張導覽卡牌分別代表觀戰、隊輔與控制台；保留短中文標籤，讓圖示具辨識度且不犧牲無障礙與 Safari 相容性。
+底部導覽採用與棋盤一致的像素遊戲語言，改為較輕巧的浮動 HUD：米白底、金色選取狀態、硬陰影與內嵌 crisp SVG 圖示。三個入口分別代表觀戰、隊輔與控制台；進入實際遊戲畫面後會自動收起導覽，將螢幕空間完整留給棋盤與操作區。
 
 活動使用 Durable Object alarm 管理生命週期。每次建立活動、有效遊戲動作、主持人控制或隊伍連線狀態變更都會更新最後活動時間；若活動連續閒置 3 小時，即使所有分頁都已關閉，`GameRoom` 仍會由 alarm 提交 `idleTimeout` 系統事件、廣播結束狀態並寫入 D1。正式期限由 `IDLE_TIMEOUT_MS = 10800000` 控制；本地測試可覆寫成較短毫秒數。
 
@@ -30,7 +30,7 @@
 
 網站包含 `manifest.webmanifest`、192／512 像素圖示與 Service Worker，可加入 iOS 或 Android 主畫面。iOS 請使用 Safari 開啟網站，按分享後選擇「加入主畫面」；Android 請使用 Chrome 開啟網站，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
 
-每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本安裝後會清除舊版本快取，前端偵測到更新時會顯示更新提示。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.19.5`。
+每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本安裝後會清除舊版本快取，前端偵測到更新時會顯示更新提示。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.19.6`。
 
 ## Cloudflare 資源
 

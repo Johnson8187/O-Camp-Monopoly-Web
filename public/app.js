@@ -1,5 +1,5 @@
-const BUILD_VERSION = '2026.08.19.5';
-import { G } from './game-core.js?v=2026.08.19.5';
+const BUILD_VERSION = '2026.08.19.6';
+import { G } from './game-core.js?v=2026.08.19.6';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -20,7 +20,8 @@ function loadAccess(){ App.access.host=sessionStorage.getItem(accessKey('host'))
 function saveAccess(role,password){ App.access[role]=password; sessionStorage.setItem(accessKey(role),password); }
 function clearAccess(role){ App.access[role]=''; sessionStorage.removeItem(accessKey(role)); }
 function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/'; }
-function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.classList.toggle('active',b.dataset.route===navRolePath())); }
+function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
+function syncChrome(){ const inGame=App.screen==='game'; const nav=$('bottomNav'); if(nav)nav.hidden=inGame; document.body.classList.toggle('in-game',inGame); updateNav(); }
 function showUpdatePrompt(){ const el=$('pwaUpdate'); if(el) el.hidden=false; }
 async function applyPwaUpdate(){
   try{
@@ -235,7 +236,7 @@ function bindGame(){
 async function loadHistory(){
   try{const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${App.token}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(e.createdAt)}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
 }
-function render(force=false){ if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
+function render(force=false){ syncChrome(); if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
 window.addEventListener('DOMContentLoaded',()=>{
   try{
     loadAccess(); App.entry=routeEntry();

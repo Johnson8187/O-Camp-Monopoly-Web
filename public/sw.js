@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.19.8';
+const BUILD_VERSION = '2026.08.19.9';
 const CACHE_NAME = `preview-static-${BUILD_VERSION}`;
 const CORE = [
   './?v=' + BUILD_VERSION,
@@ -6,6 +6,7 @@ const CORE = [
   './styles.css?v=' + BUILD_VERSION,
   './app.js?v=' + BUILD_VERSION,
   './game-core.js?v=' + BUILD_VERSION,
+  './game-fx.js?v=' + BUILD_VERSION,
   './manifest.webmanifest?v=' + BUILD_VERSION,
   './icon.svg?v=' + BUILD_VERSION,
   './icon-192.png?v=' + BUILD_VERSION,

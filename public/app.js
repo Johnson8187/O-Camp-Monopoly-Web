@@ -1,5 +1,5 @@
-const BUILD_VERSION = '2026.08.19.4';
-import { G } from './game-core.js?v=2026.08.19.4';
+const BUILD_VERSION = '2026.08.19.5';
+import { G } from './game-core.js?v=2026.08.19.5';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,

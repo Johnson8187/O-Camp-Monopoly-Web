@@ -9,6 +9,8 @@ async function hashSecret(value){ const data=new TextEncoder().encode(String(val
 async function verifySecret(value, hashed){ return Boolean(value && hashed && (await hashSecret(value))===hashed); }
 function statusOf(state){ return state.phase==='ended'?'ended':state.paused?'paused':state.phase==='setup'?'lobby':'running'; }
 function getRoom(env,id){ return env.GAME_ROOMS.get(env.GAME_ROOMS.idFromName(id)); }
+const DEFAULT_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+function idleTimeoutMs(env){ const value=Number(env.IDLE_TIMEOUT_MS); return Number.isFinite(value)&&value>0?value:DEFAULT_IDLE_TIMEOUT_MS; }
 
 export default {
   async fetch(request, env){
@@ -61,6 +63,13 @@ async function createGame(request,env){
   const state=G.freshState(id,teamCount); const timestamp=now();
   await env.DB.prepare('INSERT INTO games (id,name,status,team_count,host_token_hash,team_pin_hashes_json,state_json,created_at,updated_at,ended_at) VALUES (?,?,?,?,?,?,?,?,?,NULL)')
     .bind(id,name,'lobby',teamCount,hostHash,JSON.stringify(pinHashes),JSON.stringify(state),timestamp,timestamp).run();
+  try{
+    const headers=new Headers({'x-game-id':id,'x-control-action':'armIdle'});
+    await getRoom(env,id).fetch(new Request('https://do.internal/arm-idle',{method:'POST',headers,body:'{}'}));
+  }catch(e){
+    await env.DB.prepare('DELETE FROM games WHERE id=?').bind(id).run();
+    return json({error:'活動生命週期初始化失敗，請重新建立'},500);
+  }
   return json({id,name,status:'lobby',teamCount,createdAt:timestamp,hostToken,teamPins,state});
 }
 async function getHistory(id,request,env){
@@ -83,23 +92,50 @@ const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','attack','gamble','buff','upgrade','sell','buyBack']);
 
 export class GameRoom {
-  constructor(ctx,env){ this.ctx=ctx;this.env=env;this.loaded=false;this.state=null;this.meta=null;this.gameId=null;this.kickedTeams=new Set(); }
+  constructor(ctx,env){ this.ctx=ctx;this.env=env;this.loaded=false;this.state=null;this.meta=null;this.gameId=null;this.lastActivityAt=0;this.kickedTeams=new Set(); }
   async load(){
     await this.ctx.blockConcurrencyWhile(async()=>{
       if(this.loaded)return;
       const cached=await this.ctx.storage.get('state');
-      const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,team_pin_hashes_json,state_json FROM games WHERE id=?').bind(this.gameId||this.ctx.id.toString()).first();
+      const storedGameId=await this.ctx.storage.get('gameId');
+      const storedActivity=Number(await this.ctx.storage.get('lastActivityAt'))||0;
+      this.gameId=this.gameId||storedGameId||this.ctx.id.toString();
+      const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,team_pin_hashes_json,state_json,updated_at FROM games WHERE id=?').bind(this.gameId).first();
       if(!row) throw new Error('找不到活動');
       this.meta={id:row.id,name:row.name,status:row.status,teamCount:row.team_count,hostTokenHash:row.host_token_hash,teamPinHashes:JSON.parse(row.team_pin_hashes_json||'[]')};
       this.state=cached||JSON.parse(row.state_json||'{}'); this.loaded=true;
+      const dbActivity=Date.parse(row.updated_at)||Date.now();
+      this.lastActivityAt=Math.max(storedActivity,dbActivity);
       if(!cached) await this.ctx.storage.put('state',this.state);
+      await this.ctx.storage.put('gameId',this.gameId);
+      await this.ctx.storage.put('lastActivityAt',this.lastActivityAt);
     });
+    await this.armIdleAlarm();
+  }
+  async armIdleAlarm(){
+    if(!this.lastActivityAt || this.state?.phase==='ended') return;
+    await this.ctx.storage.setAlarm(this.lastActivityAt + idleTimeoutMs(this.env));
+  }
+  async alarm(){
+    await this.load();
+    if(this.state?.phase==='ended') return;
+    const row=await this.env.DB.prepare('SELECT status,updated_at FROM games WHERE id=?').bind(this.meta.id).first();
+    if(!row || row.status==='ended') return;
+    const last=Date.parse(row.updated_at)||this.lastActivityAt||Date.now();
+    const timeout=idleTimeoutMs(this.env); const elapsed=Date.now()-last;
+    if(elapsed < timeout){
+      this.lastActivityAt=last; await this.ctx.storage.put('lastActivityAt',last); await this.armIdleAlarm(); return;
+    }
+    const next=G.clone(this.state); next.paused=false; next.phase='ended'; next.log.unshift('活動閒置超過 3 小時，系統自動關閉活動'); next.rev=(this.state.rev||0)+1;
+    await this.commit(next,{role:'system',teamId:null},'idleTimeout',{idleMs:elapsed,timeoutMs:timeout});
+    for(const ws of this.ctx.getWebSockets()){ try{ ws.close(4004,'idle-timeout'); }catch{} }
   }
   async fetch(request){
     this.gameId=request.headers.get('x-game-id')||this.gameId||this.ctx.id.toString();
     await this.load();
     const control=request.headers.get('x-control-action');
     if(control){
+      if(control==='armIdle') return json({ok:true,status:statusOf(this.state)});
       if(control!=='endGame') return json({error:'不支援的控制操作'},400);
       if(this.state.phase==='ended') return json({ok:true,status:'ended'});
       const next=G.clone(this.state); const result=this.applyAction(next,{role:'host',teamId:null},'endGame',{});
@@ -148,15 +184,17 @@ export class GameRoom {
     return {error:'未知操作'};
   }
   async commit(next,actor,eventType,payload){
-    this.state=next;await this.ctx.storage.put('state',next);const status=statusOf(next);const timestamp=now();const message=String(next.log?.[0]||eventType);
+    this.state=next;await this.ctx.storage.put('state',next);const status=statusOf(next);const timestamp=now();const activityAt=Date.parse(timestamp);const message=String(next.log?.[0]||eventType);
     await this.env.DB.batch([this.env.DB.prepare('UPDATE games SET status=?,state_json=?,updated_at=?,ended_at=? WHERE id=?').bind(status,JSON.stringify(next),timestamp,status==='ended'?timestamp:null,this.meta.id),this.env.DB.prepare('INSERT INTO game_events (game_id,event_type,actor_role,actor_team,message,payload_json,state_rev,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(this.meta.id,eventType,actor.role,actor.teamId,message,JSON.stringify(payload||{}),next.rev,timestamp)]);
+    this.lastActivityAt=activityAt; await this.ctx.storage.put('lastActivityAt',activityAt);
+    if(status==='ended') await this.ctx.storage.deleteAlarm(); else await this.armIdleAlarm();
     this.meta.status=status;this.broadcast({type:'state',state:next,status});
   }
   kickTeam(teamId){ this.kickedTeams.add(teamId); for(const ws of this.ctx.getWebSockets()){ const a=ws.deserializeAttachment?.(); if(a?.role==='team'&&a.teamId===teamId){ try{ws.send(JSON.stringify({type:'kicked',message:'主持人已將你踢出活動'}));ws.close(4003,'kicked');}catch{} } } }
   broadcast(message){const data=JSON.stringify(message);for(const ws of this.ctx.getWebSockets()){try{ws.send(data);}catch{}}}
   async webSocketClose(ws){
     const actor=ws.deserializeAttachment?.();
-    if(!actor || actor.role!=='team' || this.kickedTeams.has(actor.teamId) || !this.loaded || !this.state?.teams?.[actor.teamId]?.joined) return;
+    if(!actor || actor.role!=='team' || this.kickedTeams.has(actor.teamId) || !this.loaded || this.state?.phase==='ended' || !this.state?.teams?.[actor.teamId]?.joined) return;
     const next=G.clone(this.state); next.teams[actor.teamId].joined=false; next.log.unshift(`${next.teams[actor.teamId].name} 已離線`); next.rev=(this.state.rev||0)+1;
     try{ await this.commit(next,{role:'system',teamId:actor.teamId},'teamLeave',{}); }catch{}
   }

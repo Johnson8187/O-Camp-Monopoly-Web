@@ -77,13 +77,15 @@ WebSocket 端點由前端自動使用同一個 Worker 網址的 `/ws/{活動識�
 
 主持人按下「關閉活動」時，前端會呼叫 `/api/games/{id}/close`。這個 API 不依賴主持人 WebSocket 仍然存在，因此即使主持人原本的控制台分頁意外關閉，重新登入控制台後仍可關閉目前活動。活動結束後，公開大廳會恢復為沒有開放活動的狀態，才可建立下一場。
 
+活動建立時，Worker 會為對應的 `GameRoom` Durable Object 設定 alarm。建立活動、有效遊戲動作、主持人控制與隊伍連線狀態變更都會刷新 `games.updated_at`；若連續 `IDLE_TIMEOUT_MS` 沒有活動，alarm 會重新讀取 D1 確認時間，提交 `idleTimeout` 系統事件、標記活動為 ended、廣播結束狀態並關閉 WebSocket。正式設定為 `10800000` 毫秒，也就是 3 小時；這個機制不依賴瀏覽器分頁或前端計時器。
+
 主持人的活動 token 與隊伍 PIN 只在建立活動時回傳給主持人，瀏覽器會保存在該主持人的本機 session，讓主持人重新整理 `/admin` 後可以回到自己的主控台。不要把 token 或 PIN 提交到 GitHub，也不要貼到公開群組。
 
 ## 5. PWA 與快取更新
 
 部署內容包含 `public/manifest.webmanifest`、`public/icon.svg`、192／512 像素圖示、`public/sw.js` 與 `public/version.json`。iOS 使用 Safari 開啟正式網址，從分享選單選擇「加入主畫面」；Android 使用 Chrome 開啟正式網址，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
 
-每次前端版本更新時，請同步提高 `BUILD_VERSION`，並更新 `public/version.json` 與 Service Worker 的 `CACHE_NAME`。目前版本為 `2026.08.19.3`。Service Worker 對同源靜態檔採用 network-first；每次啟用新版本會刪除舊 cache，前端則在偵測到新版本時顯示更新提示。`/api/`、`/ws/` 與 `sw.js` 不會被 Service Worker 快取，因而避免遊戲狀態或認證流程被舊資料卡住。
+每次前端版本更新時，請同步提高 `BUILD_VERSION`，並更新 `public/version.json` 與 Service Worker 的 `CACHE_NAME`。目前版本為 `2026.08.19.5`。底部導覽使用棋盤墨黑、金色格線、紅色玩家標記與內嵌像素 SVG 圖示，不依賴外部圖片資產。Service Worker 對同源靜態檔採用 network-first；每次啟用新版本會刪除舊 cache，前端則在偵測到新版本時顯示更新提示。`/api/`、`/ws/` 與 `sw.js` 不會被 Service Worker 快取，因而避免遊戲狀態或認證流程被舊資料卡住。
 
 若使用者仍看到舊畫面，先重新整理一次；若是已安裝的 PWA，關閉後重新開啟並選擇畫面上的更新提示即可。一般情況不需要使用無痕模式。
 
@@ -115,6 +117,16 @@ node test-single-activity.mjs
 ```bash
 node test-game-core.mjs
 ```
+
+閒置自動關閉測試不等待三小時；啟動本地 Worker 時將 `IDLE_TIMEOUT_MS` 覆寫為短期限，並執行：
+
+```bash
+npx wrangler@latest dev --local --port 8787 --persist-to /tmp/preview-idle-e2e-state --var IDLE_TIMEOUT_MS:1500
+# 另一個終端機
+node test-idle-activity.mjs
+```
+
+測試會建立活動但不開啟 WebSocket，等待 alarm 觸發，再確認公開大廳已沒有活動且 D1 含有 `idleTimeout` 事件。
 
 部署前可檢查 Worker 封裝內容：
 

@@ -13,11 +13,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="./manifest.webmanifest?v=2026.08.19.4">
-  <link rel="icon" href="./icon.svg?v=2026.08.19.4" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./icon-192.png?v=2026.08.19.4">
+  <link rel="manifest" href="./manifest.webmanifest?v=2026.08.19.5">
+  <link rel="icon" href="./icon.svg?v=2026.08.19.5" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-192.png?v=2026.08.19.5">
   <title>人生大富翁 — 即時觀戰</title>
-  <link rel="stylesheet" href="./styles.css?v=2026.08.19.4">
+  <link rel="stylesheet" href="./styles.css?v=2026.08.19.5">
 </head>
 <body>
   <div id="wrap"><div id="app"></div></div>
@@ -41,14 +41,18 @@
   </div>
   <button type="button" id="installPwa" class="pwa-install-fab" hidden><span aria-hidden="true">＋</span>安裝 App</button>
   <nav id="bottomNav" class="bottom-nav" aria-label="主要導覽">
-    <button type="button" data-route="/" class="bottom-nav-item active" aria-current="page" aria-label="觀戰">
-      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg></span><span class="nav-label">觀戰</span><span class="nav-caption">即時看場</span>
+    <div class="nav-rail-mark" aria-hidden="true"></div>
+    <button type="button" data-route="/" class="bottom-nav-item active" aria-current="page" aria-label="觀戰：即時看場">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false" shape-rendering="crispEdges"><rect x="4" y="7" width="24" height="18"/><rect x="7" y="10" width="18" height="12" fill="#14110f"/><rect x="10" y="13" width="4" height="4"/><rect x="18" y="13" width="4" height="4"/><rect x="13" y="18" width="6" height="2"/><rect x="12" y="25" width="8" height="3"/></svg></span>
+      <span class="nav-label">觀戰</span><span class="nav-caption">即時看場</span>
     </button>
-    <button type="button" data-route="/team" class="bottom-nav-item" aria-label="隊輔">
-      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.3 2.4-5 5.5-5s5 1.7 5.5 5"/><path d="M15 5.5a3 3 0 0 1 0 5.8M17 14c2.2.6 3.4 2.1 3.6 4.5"/></svg></span><span class="nav-label">隊輔</span><span class="nav-caption">隊伍操作</span>
+    <button type="button" data-route="/team" class="bottom-nav-item" aria-label="隊輔：隊伍操作">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false" shape-rendering="crispEdges"><rect x="7" y="5" width="8" height="8"/><rect x="5" y="14" width="12" height="10"/><rect x="19" y="8" width="7" height="7"/><rect x="18" y="16" width="10" height="9"/><rect x="3" y="24" width="26" height="3"/></svg></span>
+      <span class="nav-label">隊輔</span><span class="nav-caption">隊伍操作</span>
     </button>
-    <button type="button" data-route="/admin" class="bottom-nav-item" aria-label="控制台">
-      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 21h10M9 18v3M15 18v3M7 8h.01M11 8h.01M15 8h.01M7 12h4M15 12h2"/></svg></span><span class="nav-label">控制台</span><span class="nav-caption">主持管理</span>
+    <button type="button" data-route="/admin" class="bottom-nav-item" aria-label="控制台：主持管理">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false" shape-rendering="crispEdges"><rect x="5" y="5" width="22" height="17"/><rect x="8" y="8" width="16" height="11" fill="#14110f"/><rect x="11" y="11" width="3" height="3"/><rect x="16" y="11" width="3" height="3"/><rect x="21" y="11" width="3" height="3"/><rect x="13" y="16" width="6" height="2"/><rect x="10" y="24" width="12" height="3"/><rect x="7" y="27" width="18" height="2"/></svg></span>
+      <span class="nav-label">控制台</span><span class="nav-caption">主持管理</span>
     </button>
   </nav>
   <script>
@@ -68,6 +72,6 @@
       window.setTimeout(function(){ if(!window.__appBooted && app && !app.children.length) showFallback(); }, 4500);
     }());
   </script>
-  <script type="module" src="./app.js?v=2026.08.19.4"></script>
+  <script type="module" src="./app.js?v=2026.08.19.5"></script>
 </body>
 </html>

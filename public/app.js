@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.17';
-import { G } from './game-core.js?v=2026.08.21.17';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.17';
+const BUILD_VERSION = '2026.08.21.18';
+import { G } from './game-core.js?v=2026.08.21.18';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.18';
+
 
 
 
@@ -89,11 +90,23 @@ function showIosInstallGuideModal(){
   if(btnClose) btnClose.onclick = () => { $('modal').style.display = 'none'; };
 }
 
+function isMobileDevice(){
+  try{
+    return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+  }catch{
+    return false;
+  }
+}
+
 function enableInstallPrompt(){
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  let isStandalone = false;
+  try{
+    isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone);
+  }catch{}
   const b = $('installPwa');
+  const isMobile = isMobileDevice();
   if(b){
-    if(!isStandalone){
+    if(isMobile && !isStandalone){
       b.hidden = false;
       b.style.display = 'inline-flex';
     }else{
@@ -108,7 +121,10 @@ function enableInstallPrompt(){
         }catch{}
         return;
       }
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      let isIOS = false;
+      try{
+        isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+      }catch{}
       if(isIOS){
         showIosInstallGuideModal();
       }else{
@@ -117,14 +133,17 @@ function enableInstallPrompt(){
     };
   }
   window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    App.installPrompt = e;
-    if(b && !isStandalone){
-      b.hidden = false;
-      b.style.display = 'inline-flex';
-    }
+    try{
+      e.preventDefault();
+      App.installPrompt = e;
+      if(b && isMobile && !isStandalone){
+        b.hidden = false;
+        b.style.display = 'inline-flex';
+      }
+    }catch{}
   });
 }
+
 
 
 

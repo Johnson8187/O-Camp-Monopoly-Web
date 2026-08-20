@@ -386,6 +386,8 @@ select{border:4px solid #14110f;padding:10px 9px;font-family:'Zpix','Microsoft J
 .pwa-install-fab{position:fixed;z-index:46;right:14px;bottom:calc(var(--nav-height) + var(--safe-bottom) + 12px);border:3px solid #14110f;border-radius:6px;background:#f2c12e;color:#14110f;box-shadow:3px 3px 0 #1a2340;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:12px;font-weight:bold;padding:7px 11px;cursor:pointer}
 .pwa-install-fab[hidden]{display:none}
 body.in-game .pwa-install-fab{bottom:calc(12px + var(--safe-bottom))}
+@media (min-width:769px){.pwa-install-fab{display:none!important}}
+
 .boot-fallback{position:fixed;z-index:90;left:18px;right:18px;top:28%;max-width:420px;margin:auto;display:flex;align-items:flex-start;gap:10px;padding:16px;background:#fffef5;border:3px solid #14110f;border-radius:0;box-shadow:5px 5px 0 #1a2340;color:#26200f}
 .boot-fallback[hidden]{display:none}
 .boot-fallback-icon{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border:3px solid #14110f;background:#f2c12e;color:#14110f;font-size:24px;line-height:1}

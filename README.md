@@ -1,88 +1,119 @@
-# 人生大富翁：Cloudflare 即時連線版
+# 人生大富翁 — 營隊即時互動大地遊戲平台
 
-本專案已從單檔 HTML 與 Firebase REST 輪詢改為可維護的前後端結構：前端位於 `public/`，Cloudflare Worker 與 Durable Object 位於 `src/`，D1 schema migration 位於 `migrations/`。活動採用單一全域遊戲，不需要房號，也不需要使用者貼 Firebase 網址。
+> **© 2026 不「管」別人「工」蝦毀 都來「電」惦賭「醫」把 版權所有**
 
-## 使用者入口
+本專案專為營隊大型大地遊戲設計，結合 **3D 像素立體棋盤**、**多人即時 WebSocket 連線**、**全域動畫排隊佇列** 與 **邊緣無伺服器架構**（Cloudflare Workers + Durable Objects + D1 Database）。全場採用單一全域遊戲房，免去繁瑣房號與手動設定，提供流暢的營隊互動體驗。
 
-網站首頁 `/` 預設就是隊員與觀眾入口，只顯示目前是否有唯一一場開放活動，並提供唯讀觀戰。首頁不再顯示「參加方式」或其他公開操作說明；使用者可以透過畫面底部導覽列切換到隊輔入口或主持人控制台。
+---
 
-| 導覽入口 | 用途 | 驗證方式 |
-|---|---|---|
-| 觀戰 | 隊員與觀眾查看即時遊戲狀態 | 不需密碼 |
-| 隊輔 | 通過共用密碼後直接選擇隊伍並操作 | 輸入隊輔密碼 `iii` |
-| 控制台 | 建立、開始、暫停、恢復、結束活動，管理隊輔 | 先輸入主持人密碼 `aaa` |
+## 🌟 核心特色
 
-`/team` 與 `/admin` 仍保留為可分享或重新整理後使用的深層連結，但現在兩個入口都會先顯示對應的密碼閘門。密碼只會在瀏覽器 session 中使用，後端也會再次驗證，不能只依賴前端畫面限制。
+### 1. 🎮 3D 沉浸式棋盤與視效系統
+- **立體動態運鏡（3D Dynamic Camera）**：擲骰、移動與升級時視角平滑聚焦至目標格子，帶來強烈的遊戲沉浸感。
+- **微縮隊伍圖標（Compact Board Pins）**：採用 2×2 緊湊排列與微型徽章，同一格多隊駐留時絕不遮擋周圍棋盤。
+- **3D 升級光框**：基地升級時觸發 3D 金色光柱與慶祝光環。
+- **蟲洞瞬間躍遷**：踏入蟲洞格觸發吸入旋渦，0ms 瞬間傳送至對應蟲洞並綻放躍出光環。
+- **8-bit Web Audio 即時音效**：內建投骰、移動踏步、金幣收支、警報爆炸等合成音效，支援一鍵靜音切換。
 
-## 活動與即時連線
+### 2. ⚡ 多人並行與全域特效排隊佇列（FIFO Animation Queue）
+- **多隊同時操作防衝突**：多位隊輔同時擲骰、升級或發動特殊攻擊時，系統自動排隊並依序播放動畫，保證所有效果清晰完整、不搶鏡、不漏拍。
+- **主持人防呆機制**：主控台即時顯示「排隊播放中」狀態，若有動畫正在播映會提示等待完成，防止切換階段造成前後端不同步。
 
-主持人從控制台建立唯一活動並設定隊伍數。隊輔只需輸入一次共用隊輔密碼，接著直接從隊伍卡片選擇自己的隊伍，以 WebSocket 連線後操作；不需要房號或額外 PIN。隊伍卡片會顯示隊名、顏色與目前是否已有裝置，點選已連線隊伍時會再次確認，方便同隊第二台裝置或臨時接手。觀眾從首頁進入同一場活動並唯讀觀戰。若已有活動，系統會阻止再次建立，必須由主持人結束活動後才可建立下一場。
+### 3. ⚔️ 特殊操作與全螢幕戰術打擊
+- **隨機地震**：7×7 範圍波及，震央承受 1.5 倍修繕費。
+- **戰術飛彈**：全螢幕雷達瞄準鎖定排行榜相鄰競爭隊伍，精準打擊。
+- **超級颱風**：7×7 暴風圈旋轉肆虐，外圈支付修繕費，颱風眼反而獲得獎金。
+- **野火焚城**：烈焰隨機橫向延燒 1–2 排所有基地。
+- 後端嚴格驗證每隊每回合每招限發動一次，未成功發動不扣點數。
 
-所有隊伍動作先送到同一個 Durable Object，由後端驗證共用隊輔密碼、所選隊伍與目前遊戲階段，再更新狀態並廣播給房內連線。主持人可以開始、暫停、恢復與結束活動，重新抽籤分配基地、進入下一階段、調整隊伍資源、更新隊名、控制股市與關卡，並查看目前隊輔是否在線或踢除選錯隊伍的裝置。即使主持人的控制台分頁已經關閉，仍可由控制台的關閉活動 API 結束目前活動。活動結束與遊戲事件會保存到 D1 歷史紀錄。
+### 4. 🏰 基地經營與即時經濟系統
+- **操作面板動態標註**：
+  - 🟢 **升級基地**：即時顯示所需點數（例如 `升級基地（消耗 6 點）`）。
+  - 🟡 **賣出基地**：依當前回合股市倍率即時計算收益（例如 `賣出基地（+$500）`）。
+  - 🔵 **買回基地**：清楚顯示買回成本（例如 `買回基地（$500）`），當回合賣出自動鎖定下回合開放。
+- **監獄狀態防護**：入獄組別於擲骰階段自動鎖定並顯示服刑中提示，不觸發多餘移動動畫。
 
-前端已拆分為 `index.html`、`styles.css`、`app.js`、`game-core.js` 與氣氛動畫輔助模組 `game-fx.js`；後端為 `src/worker.js`。遊戲規則模組 `game-core.js` 同時供瀏覽器與 Worker 使用，避免前後端規則分叉。
+### 5. 📱 跨平台 PWA 與響應式體驗
+- **電腦端純粹體驗**：桌面瀏覽器自動隱藏安裝按鈕，介面簡潔乾淨。
+- **行動端 PWA 安裝指引**：Android Chrome 提供一鍵原生安裝提示；iOS Safari 提供清楚的 3 步「加入主畫面」教學。
+- **多裝置無痛換手**：隊伍卡片即時顯示在線狀態，支援同隊多裝置登入與熱接手。
 
-底部導覽採用與棋盤一致的像素遊戲語言，改為較輕巧的浮動 HUD：米白底、金色選取狀態、硬陰影與內嵌 crisp SVG 圖示。三個入口分別代表觀戰、隊輔與控制台；進入實際遊戲畫面後會自動收起導覽，將螢幕空間完整留給棋盤與操作區。
+---
 
-遊戲頁面針對手機直向、手機橫向與 16:9 平板調整版面：寬畫面會讓棋盤與操作欄並排，短版橫向畫面會縮小卡片間距與棋盤說明，窄手機則維持單欄並把主持人調整按鈕改成兩欄。WebSocket 斷線後會自動以漸進延遲重連；同一隊開啟多個分頁時，關閉其中一頁不會把整隊誤判為離線。操作送出後會暫時鎖定按鈕並等待伺服器確認，降低連點造成重複動作的機率。
+## 🚪 使用者入口與權限
 
-棋盤空白區設有像素即時 HUD，集中顯示回合、階段、股市倍率與最近擲骰隊伍。階段切換會在所有連線裝置顯示短暫的全螢幕過場；遊戲事件依獎勵、損失、道具、攻擊與流程使用不同色彩提示。擲骰結果會先以像素骰子動畫揭曉，再讓隊伍標記沿棋盤逐格移動。若裝置啟用「減少動態效果」，網站會自動縮短或停用位移動畫。
+| 導覽入口 | 用途 | 驗證方式 | 存取路徑 |
+|---|---|---|---|
+| **觀戰** | 隊員與觀眾查看即時大棋盤、排行榜與遊戲快報 | 免密碼直接進入 | `/` |
+| **隊輔** | 輸入共用密碼後直接點選所屬隊伍進行各項操作 | 隊輔密碼（預設 `iii`） | `/team` |
+| **控制台** | 建立活動、抽籤、推進階段、調整數值、管理隊伍 | 主持人密碼（預設 `aaa`） | `/admin` |
 
-即時排行榜以總資產排序，並分欄顯示現金、依目前股市倍率計算的房產價值與諂媚點數。地震、飛彈、颱風與野火各有全螢幕像素特效、棋盤受影響範圍提示與規則說明；每隊每回合每一招最多成功發動一次，未成功的操作不扣點也不消耗次數。主持人可在設定中個別修改四招需要的諂媚點數，限制由 Durable Object 後端驗證，無法透過重整或同隊多裝置繞過。
+---
 
-活動使用 Durable Object alarm 管理生命週期。每次建立活動、有效遊戲動作、主持人控制或隊伍連線狀態變更都會更新最後活動時間；若活動連續閒置 3 小時，即使所有分頁都已關閉，`GameRoom` 仍會由 alarm 提交 `idleTimeout` 系統事件、廣播結束狀態並寫入 D1。正式期限由 `IDLE_TIMEOUT_MS = 10800000` 控制；本地測試可覆寫成較短毫秒數。
+## 🏗️ 專案目錄結構
 
-## PWA 與快取更新
+```text
+├── public/                  # 前端靜態資源
+│   ├── app.js               # 前端核心邏輯、UI 渲染與 WebSocket 通訊
+│   ├── game-core.js         # 遊戲核心規則（前後端共用）
+│   ├── game-fx.js           # 動畫隊列、3D 運鏡、音效與粒子特效
+│   ├── styles.css           # 像素風格樣式、3D 棋盤與 RWD 佈局
+│   ├── index.html           # 應用程式入口
+│   ├── sw.js                # Service Worker 快取管理（Network-First）
+│   └── manifest.webmanifest # PWA 安裝設定
+├── src/                     # 後端 Cloudflare Workers 架構
+│   ├── worker.js            # Worker 路由、REST API 與 Durable Object (GameRoom)
+│   └── game-core.js         # 供 Worker 使用之核心規則模組
+├── migrations/              # D1 資料庫結構遷移檔
+├── test-game-core.mjs       # 核心規則單元測試
+├── test-game-fx.mjs         # 動畫與音效模組測試
+├── test-reliability.mjs     # 階段防呆與可靠性測試
+├── wrangler.toml            # Cloudflare Worker 部署設定
+└── CLOUDFLARE_DEPLOY.md     # Cloudflare 完整部署手冊
+```
 
-網站包含 `manifest.webmanifest`、192／512 像素圖示與 Service Worker，可加入 iOS 或 Android 主畫面。iOS 請使用 Safari 開啟網站，按分享後選擇「加入主畫面」；Android 請使用 Chrome 開啟網站，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
+---
 
-每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本會先在背景等待，前端偵測到更新時顯示提示，且進入遊戲後會延後提示與重新載入，避免活動途中被強制刷新。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.21.20`。
+## 🧪 自動化測試與驗證
 
-
-
-
-
-
-
-
-
-
-
-
-## Cloudflare 資源
-
-| 資源 | 設定 |
-|---|---|
-| Worker | `preview` |
-| D1 | `preview-history` |
-| D1 UUID | `8bff07c3-bffd-433a-adc9-1ea0a2b7c350` |
-| Durable Object | `GameRoom`，binding `GAME_ROOMS` |
-| GitHub | `Johnson8187/preview`，`main` |
-
-D1 的 `games`、`game_events` 與索引已套用；`wrangler.toml` 已經包含實際 `database_id`、SPA fallback、Durable Object migration，以及以 SHA-256 儲存的主持人／隊輔密碼雜湊變數。正式活動前若要更換密碼，請重新計算雜湊並更新 `[vars]`，不要把明文密碼寫入程式碼。
-
-## Cloudflare Dashboard 設定
-
-連接 GitHub `Johnson8187/preview` 後，Root directory 使用 `/`，Build command 留空，Deploy command 使用 `npx wrangler@latest deploy`。啟用 production branch `main`；如要測試其他分支，可開啟 non-production branch builds 與 preview URLs。
-
-日後修改 `migrations/` 時，先在具備 Cloudflare 授權的環境執行：
+專案內建完整的自動化測試套件，涵蓋核心遊戲規則、動畫隊列邏輯、可靠性防護與語法檢核：
 
 ```bash
+# 執行所有測試套件與前端模組語法檢查
+node test-game-core.mjs
+node test-game-fx.mjs
+node test-reliability.mjs
+node --check ./public/app.js
+node --check ./public/sw.js
+node --check ./public/game-fx.js
+node --check ./src/worker.js
+```
+
+---
+
+## ☁️ Cloudflare 部署與維運
+
+| 資源 | 設定 | 說明 |
+|---|---|---|
+| **Worker** | `preview` | 提供 API、靜態資源路由與 WebSocket 握手 |
+| **Durable Object** | `GameRoom` (binding: `GAME_ROOMS`) | 單一全域遊戲房間，維護即時狀態與 WebSocket Hibernation |
+| **D1 Database** | `preview-history` (`8bff07c3-bffd-433a-adc9-1ea0a2b7c350`) | 保存活動紀錄與完整歷史事件日誌 |
+| **GitHub Repo** | `Johnson8187/O-Camp-Monopoly-Web` | `main` 分支自動觸發 Cloudflare 部署 |
+
+### 快速部署指令
+
+```bash
+# 套用 D1 遠端資料庫遷移
 npx wrangler@latest d1 migrations apply preview-history --remote
+
+# 部署至 Cloudflare Workers
 npx wrangler@latest deploy
 ```
 
-若 Workers Builds 不允許在 build 階段執行遠端 migration，請分開執行 migration 與部署，再 push 一個觸發 commit。
+> 完整部署與環境配置細節請參閱 [`CLOUDFLARE_DEPLOY.md`](./CLOUDFLARE_DEPLOY.md)。
 
-## 成本與限制
+---
 
-Durable Object 使用 WebSocket Hibernation API，以降低閒置連線的執行成本。80–100 人同房、低頻遊戲操作時，預期負載不高，但 Workers、Durable Objects 與 D1 的請求、執行時間、WebSocket 活躍時間與 D1 讀寫量仍受 Cloudflare 方案額度與計費規則約束。正式活動前請查看 Cloudflare Usage／Analytics 並設定用量通知；不要把「預估在免費額度內」當成費用保證。
+## 📄 版權宣告
 
-完整部署與活動操作請參考 [`CLOUDFLARE_DEPLOY.md`](./CLOUDFLARE_DEPLOY.md)。
-
-## 參考資料
-
-[1]: https://developers.cloudflare.com/workers/ "Cloudflare Workers 文件"
-[2]: https://developers.cloudflare.com/durable-objects/ "Cloudflare Durable Objects 文件"
-[3]: https://developers.cloudflare.com/d1/ "Cloudflare D1 文件"
-[4]: https://web.dev/learn/pwa/installation/ "web.dev：PWA 安裝指南"
+**© 2026 不「管」別人「工」蝦毀 都來「電」惦賭「醫」把 版權所有**

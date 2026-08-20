@@ -8,6 +8,13 @@ export const PHASE_FX = {
   ended:  {symbol:'★', title:'活動結束', subtitle:'最終排名已經出爐', kind:'ended'},
 };
 
+export const ATTACK_FX = {
+  quake:    {symbol:'╱╲', title:'地震來襲', subtitle:'震央爆發，範圍基地受到衝擊'},
+  missile:  {symbol:'➤', title:'飛彈鎖定', subtitle:'瞄準排行榜相鄰隊伍'},
+  typhoon:  {symbol:'◎', title:'颱風登陸', subtitle:'暴風圈橫掃棋盤，注意颱風眼'},
+  wildfire: {symbol:'▲', title:'野火延燒', subtitle:'火線沿隨機橫排快速蔓延'},
+};
+
 export function classifyEvent(message=''){
   const text=String(message);
   if(/發動|地震|飛彈|颱風|野火|攻擊|踢出/.test(text))return 'danger';

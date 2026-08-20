@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import worker, { GameRoom, teamActionError } from './src/worker.js';
+import { G } from './src/game-core.js';
 
 const state=(phase,paused=false)=>({phase,paused});
 
@@ -11,6 +12,15 @@ assert.equal(teamActionError(state('roll'),'sell'),'目前階段不能執行這�
 assert.equal(teamActionError(state('sell'),'buyBack'),null);
 assert.equal(teamActionError(state('shop'),'buff'),null);
 assert.equal(teamActionError(state('roll'),'attack'),null);
+
+const configurable=G.freshState('CONFIG',2);
+const configRoom=new GameRoom({storage:{}},{});
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'attacks.quake.cost',value:9}),undefined);
+assert.equal(configurable.settings.attacks.quake.cost,9);
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'attacks.unknown.cost',value:9}).error,'設定值超出允許範圍');
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfigs',{entries:[{path:'attacks.quake.cost',value:7},{path:'attacks.missile.cost',value:6}]}),undefined);
+assert.equal(configurable.settings.attacks.quake.cost,7);
+assert.equal(configurable.settings.attacks.missile.cost,6);
 
 let proxiedRequest;
 const response=await worker.fetch(new Request('https://example.test/ws/ROOM123',{headers:{'x-control-action':'endGame'}}),{

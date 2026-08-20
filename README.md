@@ -28,13 +28,15 @@
 
 棋盤空白區設有像素即時 HUD，集中顯示回合、階段、股市倍率與最近擲骰隊伍。階段切換會在所有連線裝置顯示短暫的全螢幕過場；遊戲事件依獎勵、損失、道具、攻擊與流程使用不同色彩提示。擲骰結果會先以像素骰子動畫揭曉，再讓隊伍標記沿棋盤逐格移動。若裝置啟用「減少動態效果」，網站會自動縮短或停用位移動畫。
 
+即時排行榜以總資產排序，並分欄顯示現金、依目前股市倍率計算的房產價值與諂媚點數。地震、飛彈、颱風與野火各有全螢幕像素特效、棋盤受影響範圍提示與規則說明；每隊每回合每一招最多成功發動一次，未成功的操作不扣點也不消耗次數。主持人可在設定中個別修改四招需要的諂媚點數，限制由 Durable Object 後端驗證，無法透過重整或同隊多裝置繞過。
+
 活動使用 Durable Object alarm 管理生命週期。每次建立活動、有效遊戲動作、主持人控制或隊伍連線狀態變更都會更新最後活動時間；若活動連續閒置 3 小時，即使所有分頁都已關閉，`GameRoom` 仍會由 alarm 提交 `idleTimeout` 系統事件、廣播結束狀態並寫入 D1。正式期限由 `IDLE_TIMEOUT_MS = 10800000` 控制；本地測試可覆寫成較短毫秒數。
 
 ## PWA 與快取更新
 
 網站包含 `manifest.webmanifest`、192／512 像素圖示與 Service Worker，可加入 iOS 或 Android 主畫面。iOS 請使用 Safari 開啟網站，按分享後選擇「加入主畫面」；Android 請使用 Chrome 開啟網站，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
 
-每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本會先在背景等待，前端偵測到更新時顯示提示，且進入遊戲後會延後提示與重新載入，避免活動途中被強制刷新。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.19.9`。
+每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本會先在背景等待，前端偵測到更新時顯示提示，且進入遊戲後會延後提示與重新載入，避免活動途中被強制刷新。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.20.1`。
 
 ## Cloudflare 資源
 

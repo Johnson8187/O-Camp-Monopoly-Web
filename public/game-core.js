@@ -82,7 +82,7 @@ function freshState(code, teamCount, names) {
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
       jail:0, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
-      buffs:{pass:0,reroll:0,shield:0}, discount:false, rolled:false, joined:false,
+      buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, joined:false,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], log:[],
     settings: clone(DEFAULTS), lastRoll:null,
@@ -103,8 +103,11 @@ function sellValue(s, team) {
   const lv = s.settings.levels[team.level-1];
   return Math.round(lv.sell * (s.settings.market[s.market]/100));
 }
+function propertyValue(s, t) {
+  return (t.sold || t.baseIdx === null) ? 0 : sellValue(s, t);
+}
 function netWorth(s, t) {
-  return t.cash + ((t.sold || t.baseIdx === null) ? 0 : sellValue(s, t));
+  return t.cash + propertyValue(s, t);
 }
 function ownerOf(s, idx) {
   return s.teams.find(t => t.baseIdx === idx && !t.sold) || null;
@@ -285,6 +288,8 @@ function tilesInSquare(col, row, half) {
 }
 function playAttack(s, ti, kind, rnd = Math.random) {
   const t = s.teams[ti], A = s.settings.attacks[kind];
+  if (!A) return {ok:false, msg:"找不到這個特殊操作"};
+  if (t.attackRounds?.[kind] === s.round) return {ok:false, msg:`「${A.name}」本回合已使用過`};
   const cost = costWithDiscount(s, t, A.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   t.pts -= cost; if (t.discount) t.discount = false;
@@ -331,6 +336,8 @@ function playAttack(s, ti, kind, rnd = Math.random) {
     else pay(s, target.id, "bank", A.repair);
     hit = target.baseIdx !== null ? [target.baseIdx] : [];
   }
+  t.attackRounds = {...(t.attackRounds || {}), [kind]:s.round};
+  s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, round:s.round};
   s.log.unshift(`${t.name} 發動「${A.name}」— ${msg}`);
   return {ok:true, hit};
 }
@@ -350,7 +357,7 @@ function nextPhase(s) {
 }
 
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,netWorth,ownerOf,assignBases,applyMove,landEffect,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,netWorth,ownerOf,assignBases,applyMove,landEffect,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount};
 })();
 
 

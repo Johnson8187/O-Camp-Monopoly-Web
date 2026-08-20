@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.19.9';
+const BUILD_VERSION = '2026.08.20.1';
 const CACHE_NAME = `preview-static-${BUILD_VERSION}`;
 const CORE = [
   './?v=' + BUILD_VERSION,

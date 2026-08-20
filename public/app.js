@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.12';
-import { G } from './game-core.js?v=2026.08.21.12';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.12';
+const BUILD_VERSION = '2026.08.21.13';
+import { G } from './game-core.js?v=2026.08.21.13';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.13';
+
 
 
 
@@ -90,7 +91,34 @@ function resetGameFx(){
   if(wrap)wrap.classList.remove('camera-active');
 }
 
+function activeFxStatus(){
+  if(!App.isFxRunning && !App.fxQueue?.length && !Object.keys(App.fx.positions || {}).length) return null;
+  let currentDesc = '';
+  if(App.fx.dice) currentDesc = `【${App.fx.dice.teamName || '隊伍'}】擲骰移動`;
+  else if(Object.keys(App.fx.positions || {}).length) currentDesc = '隊伍棋盤移動';
+  else if(App.fx.upgrade) currentDesc = `【${App.fx.upgrade.teamName || '隊伍'}】基地升級`;
+  else if(App.fx.attack) currentDesc = `【${App.fx.attack.teamName || '隊伍'}】${App.fx.attack.title || '特殊操作'}`;
+  else if(App.fx.aftershock) currentDesc = '特殊操作棋盤餘波';
+  else if(App.fx.assignment) currentDesc = '命運基地抽籤';
+  else if(App.fx.phase) currentDesc = `${App.fx.phase.title || '階段切換'}`;
+  else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
+  else if(App.fxQueue?.length) {
+    const next = App.fxQueue[0];
+    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    currentDesc = typeNames[next.type] || '特效動畫';
+  } else {
+    currentDesc = '特效動畫';
+  }
+  const pendingCount = App.fxQueue?.length || 0;
+  return {
+    desc: currentDesc,
+    count: pendingCount,
+    text: `請等待${currentDesc}完成${pendingCount > 0 ? `（還有 ${pendingCount} 個排隊中）` : ''}`
+  };
+}
+
 function enqueueFx(task){
+
   if(!task)return;
   App.fxQueue.push(task);
   if(!App.isFxRunning){
@@ -661,6 +689,10 @@ function hostPanel(){
   h+=`<div class="note share-note">請讓隊輔從首頁底部導覽進入「隊輔」，隊員與觀眾直接留在首頁觀戰。</div>`;
   h+=`<div class="connection-row"><span class="role-pill">主持人控制權</span><span class="status ${App.connected?'':'off'}"><i class="status-dot"></i>${App.connected?'已連線':'未連線'}</span></div>`;
   h+='<div class="note">隊輔輸入共用密碼後即可直接選隊。若有人選錯隊，可在下方將該隊踢出後重新加入。</div>';
+  const fxStat=activeFxStatus();
+  if(fxStat){
+    h+=`<div class="note" style="border-left:4px solid #f2c12e;background:#fff8e6;color:#8a5d00;margin:10px 0;">⏳ <strong>排隊播放中：</strong>${esc(fxStat.text)}</div>`;
+  }
   h+=`<div class="sub">活動流程</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}<button class="btn sm dark" id="bEnd">結束並保存紀錄</button></div>`;
   h+='<div class="sub">隊伍名稱</div><textarea id="teamNames">'+esc(S.teams.map(t=>t.name).join('\n'))+'</textarea><button class="btn sm green" id="saveNames">儲存隊伍名稱</button>';
   h+='<div class="sub">隊輔連線</div><div class="team-connection-list">'+S.teams.map((t,i)=>`<div class="team-connection"><span class="sw" style="background:${t.color}">${i+1}</span><span>${esc(t.name)}<small>${t.joined?'已連線':'未連線'}</small></span>${t.joined?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div>`).join('')+'</div>'; h+='<div class="sub">主持人調整</div>'; h+=S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">現金 ${G.money(t.cash)}／點數 ${t.pts}</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">調整</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">調整</button></div></div>`).join('');
@@ -730,7 +762,22 @@ function bindGame(){
     document.querySelectorAll('.atk').forEach(b=>b.onclick=()=>{const kind=b.dataset.k,a=S.settings.attacks[kind],cost=G.costWithDiscount(S,me,a.cost);ask(`發動「${a.name}」？`,`${esc(attackDescription(S,kind,a))}<br>將消耗 ${cost} 點諂媚點數，本回合不能再次發動同一招。`,()=>send('attack',{kind}));});document.querySelectorAll('.gam').forEach(b=>b.onclick=()=>send('gamble',{index:Number(b.dataset.i)}));document.querySelectorAll('.buf').forEach(b=>b.onclick=()=>send('buff',{kind:b.dataset.k}));
   }
   if(App.role==='host'){
-    bind('bAssign',()=>ask('重新抽籤？','會重新分配所有隊伍的基地',()=>send('assignBases')));bind('bStart',()=>ask('開始遊戲？','開始後隊伍可以依流程進行操作',()=>send('startGame')));bind('bNext',()=>send('nextPhase'));bind('bPause',()=>ask('暫停活動？','暫停後隊輔暫時不能操作，但觀眾仍可觀看目前狀態。',()=>send('pauseGame')));bind('bResume',()=>send('resumeGame'));bind('bEnd',()=>ask('結束活動？','結束後會保存到 D1 歷史紀錄，活動不再出現在公開入口。',()=>send('endGame')));document.querySelectorAll('.kick').forEach(b=>b.onclick=()=>ask('踢出隊輔？','會關閉該隊目前的 WebSocket 連線，隊伍狀態回到未連線。',()=>send('kickTeam',{teamId:Number(b.dataset.i)})));bind('bCfg',()=>{App.cfg=!App.cfg;render(true);});
+    bind('bAssign',()=>ask('重新抽籤？','會重新分配所有隊伍的基地',()=>send('assignBases')));
+    bind('bStart',()=>ask('開始遊戲？','開始後隊伍可以依流程進行操作',()=>send('startGame')));
+    bind('bNext',()=>{
+      const fx=activeFxStatus();
+      if(fx){
+        toast(fx.text, true);
+        return;
+      }
+      send('nextPhase');
+    });
+    bind('bPause',()=>ask('暫停活動？','暫停後隊輔暫時不能操作，但觀眾仍可觀看目前狀態。',()=>send('pauseGame')));
+    bind('bResume',()=>send('resumeGame'));
+    bind('bEnd',()=>ask('結束活動？','結束後會保存到 D1 歷史紀錄，活動不再出現在公開入口。',()=>send('endGame')));
+    document.querySelectorAll('.kick').forEach(b=>b.onclick=()=>ask('踢出隊輔？','會關閉該隊目前的 WebSocket 連線，隊伍狀態回到未連線。',()=>send('kickTeam',{teamId:Number(b.dataset.i)})));
+    bind('bCfg',()=>{App.cfg=!App.cfg;render(true);});
+
     bind('saveNames',()=>{const names=$('teamNames').value.split(/\r?\n/).map(x=>x.trim());send('renameTeams',{names});});bind('showHistory',loadHistory);
     document.querySelectorAll('.mk').forEach(b=>b.onclick=()=>send('setMarket',{kind:b.dataset.k}));document.querySelectorAll('.unl').forEach(b=>b.onclick=()=>send('unlock',{index:Number(b.dataset.i)}));
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.cash[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustCash',{teamId:Number(b.dataset.i),amount:v});});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.pts[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustPts',{teamId:Number(b.dataset.i),amount:v});});

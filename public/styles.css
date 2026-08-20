@@ -162,7 +162,9 @@ code{background:#efe9d4;padding:2px 5px;font-size:11px;word-break:break-all}
 .pins i.moving{animation:tokenHop3D .44s cubic-bezier(.2,.8,.25,1) infinite both;z-index:25!important}
 .pins i.more{background:#14110f;color:#f2c12e;border-color:#f2c12e}
 .moving-token{position:absolute;z-index:35;left:0;top:0;width:23px;height:23px;pointer-events:none;transform:translate3d(var(--token-x),var(--token-y),46px);transition:transform .58s cubic-bezier(.2,.72,.18,1);will-change:transform;transform-style:preserve-3d}
+.moving-token.no-transition{transition:none!important}
 .moving-token span{width:23px;height:23px;display:grid;place-items:center;border:3px solid #14110f;border-radius:5px;background:var(--token-color);color:var(--token-fg);box-shadow:0 7px 0 #1a2340,0 13px 12px rgba(20,17,15,.32);font:10px/1 'Press Start 2P',monospace;animation:movingTokenStride .42s cubic-bezier(.36,.05,.24,1) infinite;will-change:transform}
+
 .moving-token.warp-out span{animation:wormholeWarpOut .38s cubic-bezier(.55,.055,.675,.19) forwards!important}
 .moving-token.warp-in span{animation:wormholeWarpIn .42s cubic-bezier(.175,.885,.32,1.275) forwards!important}
 @keyframes wormholeWarpOut{0%{transform:scale(1) rotateZ(0deg);opacity:1;filter:drop-shadow(0 0 0 #c084fc)}60%{transform:scale(1.35) rotateZ(180deg);opacity:.9;filter:drop-shadow(0 0 16px #ff007f)}100%{transform:scale(0) rotateZ(540deg);opacity:0;filter:drop-shadow(0 0 30px #c084fc)}}

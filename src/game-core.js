@@ -136,7 +136,8 @@ function applyMove(s, ti, steps, rnd = Math.random) {
   const notes = [];
   if (t.jail > 0) {
     t.jail -= 1; t.rolled = true;
-    s.lastRoll = {team:ti, n:steps, note:"在監獄中，本回合不移動"};
+    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:steps, from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
+
     s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
     return s;
   }
@@ -166,7 +167,8 @@ function applyMove(s, ti, steps, rnd = Math.random) {
 
   if (usedPass) { t.buffs.pass -= 1; notes.push("通行證生效，免付費用"); }
   t.rolled = true;
-  s.lastRoll = {team:ti, n:steps, note:notes.join("；") || "平安無事"};
+  s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:steps, from, landPos:dest, targetPos:t.pos, note:notes.join("；") || "平安無事"};
+
   s.log.unshift(`${t.name} 骰出 ${steps} → ${TILE[TRACK[t.pos][0]].n}${notes.length ? "：" + notes.join("；") : ""}`);
   return s;
 }

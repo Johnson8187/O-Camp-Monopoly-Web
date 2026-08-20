@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.18';
-import { G } from './game-core.js?v=2026.08.21.18';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.18';
+const BUILD_VERSION = '2026.08.21.19';
+import { G } from './game-core.js?v=2026.08.21.19';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.19';
+
 
 
 
@@ -435,7 +436,7 @@ function executeRollFx(task,done){
   for(let i=1;i<=walkSteps;i++){
     walkPath.push((beforePos+i)%G.N);
   }
-  const landPos=walkPath.length?walkPath[walkPath.length-1]:beforePos;
+  const landPos=task.landPos ?? (walkPath.length?walkPath[walkPath.length-1]:beforePos);
   const isTeleport=targetPos!==landPos;
 
   if(reducedMotion||(!walkPath.length&&!isTeleport)){
@@ -477,15 +478,18 @@ function executeRollFx(task,done){
           const token=document.querySelector(`[data-moving-team="${teamId}"]`);
           const isWorm=G.TRACK[landPos]?.[0]==='worm';
           App.fx.stepText=isWorm?'🌀 蟲洞吸入…':'⚡ 傳送中…';
-          if(token)token.classList.add('warp-out');
+          if(token){
+            token.classList.remove('warp-in','no-transition');
+            token.classList.add('warp-out');
+          }
           SoundFX.playStepHop();
 
           fxTimeout('warpJump',()=>{
             App.fx.positions[teamId]=targetPos;
             if(token){
-              token.style.transition='none';
+              token.classList.add('no-transition');
               token.classList.remove('warp-out');
-              token.classList.add('warp-in');
+              void token.offsetWidth;
             }
             App.fx.camera={teamId,from:landPos,pos:targetPos};
             App.highlight=[targetPos];
@@ -494,9 +498,11 @@ function executeRollFx(task,done){
             activateMovementCamera();
             finishMovementDom(targetPos);
 
-            setTimeout(()=>{
-              if(token)token.style.transition='';
-            },50);
+            if(token){
+              void token.offsetWidth;
+              token.classList.remove('no-transition');
+              token.classList.add('warp-in');
+            }
 
             fxTimeout('rollFinish',()=>{
               finishRollTask(teamId,done);
@@ -512,6 +518,7 @@ function executeRollFx(task,done){
       }
     }
   };
+
 
   fxTimeout('rollStart',()=>{
     App.fx.camera={teamId,from:beforePos,pos:beforePos};
@@ -552,21 +559,30 @@ function processGameFx(previous,next){
   }
 
   // 5. Rolls & Movements (captures both latest roll and any simultaneous movers)
-  const rollChanged=next.lastRoll&&next.lastRoll.seq!==previous.lastRoll?.seq;
-  const lastRollTeam=rollChanged?Number(next.lastRoll.team):null;
+  const rollChanged = next.lastRoll && (
+    next.lastRoll.seq !== previous.lastRoll?.seq ||
+    next.lastRoll.team !== previous.lastRoll?.team ||
+    next.lastRoll.n !== previous.lastRoll?.n
+  );
+  const lastRollTeam = rollChanged ? Number(next.lastRoll.team) : null;
   if(rollChanged){
-    const teamId=lastRollTeam,team=next.teams?.[teamId],before=previous.teams?.[teamId];
-    if(team&&before){
-      enqueueFx({type:'roll',teamId,team,beforePos:before.pos,targetPos:team.pos,rollVal:next.lastRoll.n});
+    const teamId = lastRollTeam, team = next.teams?.[teamId], before = previous.teams?.[teamId];
+    if(team && before){
+      const beforePos = next.lastRoll.from ?? before.pos;
+      const rollVal = Number(next.lastRoll.n) || 1;
+      const landPos = next.lastRoll.landPos ?? ((beforePos + rollVal) % G.N);
+      const targetPos = next.lastRoll.targetPos ?? team.pos;
+      enqueueFx({type:'roll',teamId,team,beforePos,landPos,targetPos,rollVal});
     }
   }
   (next.teams||[]).forEach((team,i)=>{
     const before=previous.teams?.[i];
-    if(before&&before.pos!==team.pos&&team.id!==lastRollTeam){
+    if(before && before.pos!==team.pos && team.id!==lastRollTeam){
       const rollVal=(team.pos-before.pos+G.N)%G.N||1;
-      enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,targetPos:team.pos,rollVal});
+      enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,landPos:team.pos,targetPos:team.pos,rollVal});
     }
   });
+
 
 
   // 6. Announcements & Event logs in FIFO order
@@ -844,7 +860,46 @@ function teamControls(){
   }
   if(S.phase==='shop'){ h+=`<div class="note">目前是商店階段。</div>${S.settings.gambles.map((g,i)=>`<button class="btn sm purple gam" data-i="${i}">${g.name}　${G.costWithDiscount(S,me,g.cost)} 點</button>`).join('')}${Object.entries(S.settings.buffs).map(([k,b])=>`<button class="btn sm blue buf" data-k="${k}">${b.name}　${G.costWithDiscount(S,me,b.cost)} 點</button>`).join('')}`; }
   if(S.phase==='roll'){ h+=`<div class="seg">特殊操作・每招每回合限一次</div><div class="attack-list">${Object.entries(S.settings.attacks).map(([k,a])=>{const used=Boolean(S.attackUsage?.[`${Number(S.round)}:${me.id}:${k}`])||Number(me.attackRounds?.[k])===Number(S.round),cost=G.costWithDiscount(S,me,a.cost),lack=me.pts<cost;return `<div class="attack-action"><button class="btn sm dark atk ${used?'used':lack?'lack':''}" data-k="${k}" ${used||lack?'disabled':''}><span>${a.name}</span><b>${used?'本回合已使用':lack?`還差 ${cost-me.pts} 點`:cost+' 點'}</b></button><div class="attack-help">${esc(attackDescription(S,k,a))}</div></div>`;}).join('')}</div><button class="btn sm ink" id="bBattle">使用 BATTLE（剩 ${me.battles} 次）</button>`; }
-  if(S.phase==='sell'){h+=`<div class="seg">基地操作</div><div class="small-grid"><button class="btn sm green" id="bUp">升級基地</button><button class="btn sm gold" id="bSell">賣出基地</button><button class="btn sm blue" id="bBuyBack">買回基地</button></div>`;}
+  if(S.phase==='sell'){
+    const maxLevel = S.settings.levels.length;
+    let upLabel = '升級基地', upDisabled = false;
+    if (me.sold || me.baseIdx === null) {
+      upLabel = '升級基地（已賣出）';
+      upDisabled = true;
+    } else if (me.level >= maxLevel) {
+      upLabel = `升級基地（已滿級 LV${me.level}）`;
+      upDisabled = true;
+    } else {
+      const upCost = S.settings.levels[me.level]?.up || 0;
+      upLabel = `升級基地（消耗 ${upCost} 點）`;
+      if (me.pts < upCost) upDisabled = true;
+    }
+
+    let sellLabel = '賣出基地', sellDisabled = false;
+    if (me.sold || me.baseIdx === null) {
+      sellLabel = '賣出基地（未持有）';
+      sellDisabled = true;
+    } else {
+      const sellVal = G.sellValue(S, me);
+      sellLabel = `賣出基地（+${G.money(sellVal)}）`;
+    }
+
+    let buyBackLabel = '買回基地', buyBackDisabled = false;
+    if (!me.sold) {
+      buyBackLabel = '買回基地（已持有）';
+      buyBackDisabled = true;
+    } else if (S.round <= me.soldRound) {
+      buyBackLabel = '買回基地（下回合開放）';
+      buyBackDisabled = true;
+    } else {
+      const buyCost = G.sellValue(S, me);
+      buyBackLabel = `買回基地（${G.money(buyCost)}）`;
+      if (me.cash < buyCost) buyBackDisabled = true;
+    }
+
+    h+=`<div class="seg">基地操作（目前：${me.sold ? '已賣出（無基地）' : `LV${me.level} ${S.settings.levels[me.level-1]?.name || '營地'}`}）</div><div class="small-grid"><button class="btn sm green" id="bUp" ${upDisabled?'disabled':''}>${esc(upLabel)}</button><button class="btn sm gold" id="bSell" ${sellDisabled?'disabled':''}>${esc(sellLabel)}</button><button class="btn sm blue" id="bBuyBack" ${buyBackDisabled?'disabled':''}>${esc(buyBackLabel)}</button></div>`;
+  }
+
   if(S.phase==='roll'){h+=`<div class="seg">持有道具</div><button class="btn sm outline" id="bReroll" ${me.buffs.reroll<=0||!me.rolled?'disabled':''}>重骰卡（${me.buffs.reroll}）</button>`;}
   h+='</div></div>';return h;
 }

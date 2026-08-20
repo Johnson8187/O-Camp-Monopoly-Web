@@ -136,10 +136,10 @@ function applyMove(s, ti, steps, rnd = Math.random) {
   const notes = [];
   if (t.jail > 0) {
     t.jail -= 1; t.rolled = true;
-    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:steps, from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
-
+    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
     s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
     return s;
+
   }
   const from = t.pos;
   let usedPass = false;
@@ -355,13 +355,26 @@ const PHASES = ["market","sell","shop","roll"];
 function nextPhase(s) {
   const i = PHASES.indexOf(s.phase);
   if (i < 0) return s;
-  if (i < PHASES.length-1) { s.phase = PHASES[i+1]; return s; }
+  if (i < PHASES.length-1) {
+    s.phase = PHASES[i+1];
+    if (s.phase === "roll") {
+      s.teams.forEach(t => {
+        if (t.jail > 0) {
+          t.jail -= 1;
+          t.rolled = true;
+          s.log.unshift(`${t.name} 在監獄中，跳過本回合行動`);
+        }
+      });
+    }
+    return s;
+  }
   const d = s.disasters, th = s.settings.inflateThreshold;
   s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
   s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
   s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; });
   s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
   return s;
+
 }
 
 

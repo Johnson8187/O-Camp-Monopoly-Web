@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.4';
-import { G } from './game-core.js?v=2026.08.21.4';
-import { PHASE_FX, ATTACK_FX, SoundFX, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.4';
+const BUILD_VERSION = '2026.08.21.5';
+import { G } from './game-core.js?v=2026.08.21.5';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.5';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -9,9 +9,10 @@ const App = {
   highlight: [], cfg: false, history: [], lobbyTimer: null,
   access: {host: '', team: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
-  sound: SoundFX.isSoundEnabled(), radarFocus: null, _radarTimer: null,
+  sound: isSoundEnabled(), radarFocus: null, _radarTimer: null,
   fx: {phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
 };
+
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

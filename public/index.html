@@ -13,11 +13,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="./manifest.webmanifest?v=2026.08.21.4">
-  <link rel="icon" href="./icon.svg?v=2026.08.21.4" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./icon-192.png?v=2026.08.21.4">
+  <link rel="manifest" href="./manifest.webmanifest?v=2026.08.21.5">
+  <link rel="icon" href="./icon.svg?v=2026.08.21.5" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-192.png?v=2026.08.21.5">
   <title>人生大富翁 — 即時觀戰</title>
-  <link rel="stylesheet" href="./styles.css?v=2026.08.21.4">
+  <link rel="stylesheet" href="./styles.css?v=2026.08.21.5">
 </head>
 <body>
   <div id="wrap"><div id="app"></div></div>
@@ -60,7 +60,17 @@
       window.__appBooted = false;
       var fallback = document.getElementById('bootFallback');
       var app = document.getElementById('app');
-      function showFallback(){ if(fallback) fallback.hidden = false; }
+      function showFallback(err){
+        if(fallback){
+          fallback.hidden = false;
+          if(err){
+            var p = fallback.querySelector('p');
+            if(p) p.textContent = '載入錯誤資訊：' + (err.stack || err.message || String(err));
+          }
+        }
+      }
+      window.addEventListener('error', function(e){ showFallback(e.error || e.message); });
+      window.addEventListener('unhandledrejection', function(e){ showFallback(e.reason); });
       function recover(){
         var jobs = [];
         if('serviceWorker' in navigator){ jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.map(function(r){ return r.unregister(); })); })); }
@@ -72,6 +82,7 @@
       window.setTimeout(function(){ if(!window.__appBooted && app && !app.children.length) showFallback(); }, 4500);
     }());
   </script>
-  <script type="module" src="./app.js?v=2026.08.21.4"></script>
+  <script type="module" src="./app.js?v=2026.08.21.5"></script>
+
 </body>
 </html>

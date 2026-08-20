@@ -66,7 +66,10 @@ function getAudioContext() {
 }
 
 export const SoundFX = {
+  isSoundEnabled,
+  toggleSound,
   playStepHop() {
+
     if (!soundEnabled) return;
     const ctx = getAudioContext(); if (!ctx) return;
     try {

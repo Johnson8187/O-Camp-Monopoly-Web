@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.22';
-import { G } from './game-core.js?v=2026.08.21.22';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.22';
+const BUILD_VERSION = '2026.08.21.23';
+import { G } from './game-core.js?v=2026.08.21.23';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.23';
+
 
 
 
@@ -1061,7 +1062,11 @@ function hostPanel(){
   if(fxStat){
     h+=`<div class="note" style="border-left:4px solid #f2c12e;background:#fff8e6;color:#8a5d00;margin:10px 0;">⏳ <strong>排隊播放中：</strong>${esc(fxStat.text)}</div>`;
   }
-  h+=`<div class="sub">活動流程控制</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','settle','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${!['setup','ended'].includes(S.phase)?(S.phase==='settle'?'<button class="btn sm purple" id="bResume">返回遊戲流程</button>':'<button class="btn sm gold" id="bSettle">🏆 進行最終結算</button>'):''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}</div>`;
+  h+=`<div class="sub">活動流程控制</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','settle','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}</div>`;
+  if(S.phase!=='ended'){
+    h+=`<div class="sub">🏆 最終結算與頒獎典禮</div><div class="note">活動結束時點擊此處，將全場廣播並開啟榮譽頒獎典禮，公布 🥇🥈🥉 3D 立體頒獎台與全場最終排行榜。</div><div class="row" style="margin-top:8px;">${S.phase==='settle'?'<button class="btn sm purple" id="bResume" style="font-weight:bold;">↩️ 返回遊戲流程</button>':'<button class="btn sm gold" id="bSettle" style="font-size:12px;font-weight:bold;padding:9px 16px;">🏆 進行最終結算與頒獎</button>'}</div>`;
+  }
+
   h+='<div class="sub">隊伍名稱</div><textarea id="teamNames">'+esc(S.teams.map(t=>t.name).join('\n'))+'</textarea><button class="btn sm green" id="saveNames">儲存隊伍名稱</button>';
   h+='<div class="sub">隊輔連線</div><div class="team-connection-list">'+S.teams.map((t,i)=>`<div class="team-connection"><span class="sw" style="background:${t.color}">${i+1}</span><span>${esc(t.name)}<small>${t.joined?'已連線':'未連線'}</small></span>${t.joined?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div>`).join('')+'</div>'; h+='<div class="sub">主持人調整</div>'; h+=S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">現金 ${G.money(t.cash)}／點數 ${t.pts}</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">調整</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">調整</button></div></div>`).join('');
   h+='<div class="sub">股市與關卡</div><div class="row wrap mkrow">'+S.settings.marketOrder.map(k=>`<button class="tg mk" data-k="${k}">${S.settings.marketNames[k]}<span class="mx">×${S.settings.market[k]/100}</span></button>`).join('')+'</div><div class="row wrap">'+G.STAGE_IDX.map(i=>`<button class="btn xs purple unl" data-i="${i}">解封第 ${i+1} 格</button>`).join('')+'</div>';

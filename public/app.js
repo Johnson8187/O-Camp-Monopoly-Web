@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.20.2';
-import { G } from './game-core.js?v=2026.08.20.2';
-import { PHASE_FX, ATTACK_FX, classifyEvent, movementPath } from './game-fx.js?v=2026.08.20.2';
+const BUILD_VERSION = '2026.08.21.1';
+import { G } from './game-core.js?v=2026.08.21.1';
+import { PHASE_FX, ATTACK_FX, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.1';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -9,7 +9,7 @@ const App = {
   highlight: [], cfg: false, history: [], lobbyTimer: null,
   access: {host: '', team: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
-  fx: {phase:null,event:null,attack:null,dice:null,positions:{},timers:{}},
+  fx: {phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{}},
 };
 
 const $ = (id) => document.getElementById(id);
@@ -70,14 +70,15 @@ function ask(title, detail, onYes){
 const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 function fxTimeout(key,fn,delay){clearTimeout(App.fx.timers[key]);App.fx.timers[key]=setTimeout(()=>{delete App.fx.timers[key];fn();},delay);}
 function renderFx(){if(App.screen==='game')render(true);}
-function resetGameFx(){Object.values(App.fx.timers).forEach(clearTimeout);App.fx={phase:null,event:null,attack:null,dice:null,positions:{},timers:{}};App.highlight=[];}
+function resetGameFx(){Object.values(App.fx.timers).forEach(clearTimeout);App.fx={phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{}};App.highlight=[];}
 function showPhaseFx(data){App.fx.phase=data;fxTimeout('phase',()=>{App.fx.phase=null;renderFx();},reducedMotion?700:1900);}
 function showEventFx(message){App.fx.event={message:String(message).slice(0,180),kind:classifyEvent(message)};fxTimeout('event',()=>{App.fx.event=null;renderFx();},reducedMotion?1500:3600);}
 function showAttackFx(attack,message,next){
   const preset=ATTACK_FX[attack?.kind];if(!preset)return false;
   App.fx.event=null;App.fx.attack={...preset,kind:attack.kind,message:String(message||'').slice(0,180),teamName:next.teams?.[attack.team]?.name||''};
-  App.highlight=Array.isArray(attack.hit)?attack.hit:[];
-  fxTimeout('attack',()=>{App.fx.attack=null;App.highlight=[];renderFx();},reducedMotion?1200:4600);
+  App.fx.aftershock={kind:attack.kind,hit:Array.isArray(attack.hit)?attack.hit:[],message:String(message||'').slice(0,180)};
+  fxTimeout('attack',()=>{App.fx.attack=null;renderFx();},reducedMotion?1200:4600);
+  fxTimeout('aftershock',()=>{App.fx.aftershock=null;renderFx();},reducedMotion?3200:15000);
   return true;
 }
 function startRollFx(previous,next){
@@ -85,18 +86,18 @@ function startRollFx(previous,next){
   if(!roll||!team||!before)return;
   App.fx.dice={teamId,teamName:team.name,value:roll.n,rolling:!reducedMotion};
   if(reducedMotion){fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},1200);return;}
-  fxTimeout('diceReveal',()=>{if(App.fx.dice)App.fx.dice.rolling=false;renderFx();},650);
+  fxTimeout('diceReveal',()=>{if(App.fx.dice)App.fx.dice.rolling=false;renderFx();},1050);
   const path=movementPath(before.pos,roll.n,team.pos,G.N);
   if(path.length){
     App.fx.positions[teamId]=before.pos;let step=0;
     const move=()=>{
-      App.fx.positions[teamId]=path[step];App.highlight=[path[step]];step+=1;renderFx();
-      if(step<path.length)fxTimeout('move',move,120);
-      else fxTimeout('move',()=>{delete App.fx.positions[teamId];App.highlight=[];renderFx();},260);
+      const from=App.fx.positions[teamId],pos=path[step];App.fx.positions[teamId]=pos;App.fx.camera={teamId,from,pos};App.highlight=[pos];step+=1;renderFx();
+      if(step<path.length)fxTimeout('move',move,680);
+      else fxTimeout('move',()=>{delete App.fx.positions[teamId];App.fx.camera=null;App.highlight=[];renderFx();},900);
     };
-    fxTimeout('move',move,680);
+    fxTimeout('move',move,1450);
   }
-  fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},2200);
+  fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},2300);
 }
 function processGameFx(previous,next){
   if(!previous||!next)return;
@@ -158,6 +159,10 @@ function sprite(type,size){
   for(let y=0;y<g.length;y++) for(let x=0;x<g[y].length;x++){ const c=pal[g[y][x]]; if(c) out+=`<rect x="${x}" y="${y}" width="1.05" height="1.05" fill="${c}"/>`; }
   return out+'</svg>';
 }
+const diceGlyphs=['⚀','⚁','⚂','⚃','⚄','⚅'];
+function diceCubeHTML(value=1){const face=diceGlyphs[Math.max(0,Math.min(5,Number(value||1)-1))];return `<div class="dice-cube" data-value="${Number(value)||1}"><i class="face front">${face}</i><i class="face back">⚅</i><i class="face right">⚂</i><i class="face left">⚃</i><i class="face top">⚄</i><i class="face bottom">⚁</i></div>`;}
+function baseBuildingHTML(owner){const level=Math.max(1,Math.min(3,Number(owner.level)||1)),names=['營地','商店','豪華賭場'];return `<div class="base-building lv${level}" style="--owner:${owner.color}" aria-label="${names[level-1]}"><i class="base-roof"></i><i class="base-body"><b></b><b></b><b></b></i><em>LV${level}</em></div>`;}
+function boardAftermathHTML(kind){if(!kind)return '';if(kind==='quake')return `<div class="board-aftermath board-quake">${Array.from({length:5},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;if(kind==='missile')return `<div class="board-aftermath board-missile"><i></i><i></i><i></i><b>LOCK</b></div>`;if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;}
 function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':'home'; }
 function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':'home'; history.pushState({},'',path); render(true); }
 function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
@@ -251,11 +256,11 @@ function boardHUD(){
   return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>股市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>最近行動</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
 }
 function boardHTML(){
-  const S=App.state, cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||''; let out=`<div class="bwrap ${App.zoom?'zoomed':'fit'}" id="bwrap"><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
-  G.TRACK.forEach((t,i)=>{ const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>(App.fx.positions[x.id]??x.pos)===i),hot=App.highlight.includes(i),locked=kind==='stage'&&!S.unlocked.includes(i); out+=`<div class="tile ${hot?(attackKind?`fx-hit fx-hit-${attackKind}`:'fx-step'):''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'}">${sprite(kind,22)}<div class="tl" style="color:${T.fg}">${T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">${own.id+1}</div>`:''}${here.length?`<div class="pins">${here.slice(0,4).map(h=>`<i class="${App.fx.positions[h.id]!==undefined?'moving':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>4?`<i class="more">+${here.length-4}</i>`:''}</div>`:''}</div>`; });
-  return out+boardHUD()+'</div></div><button class="btn sm gold" id="bZoom">'+(App.zoom?'符合螢幕':'放大檢視')+'</button>';
+  const S=App.state,cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||App.fx.aftershock?.kind||'',attackHit=App.fx.aftershock?.hit||[],cameraPos=App.fx.camera?.pos;let out=`<div class="bwrap ${App.zoom?'zoomed':'fit'} ${App.fx.camera?'camera-active':''}" id="bwrap"><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
+  G.TRACK.forEach((t,i)=>{const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>(App.fx.positions[x.id]??x.pos)===i),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),hot=attackHot||stepHot,locked=kind==='stage'&&!S.unlocked.includes(i);out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">${own.id+1}</div>`:''}${here.length?`<div class="pins">${here.slice(0,4).map(h=>`<i class="${App.fx.positions[h.id]!==undefined?'moving':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>4?`<i class="more">+${here.length-4}</i>`:''}</div>`:''}</div>`;});
+  return out+boardAftermathHTML(attackKind)+boardHUD()+'</div></div><button class="btn sm gold" id="bZoom">'+(App.zoom?'符合螢幕':'放大檢視')+'</button>';
 }
-function fitBoard(){ if(App.screen!=='game') return; const wrap=$('bwrap'),bd=$('board'); if(!wrap||!bd) return; if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;} const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);bd.style.transformOrigin='top left';bd.style.transform=`scale(${scale})`;wrap.style.height=`${bd.offsetHeight*scale}px`;wrap.classList.toggle('compact-board',scale<.78); }
+function fitBoard(){if(App.screen!=='game')return;const wrap=$('bwrap'),bd=$('board');if(!wrap||!bd)return;if(App.fx.camera){const height=Math.min(570,Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18)),scale=window.innerWidth<600?1.28:window.innerWidth<1000?1.48:1.7,point=pos=>{const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+23,y:tile[2]*50+23};},from=point(App.fx.camera.from),to=point(App.fx.camera.pos),centerX=wrap.clientWidth*.5,centerY=height*.57,screenY=p=>p.y*scale*.72;wrap.style.height=`${height}px`;wrap.classList.remove('compact-board');bd.style.transform='';bd.style.transformOrigin='0 0';bd.style.setProperty('--camera-scale',scale);bd.style.setProperty('--cam-from-x',`${centerX-from.x*scale}px`);bd.style.setProperty('--cam-from-y',`${centerY-screenY(from)}px`);bd.style.setProperty('--cam-to-x',`${centerX-to.x*scale}px`);bd.style.setProperty('--cam-to-y',`${centerY-screenY(to)}px`);return;}if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);bd.style.transformOrigin='top left';bd.style.transform=`scale(${scale})`;wrap.style.height=`${bd.offsetHeight*scale}px`;wrap.classList.toggle('compact-board',scale<.78);}
 function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：抽取一張命運卡。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:'銀行密道：取得銀行池的一部分。',worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:'交易所：查看市場資訊。',stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}`:''}`; }
 function rankingHTML(){ const S=App.state,money=n=>`${Number(n||0).toLocaleString()}元`; return `<div class="card ranking-card"><div class="ch">★ 即時排行榜 · 依總資產排序</div><div class="cb ranking-list"><div class="rank-legend">現金 <i>/</i> 房產 <i>/</i> 諂媚</div>${[...S.teams].sort((a,b)=>G.netWorth(S,b)-G.netWorth(S,a)).map((t,i)=>`<div class="rk"><div class="rank-head"><div class="rn">${i+1}</div><div class="sw" style="background:${t.color}"></div><div class="rname">${esc(t.name)}<div class="dim">${t.joined?'已連線':'尚未連線'}</div></div></div><div class="rank-values"><b>${money(t.cash)}</b><i>/</i><b>${money(G.propertyValue(S,t))}</b><i>/</i><b>${Number(t.pts||0).toLocaleString()}點</b></div></div>`).join('')}</div></div>`; }
 function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</div><div class="cb">${(App.state.log||[]).slice(0,80).map(x=>`<div class="lg">${esc(x)}</div>`).join('')||'<div class="note">尚無紀錄</div>'}</div></div>`; }
@@ -268,7 +273,7 @@ function teamControls(){
   if(S.paused)return `<div class="viewer-note">主持人已暫停活動，恢復後才能繼續操作。</div>`;
   let h=`<div class="card"><div class="ch">★ ${esc(me.name)} 的操作</div><div class="cb">`;
   if(S.phase==='market'){h+='<div class="note">正在公布本回合股市，請等待主持人進入下一階段。</div>';}
-  if(S.phase==='roll'){ const mine=App.fx.dice?.teamId===me.id,shown=mine&&App.fx.dice.rolling?'?':(S.lastRoll?.team===me.id?S.lastRoll.n:'?');h+=`<div class="dice ${mine&&App.fx.dice.rolling?'rolling':''}" id="dice">${shown}</div><button class="btn green" id="bRoll" ${me.rolled||App.busy?'disabled':''}>${me.rolled?'本回合已骰過':App.busy?'處理中…':'擲骰子'}</button>`; }
+  if(S.phase==='roll'){const mine=App.fx.dice?.teamId===me.id,lastMine=S.lastRoll?.team===me.id?S.lastRoll.n:1;if(me.rolled||App.busy)h+=`<div class="dice-result-panel ${mine&&App.fx.dice?.rolling?'rolling':''}">${diceCubeHTML(mine?App.fx.dice.value:lastMine)}<b>${App.busy?'骰子飛行中…':`本回合擲出 ${lastMine} 點`}</b></div>`;else h+=`<div class="dice-throw-pad" id="diceThrow" role="button" tabindex="0" aria-label="向上滑動擲骰子"><div class="throw-lane"><span>FLICK TO ROLL</span>${diceCubeHTML(1)}<i class="throw-arrow">↑</i></div><strong>按住骰子向上滑動，放手擲出</strong><small>滑得越有氣勢，動畫飛得越高；點數仍由伺服器公平決定</small></div>`;}
   if(S.phase==='shop'){ h+=`<div class="note">目前是商店階段。</div>${S.settings.gambles.map((g,i)=>`<button class="btn sm purple gam" data-i="${i}">${g.name}　${G.costWithDiscount(S,me,g.cost)} 點</button>`).join('')}${Object.entries(S.settings.buffs).map(([k,b])=>`<button class="btn sm blue buf" data-k="${k}">${b.name}　${G.costWithDiscount(S,me,b.cost)} 點</button>`).join('')}`; }
   if(S.phase==='roll'){ h+=`<div class="seg">特殊操作・每招每回合限一次</div><div class="attack-list">${Object.entries(S.settings.attacks).map(([k,a])=>{const used=Boolean(S.attackUsage?.[`${Number(S.round)}:${me.id}:${k}`])||Number(me.attackRounds?.[k])===Number(S.round),cost=G.costWithDiscount(S,me,a.cost),lack=me.pts<cost;return `<div class="attack-action"><button class="btn sm dark atk ${used?'used':lack?'lack':''}" data-k="${k}" ${used||lack?'disabled':''}><span>${a.name}</span><b>${used?'本回合已使用':lack?`還差 ${cost-me.pts} 點`:cost+' 點'}</b></button><div class="attack-help">${esc(attackDescription(S,k,a))}</div></div>`;}).join('')}</div><button class="btn sm ink" id="bBattle">使用 BATTLE（剩 ${me.battles} 次）</button>`; }
   if(S.phase==='sell'){h+=`<div class="seg">基地操作</div><div class="small-grid"><button class="btn sm green" id="bUp">升級基地</button><button class="btn sm gold" id="bSell">賣出基地</button><button class="btn sm blue" id="bBuyBack">買回基地</button></div>`;}
@@ -302,7 +307,8 @@ function renderGame(){
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
   const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">SPECIAL ATTACK // ${esc(App.fx.attack.kind.toUpperCase())}</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">${esc(App.fx.attack.teamName)}｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
-  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${eventFx}${phaseFx}${attackFx}`;
+  const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲骰</div>${diceCubeHTML(App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':App.fx.dice.value}</strong></div>`:'';
+  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${eventFx}${phaseFx}${diceFx}${attackFx}`;
   bindGame(); fitBoard();
 }
 function clearPendingAction(){ clearTimeout(App.pendingTimer);App.pendingTimer=null;App.pendingAction=null;App.busy=false; }
@@ -314,13 +320,14 @@ function send(action,payload={}){
   App.pendingAction=actionId;App.busy=true;render(true);
   App.pendingTimer=setTimeout(()=>{if(App.pendingAction===actionId){clearPendingAction();render(true);toast('操作回應較慢，請先確認畫面狀態再重試',true);}},10000);
 }
+function bindDiceGesture(){const pad=$('diceThrow');if(!pad)return;let active=false,startY=0,pull=0,launched=false;const reset=()=>{active=false;pull=0;pad.classList.remove('dragging');pad.style.setProperty('--throw-pull','0px');pad.style.setProperty('--throw-spin','0deg');};const launch=()=>{if(launched||App.busy)return;launched=true;pad.classList.remove('dragging');pad.classList.add('launch');navigator.vibrate?.(35);setTimeout(()=>send('roll'),360);};pad.onpointerdown=e=>{if(launched)return;active=true;startY=e.clientY;pull=0;pad.classList.add('dragging');pad.setPointerCapture?.(e.pointerId);};pad.onpointermove=e=>{if(!active)return;pull=Math.max(0,Math.min(150,startY-e.clientY));pad.style.setProperty('--throw-pull',`${pull}px`);pad.style.setProperty('--throw-spin',`${pull*2.2}deg`);};pad.onpointerup=()=>{if(!active)return;active=false;if(pull>=58)launch();else reset();};pad.onpointercancel=reset;pad.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();launch();}};}
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{App.tab=b.dataset.k;render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？')){clearSession();go(App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/');}}); bind('bZoom',()=>{App.zoom=!App.zoom;render(true);});
   document.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{const i=Number(t.dataset.i);$('modalTitle').textContent=`第 ${i+1} 格 — ${G.TILE[G.TRACK[i][0]].n}`;$('modalBody').innerHTML=`<div class="mrow">${sprite(G.TRACK[i][0],40)}<div>${tileDesc(i)}</div></div>`;$('modal').style.display='flex';});
   if(App.role==='team'&&App.teamId!==null){
-    const me=S.teams[App.teamId];bind('bRoll',()=>ask('擲骰子？',`${esc(me.name)} 準備移動`,()=>send('roll')));bind('bReroll',()=>ask('使用重骰卡？','會清除本回合骰點，重新骰一次',()=>send('reroll')));bind('bBattle',()=>ask('使用 BATTLE？','使用一次 BATTLE 並交由關主裁決',()=>send('battle')));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
+    const me=S.teams[App.teamId];bindDiceGesture();bind('bReroll',()=>ask('使用重骰卡？','會清除本回合骰點，重新骰一次',()=>send('reroll')));bind('bBattle',()=>ask('使用 BATTLE？','使用一次 BATTLE 並交由關主裁決',()=>send('battle')));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
     document.querySelectorAll('.atk').forEach(b=>b.onclick=()=>{const kind=b.dataset.k,a=S.settings.attacks[kind],cost=G.costWithDiscount(S,me,a.cost);ask(`發動「${a.name}」？`,`${esc(attackDescription(S,kind,a))}<br>將消耗 ${cost} 點諂媚點數，本回合不能再次發動同一招。`,()=>send('attack',{kind}));});document.querySelectorAll('.gam').forEach(b=>b.onclick=()=>send('gamble',{index:Number(b.dataset.i)}));document.querySelectorAll('.buf').forEach(b=>b.onclick=()=>send('buff',{kind:b.dataset.k}));
   }
   if(App.role==='host'){

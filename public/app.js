@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.5';
-import { G } from './game-core.js?v=2026.08.21.5';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.5';
+const BUILD_VERSION = '2026.08.21.6';
+import { G } from './game-core.js?v=2026.08.21.6';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.6';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -83,12 +83,17 @@ function showEventFx(message){
 function showAttackFx(attack,message,next){
   const preset=ATTACK_FX[attack?.kind];if(!preset)return false;
   App.fx.event=null;App.fx.attack={...preset,kind:attack.kind,message:String(message||'').slice(0,180),teamName:next.teams?.[attack.team]?.name||''};
-  App.fx.aftershock={kind:attack.kind,hit:Array.isArray(attack.hit)?attack.hit:[],message:String(message||'').slice(0,180)};
-  SoundFX.playAttackAlert();
-  fxTimeout('attack',()=>{App.fx.attack=null;renderFx();},reducedMotion?1200:4000);
-  fxTimeout('aftershock',()=>{App.fx.aftershock=null;renderFx();},reducedMotion?2400:4000);
+  App.fx.aftershock=null;
+  SoundFX.playAttackAlert(attack?.kind);
+  fxTimeout('attack',()=>{
+    App.fx.attack=null;
+    App.fx.aftershock={kind:attack.kind,hit:Array.isArray(attack.hit)?attack.hit:[],message:String(message||'').slice(0,180)};
+    renderFx();
+    fxTimeout('aftershock',()=>{App.fx.aftershock=null;renderFx();},reducedMotion?2000:4000);
+  },reducedMotion?1200:3400);
   return true;
 }
+
 function startRollFx(previous,next){
   const roll=next.lastRoll,teamId=Number(roll?.team),team=next.teams?.[teamId],before=previous.teams?.[teamId];
   if(!roll||!team||!before)return;
@@ -187,7 +192,11 @@ function sprite(type,size){
   return out+'</svg>';
 }
 const diceGlyphs=['⚀','⚁','⚂','⚃','⚄','⚅'];
-function diceCubeHTML(value=1){const face=diceGlyphs[Math.max(0,Math.min(5,Number(value||1)-1))];return `<div class="dice-cube" data-value="${Number(value)||1}"><i class="face front">${face}</i><i class="face back">⚅</i><i class="face right">⚂</i><i class="face left">⚃</i><i class="face top">⚄</i><i class="face bottom">⚁</i></div>`;}
+function diceCubeHTML(value=1){
+  const val=Math.max(1,Math.min(6,Number(value)||1)),face=diceGlyphs[val-1];
+  return `<div class="dice-cube" data-value="${val}"><div class="dice-inner"><i class="face front">${face}</i><i class="face back">⚅</i><i class="face right">⚂</i><i class="face left">⚃</i><i class="face top">⚄</i><i class="face bottom">⚁</i></div></div>`;
+}
+
 function baseBuildingHTML(owner){const level=Math.max(1,Math.min(3,Number(owner.level)||1)),names=['營地','商店','豪華賭場'];return `<div class="base-building lv${level}" style="--owner:${owner.color}" aria-label="${names[level-1]}"><i class="base-roof"></i><i class="base-body"><b></b><b></b><b></b></i><em>LV${level}</em></div>`;}
 function boardAftermathHTML(kind){if(!kind)return '';if(kind==='quake')return `<div class="board-aftermath board-quake">${Array.from({length:5},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;if(kind==='missile')return `<div class="board-aftermath board-missile"><i></i><i></i><i></i><b>LOCK</b></div>`;if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;}
 function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':'home'; }
@@ -291,7 +300,35 @@ function boardHTML(){
   if(App.fx.stepText)out+=`<div class="step-progress-badge">${esc(App.fx.stepText)}</div>`;
   return out+boardAftermathHTML(attackKind)+boardHUD()+'</div></div><button class="btn sm gold" id="bZoom">'+(App.zoom?'符合螢幕':'放大檢視')+'</button>';
 }
-function fitBoard(){if(App.screen!=='game')return;const wrap=$('bwrap'),bd=$('board');if(!wrap||!bd)return;if(App.fx.camera){const height=Math.min(570,Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18)),scale=window.innerWidth<600?1.28:window.innerWidth<1000?1.48:1.7,point=pos=>{const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+23,y:tile[2]*50+23};},from=point(App.fx.camera.from),to=point(App.fx.camera.pos),centerX=wrap.clientWidth*.5,centerY=height*.57,screenY=p=>p.y*scale*.72;wrap.style.height=`${height}px`;wrap.classList.remove('compact-board');bd.style.transform='';bd.style.transformOrigin='0 0';bd.style.setProperty('--camera-scale',scale);bd.style.setProperty('--cam-from-x',`${centerX-from.x*scale}px`);bd.style.setProperty('--cam-from-y',`${centerY-screenY(from)}px`);bd.style.setProperty('--cam-to-x',`${centerX-to.x*scale}px`);bd.style.setProperty('--cam-to-y',`${centerY-screenY(to)}px`);return;}if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);bd.style.transformOrigin='top left';bd.style.transform=`scale(${scale})`;wrap.style.height=`${bd.offsetHeight*scale}px`;wrap.classList.toggle('compact-board',scale<.78);}
+function fitBoard(){
+  if(App.screen!=='game')return;
+  const wrap=$('bwrap'),bd=$('board');
+  if(!wrap||!bd)return;
+  if(App.fx.camera){
+    const height=Math.min(580,Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18)),
+          scale=window.innerWidth<600?1.35:window.innerWidth<1000?1.55:1.75,
+          point=pos=>{const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+23,y:tile[2]*50+23};},
+          from=point(App.fx.camera.from),to=point(App.fx.camera.pos),
+          centerX=wrap.clientWidth*.5,centerY=height*.52,
+          dx=to.x-from.x,dy=to.y-from.y,
+          rotX=dy>0?38:dy<0?28:34,
+          rotY=dx>0?-9:dx<0?9:0,
+          rotZ=dx>0?-3:dx<0?3:0,
+          tx=centerX-to.x,ty=centerY-to.y;
+    wrap.style.height=`${height}px`;
+    wrap.classList.remove('compact-board');
+    bd.style.transformOrigin=`${to.x}px ${to.y}px`;
+    bd.style.transform=`translate3d(${tx}px, ${ty}px, 0) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`;
+    return;
+  }
+  if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}
+  const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  bd.style.transformOrigin='top left';
+  bd.style.transform=`scale(${scale})`;
+  wrap.style.height=`${bd.offsetHeight*scale}px`;
+  wrap.classList.toggle('compact-board',scale<.78);
+}
+
 function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：抽取一張命運卡。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:'銀行密道：取得銀行池的一部分。',worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:'交易所：查看市場資訊。',stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}`:''}`; }
 function rankingHTML(){
   const S=App.state,money=n=>`${Number(n||0).toLocaleString()}元`;

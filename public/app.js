@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.24';
-import { G } from './game-core.js?v=2026.08.21.24';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.24';
+const BUILD_VERSION = '2026.08.21.25';
+import { G } from './game-core.js?v=2026.08.21.25';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.25';
+
 
 
 
@@ -848,7 +849,7 @@ function fitBoard(){
     return;
   }
   if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}
-  const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  const max=Math.max(240,wrap.clientWidth-4),stage=(App.role==='viewer'||App.projector)&&window.innerWidth>=960,viewerMax=stage?1.5:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-18):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
   bd.style.transformOrigin='top left';
   bd.style.transform=`scale(${scale})`;
   wrap.style.height=`${bd.offsetHeight*scale}px`;
@@ -856,11 +857,41 @@ function fitBoard(){
 }
 
 
+
 function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：抽取一張命運卡。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:'銀行密道：取得銀行池的一部分。',worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:'交易所：查看市場資訊。',stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}`:''}`; }
 function rankingHTML(){
-  const S=App.state,money=n=>`${Number(n||0).toLocaleString()}元`;
-  return `<div class="card ranking-card"><div class="ch">★ 即時排行榜 · 點擊隊伍地圖定位</div><div class="cb ranking-list"><div class="rank-legend">點擊隊伍可在棋盤定位 <i>/</i> 現金 <i>/</i> 房產 <i>/</i> 點數</div>${[...S.teams].sort((a,b)=>G.netWorth(S,b)-G.netWorth(S,a)).map((t,i)=>`<div class="rk" data-team="${t.id}" title="點擊在棋盤定位 ${esc(t.name)}"><div class="rank-head"><div class="rn">${i+1}</div><div class="sw" style="background:${t.color}"></div><div class="rname">${esc(t.name)}<div class="dim">${t.joined?'已連線':'尚未連線'} · 第 ${t.pos+1} 格</div></div></div><div class="rank-values"><b>${money(t.cash)}</b><i>/</i><b>${money(G.propertyValue(S,t))}</b><i>/</i><b>${Number(t.pts||0).toLocaleString()}點</b></div></div>`).join('')}</div></div>`;
+  const S=App.state, money=n=>`$${Number(n||0).toLocaleString()}`;
+  const ranked = G.rankTeams(S);
+  return `<div class="card ranking-card">
+    <div class="ch">★ 即時戰力排行榜 · 點擊定位</div>
+    <div class="cb ranking-card-body">
+      <div class="rank-legend"><span>點擊隊伍棋盤定位</span><span>總資產 ｜ 現金 · 房產 · 點數</span></div>
+      <div class="ranking-grid">
+        ${ranked.map((t, i) => {
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
+          const isTop3 = i < 3;
+          return `<div class="rk ${isTop3 ? `rk-top-${i+1}` : ''}" data-team="${t.originalIndex}" title="點擊在棋盤定位 ${esc(t.name)}">
+            <div class="rk-main">
+              <div class="rk-rn">${medal}</div>
+              <div class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(t.originalIndex)?'#14110f':'#fff'}">${t.originalIndex+1}</div>
+              <div class="rk-name-box">
+                <div class="rk-name">${esc(t.name)}</div>
+                <div class="rk-pos">第 ${t.pos+1} 格 · ${t.joined?'在線':'離線'}</div>
+              </div>
+              <div class="rk-worth">${money(t.worth)}</div>
+            </div>
+            <div class="rk-details">
+              <span>💰 ${money(t.cash)}</span>
+              <span>🏰 ${money(t.prop)}</span>
+              <span>✨ ${t.pts}點</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
 }
+
 function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</div><div class="cb">${(App.state.log||[]).slice(0,80).map(x=>`<div class="lg">${esc(x)}</div>`).join('')||'<div class="note">尚無紀錄</div>'}</div></div>`; }
 function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIVE ARENA</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>股市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
 function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.state.log?.[0]||'活動即將開始，請各隊做好準備';return `<div class="stage-ticker"><span>● LIVE</span><div><b>現場快報</b>${esc(message)}</div></div>`;}
@@ -1107,7 +1138,7 @@ function renderGame(){
   const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ WARNING // SPECIAL ATTACK DETECTED ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
   const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲骰</div>${diceCubeHTML(App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':App.fx.dice.value}</strong></div>`:'';
   const assignmentFx=assignmentFxHTML();
-  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 音效 ON':'🔇 音效 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${campFooterHTML()}${eventFx}${phaseFx}${diceFx}${assignmentFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.projector?'on':''}" id="bProjector" title="切換 16:9 大螢幕投影模式">${App.projector?'🖥️ 退出投影':'🖥️ 投影模式'}</button><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 音效 ON':'🔇 音效 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${campFooterHTML()}${eventFx}${phaseFx}${diceFx}${assignmentFx}${attackFx}`;
 
   bindGame(); fitBoard();
 }
@@ -1135,7 +1166,21 @@ function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{App.tab=b.dataset.k;render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？')){clearSession();go(App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/');}}); bind('bZoom',()=>{App.zoom=!App.zoom;render(true);});
+  bind('bProjector',()=>{
+    App.projector=!App.projector;
+    document.body.classList.toggle('projector-active',App.projector);
+    if(App.projector){
+      try{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.().catch(()=>{});}catch{}
+      toast('🖥️ 已開啟 16:9 投影觀戰模式（雙欄總榜無捲軸）');
+    }else{
+      try{if(document.fullscreenElement)document.exitFullscreen?.().catch(()=>{});}catch{}
+      toast('已退出投影模式');
+    }
+    render(true);
+    setTimeout(fitBoard,120);
+  });
   bind('bSound',()=>{App.sound=toggleSound();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
+
   document.querySelectorAll('.tile').forEach(t=>{
     t.onclick=()=>{
       const i=Number(t.dataset.i),teamsHere=S.teams.filter(x=>x.pos===i);
@@ -1217,4 +1262,13 @@ window.addEventListener('popstate',()=>{App.socket?.close();App.socket=null;clea
 window.addEventListener('resize',fitBoard);window.addEventListener('orientationchange',()=>setTimeout(fitBoard,300));
 window.addEventListener('online',()=>App.socket?.reconnectNow());
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!App.connected)App.socket?.reconnectNow();});
+document.addEventListener('fullscreenchange',()=>{
+  if(!document.fullscreenElement&&App.projector){
+    App.projector=false;
+    document.body.classList.remove('projector-active');
+    render(true);
+    setTimeout(fitBoard,120);
+  }
+});
+
 

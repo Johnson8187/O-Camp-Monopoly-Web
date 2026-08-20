@@ -268,13 +268,29 @@ code{background:#efe9d4;padding:2px 5px;font-size:11px;word-break:break-all}
 @keyframes draftShuffle{0%{transform:translate3d(-16px,5px,-25px) rotateY(-25deg) rotateZ(-8deg)}50%{transform:translate3d(18px,-6px,36px) rotateY(24deg) rotateZ(7deg)}100%{transform:translate3d(-16px,5px,-25px) rotateY(-25deg) rotateZ(-8deg)}}
 @keyframes draftResultReveal{0%{opacity:0;transform:translateY(18px) scale(.82) rotateX(-50deg)}65%{opacity:1;transform:translateY(-4px) scale(1.05) rotateX(5deg)}100%{opacity:1;transform:translateY(0) scale(1) rotateX(0)}}
 @keyframes draftComplete{0%{opacity:0;transform:scale(.65)}100%{opacity:1;transform:scale(1)}}
-.rk{padding:9px 0;border-bottom:3px solid #e5dcc2}
-.rk:last-child{border:none}
-.rank-head{display:flex;align-items:center;gap:10px}
-.rn{font-family:'Press Start 2P',monospace;font-size:13px;width:26px}
-.sw{width:16px;height:16px;border:3px solid #14110f;flex:0 0 auto}
-.rname{flex:1;font-size:14px}
-.rank-legend{text-align:right;color:#8a7c55;font-size:10px;letter-spacing:.04em;margin:-3px 0 8px}.rank-legend i,.rank-values i{font-style:normal;color:#e23b3b;font-weight:900}.rank-values{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin:6px 0 0 36px;padding:7px 9px;border:3px solid #d8cfae;background:#fffaf0;font-size:12px;white-space:nowrap}.rank-values b{font-weight:700}
+/* 排行榜卡片化與雙欄樣式 */
+.ranking-card-body{padding:8px 9px 10px}
+.rank-legend{display:flex;justify-content:space-between;align-items:center;color:#8a7c55;font-size:10px;margin-bottom:8px}
+.rank-legend i{font-style:normal;color:#e23b3b;font-weight:bold}
+.ranking-grid{display:grid;grid-template-columns:1fr;gap:6px}
+
+.rk{display:flex;flex-direction:column;padding:7px 8px;border:2px solid #14110f;background:#fffef8;box-shadow:2px 2px 0 #1a2340;border-radius:3px;cursor:pointer;transition:transform .12s ease,background .12s ease}
+.rk:hover{background:#fff8db;transform:translateY(-1px)}
+.rk.rk-top-1{border-color:#ffd700;background:linear-gradient(135deg,#fffef8 0%,#fff9df 100%);box-shadow:0 0 10px rgba(255,215,0,.35),2px 2px 0 #1a2340}
+.rk.rk-top-2{border-color:#b0bec5;background:#fcfdff}
+.rk.rk-top-3{border-color:#d7ccc8;background:#fffaf6}
+
+.rk-main{display:flex;align-items:center;gap:6px;min-width:0}
+.rk-rn{font-family:'Press Start 2P',monospace;font-size:11px;min-width:20px;text-align:center;font-weight:bold;line-height:1}
+.rk .sw{width:18px;height:18px;border:2px solid #14110f;border-radius:3px;display:grid;place-items:center;font-family:'Press Start 2P',monospace;font-size:8px;font-weight:bold;flex:0 0 auto}
+.rk-name-box{flex:1;min-width:0;line-height:1.2}
+.rk-name{font-size:13px;font-weight:bold;color:#14110f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk-pos{font-size:10px;color:#8a7c55}
+.rk-worth{font-family:'Press Start 2P',monospace;font-size:11px;color:#c0392b;font-weight:bold;white-space:nowrap;margin-left:auto;padding-left:4px}
+
+.rk-details{display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px dashed #e8e2d0;font-size:11px;color:#665c40}
+.rk-details span{white-space:nowrap}
+
 .dim{font-size:11px;color:#8a7c55}
 .lg{font-size:13px;padding:6px 0;border-bottom:2px solid #ece4cf;line-height:1.6}
 .adj{display:flex;align-items:center;gap:5px;margin-bottom:8px}
@@ -421,14 +437,16 @@ body.in-game .update-prompt{bottom:calc(12px + var(--safe-bottom))}
   .draft-result b{font-size:11px}.draft-result i{font-size:16px}.draft-result strong{margin-top:2px;font-size:6px}.draft-complete{margin-top:7px;font-size:8px}
 }
 @media (orientation:landscape) and (min-width:650px) and (max-height:620px){
+@media (orientation:landscape) and (min-width:650px) and (max-height:620px){
   body{padding:calc(8px + env(safe-area-inset-top,0px)) 10px calc(10px + var(--safe-bottom))}
   #wrap{max-width:none}.bar{padding:6px 9px;margin-bottom:8px}.phase-track{margin-bottom:8px}.phase-step{min-height:30px}.game-head{margin-bottom:0}.tabs{margin-bottom:8px}
   .game-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.8fr);gap:12px;align-items:start}
   .game-sidebar{position:static}.card{margin-bottom:10px}.ch{padding:6px 8px}.cb{padding:9px}
 }
 @media (min-width:900px) and (min-height:621px){
-  .game-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:16px;align-items:start}
+  .game-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(440px,560px);gap:16px;align-items:start}
   .game-sidebar{position:sticky;top:18px}
+  .ranking-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 }
 @media (prefers-reduced-motion:reduce){
   .dice.rolling,.hud-dice.rolling,.dice-cube,.dice-flight::before,.throw-arrow,.dice-throw-pad.waiting::after,.tile.fx-step,.tile.fx-hit,.pins i.moving,.moving-token span,.garrison-aura,.event-flash,.phase-overlay,.phase-overlay-card,.assignment-overlay,.assignment-overlay::before,.assignment-stage,.draft-machine i,.draft-result,.draft-complete,.attack-overlay,.attack-overlay::before,.attack-overlay::after,.attack-card,.attack-symbol,.attack-cinematic,.attack-scene *,.board.fx-attack,.board.fx-quake .tile,.board-aftermath *,.stage-panel::after,.stage-live i{animation:none!important}.camera-active .board,.moving-token{transition:none!important}.draft-result,.draft-complete{opacity:1!important;transform:none!important}
@@ -526,6 +544,30 @@ body.in-game .update-prompt{bottom:calc(12px + var(--safe-bottom))}
 .btn-sound-toggle:active{transform:translate(2px,2px);box-shadow:none}
 .btn-sound-toggle.muted{color:#8a8676;border-color:#8a8676}
 .rk{cursor:pointer;transition:background .15s ease}.rk:hover{background:#fdf6dc}
-.tile-team-list{display:grid;gap:8px;margin-top:10px}
-.tile-team-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid #14110f;background:#fffef5;box-shadow:2px 2px 0 #1a2340}
 .tile-team-item .sw{width:22px;height:22px;display:grid;place-items:center;color:#fff;font:9px/1 'Press Start 2P',monospace}
+
+/* ===================================================================
+   PROJECTOR FULLSCREEN BROADCAST MODE
+   =================================================================== */
+body.projector-active{overflow:hidden;background:#0d0b0a}
+.projector-active #wrap{max-width:none;width:100vw;height:100vh;padding:8px 14px;margin:0;display:flex;flex-direction:column;box-sizing:border-box}
+.projector-active .bar{padding:6px 12px;margin-bottom:6px;flex:0 0 auto}
+.projector-active .phase-track{margin-bottom:6px;min-height:26px;flex:0 0 auto}
+.projector-active .game-head{margin-bottom:4px;flex:0 0 auto}
+.projector-active .camp-footer{display:none}
+.projector-active .game-layout{display:grid;grid-template-columns:1fr 520px;gap:14px;flex:1;min-height:0;align-items:stretch}
+.projector-active .game-primary{display:flex;flex-direction:column;min-height:0;height:100%}
+.projector-active .board-card{flex:1;display:flex;flex-direction:column;margin-bottom:0;min-height:0}
+.projector-active .board-card .cb{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:0;padding:6px}
+.projector-active .board-legend{display:none}
+.projector-active .game-sidebar{display:flex;flex-direction:column;min-height:0;position:static;gap:8px;height:100%}
+.projector-active .stage-panel{margin-bottom:0;padding:8px 12px;flex:0 0 auto}
+.projector-active .ranking-card{flex:1;display:flex;flex-direction:column;margin-bottom:0;min-height:0}
+.projector-active .ranking-card-body{flex:1;display:flex;flex-direction:column;min-height:0;padding:6px 8px;overflow:hidden}
+.projector-active .ranking-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;flex:1;align-content:start}
+.projector-active .rk{padding:5px 7px}
+.projector-active .rk-name{font-size:12px}
+.projector-active .rk-worth{font-size:10px}
+.projector-active .rk-details{font-size:10px;margin-top:2px;padding-top:2px}
+.btn-sound-toggle.on{background:#ffd700;color:#14110f;border-color:#14110f;box-shadow:0 0 10px rgba(255,215,0,.5)}
+

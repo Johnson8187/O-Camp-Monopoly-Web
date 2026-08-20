@@ -1,1 +1,1 @@
-{"name":"o-camp-monopoly","version":"2026.08.21.21","type":"module","scripts":{"test":"node test-game-core.mjs && node test-game-fx.mjs && node test-reliability.mjs"}}
+{"name":"o-camp-monopoly","version":"2026.08.21.22","type":"module","scripts":{"test":"node test-game-core.mjs && node test-game-fx.mjs && node test-reliability.mjs"}}

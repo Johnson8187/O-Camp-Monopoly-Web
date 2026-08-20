@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.21';
-import { G } from './game-core.js?v=2026.08.21.21';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.21';
+const BUILD_VERSION = '2026.08.21.22';
+import { G } from './game-core.js?v=2026.08.21.22';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.22';
+
 
 
 
@@ -1072,15 +1073,24 @@ function hostPanel(){
 }
 function renderGame(){
   const S=App.state;if(!S){$('app').innerHTML='<div class="card"><div class="cb">正在建立即時連線…</div></div>';return;}
-  const tabs=[['main','遊戲'],['settle','🏆 結算頒獎'],['log','紀錄']];if(App.role==='host')tabs.push(['host','主控']);
-  if(S.phase==='settle' && App.role!=='host' && !App._hasSwitchedSettleTab){
-    App.tab='settle';
-    App._hasSwitchedSettleTab=true;
+  const isSettled = S.phase === 'settle' || S.phase === 'ended';
+  const tabs = [['main', '遊戲']];
+  if (isSettled) {
+    tabs.push(['settle', '🏆 結算頒獎']);
   }
-  if(S.phase!=='settle'){
-    App._hasSwitchedSettleTab=false;
+  tabs.push(['log', '紀錄']);
+  if (App.role === 'host') tabs.push(['host', '主控']);
+
+  if (isSettled && App.role !== 'host' && !App._hasSwitchedSettleTab) {
+    App.tab = 'settle';
+    App._hasSwitchedSettleTab = true;
   }
-  if(!tabs.some(x=>x[0]===App.tab))App.tab='main';
+  if (!isSettled) {
+    App._hasSwitchedSettleTab = false;
+    if (App.tab === 'settle') App.tab = 'main';
+  }
+  if (!tabs.some(x => x[0] === App.tab)) App.tab = 'main';
+
   const flow=[['market','股市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'||S.phase==='settle'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
   let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
   if(App.tab==='settle') body=settleHTML();

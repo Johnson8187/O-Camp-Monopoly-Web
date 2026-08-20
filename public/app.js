@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.15';
-import { G } from './game-core.js?v=2026.08.21.15';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.15';
+const BUILD_VERSION = '2026.08.21.16';
+import { G } from './game-core.js?v=2026.08.21.16';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.16';
+
 
 
 
@@ -60,79 +61,30 @@ function registerPWA(){
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
-function showInstallGuideModal(){
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  if(isStandalone){
-    toast('目前已在 App 全螢幕模式中運行！');
-    return;
-  }
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-  $('modalTitle').textContent = '📱 安裝 App / 加入手機主畫面';
+function showIosInstallGuideModal(){
+  $('modalTitle').textContent = 'iPhone / iPad 加入主畫面教學';
   $('modalBody').innerHTML = `
     <div class="install-guide-box">
-      <p style="font-size:12px;color:#555;margin-bottom:12px;line-height:1.5;">加入主畫面後即可如同原生 App 一樣，享有全螢幕、無網址列干擾、離線快速載入的遊戲體驗！</p>
-      <div class="guide-tabs-bar">
-        <button type="button" class="btn sm ${isIOS ? 'gold' : 'outline'}" id="btnTabIos">🍎 iPhone / iPad (iOS)</button>
-        <button type="button" class="btn sm ${!isIOS ? 'gold' : 'outline'}" id="btnTabAndroid">🤖 Android 安卓手機</button>
+      <div class="guide-step-card">
+        <span class="guide-num">1</span>
+        <div>點擊 Safari 底部工具列的 <b>「分享」</b> 按鈕（方框向上箭頭）。</div>
       </div>
-
-      <div id="guideIosBox" style="display:${isIOS ? 'block' : 'none'};margin-top:10px;">
-        <div class="guide-step-card">
-          <span class="guide-num">1</span>
-          <div>使用 <b>Safari 瀏覽器</b> 開啟網站，點擊下方工具列的 <b>「分享」按鈕</b>（方框向上箭頭 <i class="ios-icon">📤</i>）。</div>
-        </div>
-        <div class="guide-step-card">
-          <span class="guide-num">2</span>
-          <div>在選單中往下滑動，點選 <b>「加入主畫面」</b>（<i class="ios-icon">➕ Add to Home Screen</i>）。</div>
-        </div>
-        <div class="guide-step-card">
-          <span class="guide-num">3</span>
-          <div>點擊右上角的 <b>「新增」</b>，即可在手機桌面找到圖示，點開直接全螢幕暢玩！</div>
-        </div>
+      <div class="guide-step-card">
+        <span class="guide-num">2</span>
+        <div>在選單中往下滑動，點選 <b>「加入主畫面」</b>。</div>
       </div>
-
-      <div id="guideAndroidBox" style="display:${!isIOS ? 'block' : 'none'};margin-top:10px;">
-        <div class="guide-step-card">
-          <span class="guide-num">1</span>
-          <div>使用 <b>Chrome / Edge / 三星瀏覽器</b>，點擊右上角的 <b>「選單（三個點 ⋮）」</b>。</div>
-        </div>
-        <div class="guide-step-card">
-          <span class="guide-num">2</span>
-          <div>在選單中點選 <b>「安裝應用程式」</b> 或 <b>「加到主畫面」</b>。</div>
-        </div>
-        <div class="guide-step-card">
-          <span class="guide-num">3</span>
-          <div>點擊 <b>「安裝」</b> 確認，即可在桌面生成 App 圖示！</div>
-        </div>
-        ${App.installPrompt ? `<div style="text-align:center;margin-top:14px;"><button type="button" class="btn green" id="btnPromptInstall">⚡ 立即一鍵安裝到手機</button></div>` : ''}
+      <div class="guide-step-card">
+        <span class="guide-num">3</span>
+        <div>點擊右上角的 <b>「新增」</b>，即可在桌面以全螢幕 App 方式直接開啟！</div>
+      </div>
+      <div style="text-align:center;margin-top:16px;">
+        <button type="button" class="btn gold sm" id="btnCloseInstallGuide">我知道了</button>
       </div>
     </div>
   `;
   $('modal').style.display = 'flex';
-
-  const tabIos = $('btnTabIos'), tabAndroid = $('btnTabAndroid');
-  const boxIos = $('guideIosBox'), boxAndroid = $('guideAndroidBox');
-  if(tabIos && tabAndroid && boxIos && boxAndroid){
-    tabIos.onclick = () => {
-      tabIos.className = 'btn sm gold'; tabAndroid.className = 'btn sm outline';
-      boxIos.style.display = 'block'; boxAndroid.style.display = 'none';
-    };
-    tabAndroid.onclick = () => {
-      tabAndroid.className = 'btn sm gold'; tabIos.className = 'btn sm outline';
-      boxAndroid.style.display = 'block'; boxIos.style.display = 'none';
-    };
-  }
-  const btnPrompt = $('btnPromptInstall');
-  if(btnPrompt){
-    btnPrompt.onclick = async () => {
-      if(App.installPrompt){
-        await App.installPrompt.prompt();
-        App.installPrompt = null;
-        $('modal').style.display = 'none';
-      }
-    };
-  }
+  const btnClose = $('btnCloseInstallGuide');
+  if(btnClose) btnClose.onclick = () => { $('modal').style.display = 'none'; };
 }
 
 function enableInstallPrompt(){
@@ -146,15 +98,19 @@ function enableInstallPrompt(){
       b.hidden = true;
       b.style.display = 'none';
     }
-    b.onclick = () => {
+    b.onclick = async () => {
       if(App.installPrompt){
-        App.installPrompt.prompt().then(() => {
+        try{
+          await App.installPrompt.prompt();
           App.installPrompt = null;
-        }).catch(() => {
-          showInstallGuideModal();
-        });
+        }catch{}
+        return;
+      }
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if(isIOS){
+        showIosInstallGuideModal();
       }else{
-        showInstallGuideModal();
+        toast('請點擊瀏覽器右上角選單（⋮），選擇「安裝應用程式」或「加到主畫面」');
       }
     };
   }
@@ -167,6 +123,7 @@ function enableInstallPrompt(){
     }
   });
 }
+
 
 
 function toast(msg, bad=false){
@@ -727,12 +684,11 @@ function renderHome(){
   if(App.entry==='admin') return renderAdminHome();
   if(App.entry==='team') return renderTeamHome();
   $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰</div></div>
-  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>
-  <div class="card"><div class="ch">📲 安裝至手機主畫面</div><div class="cb"><p style="font-size:12px;color:#555;margin-bottom:8px;">支援 iOS 與 Android 手機桌面捷徑，全螢幕無網址列干擾！</p><button class="btn sm gold" id="btnHomeInstallGuide">📱 查看手機安裝教學</button></div></div>`;
+  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>`;
   $('refreshLobby').onclick=refreshLobby;
-  $('btnHomeInstallGuide').onclick=showInstallGuideModal;
   clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
 }
+
 
 function renderGate(role){
   const host=role==='host';

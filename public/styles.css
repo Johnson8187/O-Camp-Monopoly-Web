@@ -369,6 +369,7 @@ select{border:4px solid #14110f;padding:10px 9px;font-family:'Zpix','Microsoft J
 
 .link-btn{border:0;background:none;color:#1769aa;text-decoration:underline;font:inherit;cursor:pointer;padding:0}.share-note code{word-break:break-all}.team-connection-list{display:grid;gap:7px}.team-connection{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid #e1d5bf;border-radius:8px;background:#fffaf0}.team-connection small{display:block;color:#766d62;margin-left:7px}.team-connection .kick{margin-left:auto}
 
+
 .bottom-nav{position:fixed;z-index:45;left:50%;bottom:calc(10px + var(--safe-bottom));width:min(430px,calc(100% - 24px));min-height:66px;padding:6px;display:flex;gap:4px;justify-content:center;background:rgba(255,254,245,.96);border:3px solid var(--nav-ink);border-radius:18px;box-shadow:5px 5px 0 var(--nav-blue);transform:translateX(-50%);isolation:isolate;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .bottom-nav[hidden]{display:none}
 .nav-rail-mark{position:absolute;z-index:-1;left:18px;right:18px;top:-3px;height:3px;background:linear-gradient(90deg,var(--nav-red) 0 33.33%,var(--nav-gold) 33.33% 66.66%,#3fbf5a 66.66%);opacity:.9}
@@ -382,8 +383,7 @@ select{border:4px solid #14110f;padding:10px 9px;font-family:'Zpix','Microsoft J
 .bottom-nav-item.active .nav-icon{background:var(--nav-paper)}
 .nav-label{font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:13px;line-height:1;white-space:nowrap}
 .nav-caption{display:none}
-.pwa-install-fab{position:fixed;z-index:46;right:14px;bottom:calc(var(--nav-height) + var(--safe-bottom) + 12px);border:3px solid #14110f;border-radius:0;background:#f2c12e;color:#14110f;box-shadow:3px 3px 0 #1a2340;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:12px;padding:8px 11px;cursor:pointer}
-.pwa-install-fab span{font-size:18px;vertical-align:-1px;margin-right:3px}
+.pwa-install-fab{position:fixed;z-index:46;right:14px;bottom:calc(var(--nav-height) + var(--safe-bottom) + 12px);border:3px solid #14110f;border-radius:6px;background:#f2c12e;color:#14110f;box-shadow:3px 3px 0 #1a2340;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:12px;font-weight:bold;padding:7px 11px;cursor:pointer}
 .pwa-install-fab[hidden]{display:none}
 body.in-game .pwa-install-fab{bottom:calc(12px + var(--safe-bottom))}
 .boot-fallback{position:fixed;z-index:90;left:18px;right:18px;top:28%;max-width:420px;margin:auto;display:flex;align-items:flex-start;gap:10px;padding:16px;background:#fffef5;border:3px solid #14110f;border-radius:0;box-shadow:5px 5px 0 #1a2340;color:#26200f}
@@ -394,11 +394,9 @@ body.in-game .pwa-install-fab{bottom:calc(12px + var(--safe-bottom))}
 .update-prompt[hidden]{display:none}
 .update-prompt .btn{flex:0 0 auto}
 body.in-game .update-prompt{bottom:calc(12px + var(--safe-bottom))}
+
 @media (max-width:380px){.bottom-nav{width:calc(100% - 16px);bottom:calc(8px + var(--safe-bottom));padding:5px}.bottom-nav-item{gap:4px;padding:5px 4px}.nav-label{font-size:12px}.nav-icon{width:29px;height:29px}.nav-icon svg{width:21px;height:21px}}
 @media (max-width:520px){
-  .adj2{grid-template-columns:26px minmax(0,1fr)}
-  .adj2 .ain{grid-column:2;width:100%}.adj2 .ain input{width:100%;min-width:0}
-  .phase-step{gap:3px;font-size:11px}.phase-step span{display:none}
   #modalCard,#confirmCard{max-height:calc(100dvh - 32px);overflow:auto}
   .team-pick-grid{grid-template-columns:1fr}.team-pick{grid-template-columns:44px minmax(0,1fr) auto;padding:9px;gap:8px}.team-pick-color{width:40px;height:40px}
   .team-pick-actions{grid-template-columns:1fr}

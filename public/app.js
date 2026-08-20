@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.16';
-import { G } from './game-core.js?v=2026.08.21.16';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.16';
+const BUILD_VERSION = '2026.08.21.17';
+import { G } from './game-core.js?v=2026.08.21.17';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.17';
+
 
 
 
@@ -31,9 +32,10 @@ const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
 
 
 function accessKey(role){ return role === 'host' ? 'preview:admin-access' : 'preview:team-access'; }
-function loadAccess(){ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; }
-function saveAccess(role,password){ App.access[role]=password; sessionStorage.setItem(accessKey(role),password); }
-function clearAccess(role){ App.access[role]=''; sessionStorage.removeItem(accessKey(role)); }
+function loadAccess(){ try{ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; }catch{} }
+function saveAccess(role,password){ App.access[role]=password; try{ sessionStorage.setItem(accessKey(role),password); }catch{} }
+function clearAccess(role){ App.access[role]=''; try{ sessionStorage.removeItem(accessKey(role)); }catch{} }
+
 function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/'; }
 function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
 function syncChrome(){ const inGame=App.screen==='game'; const nav=$('bottomNav'); if(nav)nav.hidden=inGame; document.body.classList.toggle('in-game',inGame); ['host','team','viewer'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); updateNav(); syncUpdatePrompt(); }
@@ -572,10 +574,11 @@ async function api(path, options={}){
   return data;
 }
 function saveSession(){
-  localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,accessToken:App.access[App.role]||''}));
+  try{ localStorage.setItem('preview:session', JSON.stringify({gameId:App.gameId,role:App.role,teamId:App.teamId,token:App.token,accessToken:App.access[App.role]||''})); }catch{}
 }
 function loadSession(){ try { return JSON.parse(localStorage.getItem('preview:session') || 'null'); } catch { return null; } }
-function clearSession(){ localStorage.removeItem('preview:session'); }
+function clearSession(){ try{ localStorage.removeItem('preview:session'); }catch{} }
+
 function socketURL(gameId){
   const u = new URL(location.href); u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
   u.pathname = `/ws/${encodeURIComponent(gameId)}`; u.search = ''; return u.toString();

@@ -295,7 +295,8 @@ function playAttack(s, ti, kind, rnd = Math.random) {
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   t.pts -= cost; if (t.discount) t.discount = false;
   s.disasters += 1;
-  let hit = [], msg = "";
+  let hit = [], msg = "", targetInfo = {};
+
 
   const damage = (idx, amt) => {
     const o = ownerOf(s, idx);
@@ -336,14 +337,15 @@ function playAttack(s, ti, kind, rnd = Math.random) {
     if (s.teams[target.id].buffs.shield > 0) s.teams[target.id].buffs.shield -= 1;
     else pay(s, target.id, "bank", A.repair);
     hit = target.baseIdx !== null ? [target.baseIdx] : [];
+    targetInfo = { targetTeam: target.id, targetPos: target.pos, targetName: target.name };
   }
   s.attackUsage = {...(s.attackUsage || {}), [useKey]:true};
   t.attackRounds = {...(t.attackRounds || {}), [kind]:s.round};
-  const targetInfo = kind === "missile" ? { targetTeam: s.teams.find((_, i) => hit[0] === s.teams[i]?.baseIdx)?.id, targetPos: s.teams.find((_, i) => hit[0] === s.teams[i]?.baseIdx)?.pos } : {};
-  s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, ...targetInfo, round:s.round};
+  s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, ...(targetInfo||{}), round:s.round};
   s.log.unshift(`${t.name} 發動「${A.name}」— ${msg}`);
   return {ok:true, hit};
 }
+
 
 
 /* ---------- 回合流程 ---------- */

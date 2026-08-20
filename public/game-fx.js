@@ -4,9 +4,11 @@ export const PHASE_FX = {
   sell:   {symbol:'＄', title:'基地階段', subtitle:'升級、出售或買回基地', kind:'sell'},
   shop:   {symbol:'◆', title:'商店開張', subtitle:'購買道具與抽獎機會', kind:'shop'},
   roll:   {symbol:'⚄', title:'開始移動', subtitle:'隊輔可以擲骰行動', kind:'roll'},
+  settle: {symbol:'🏆', title:'最終結算', subtitle:'榮譽頒獎典禮・最終戰報', kind:'settle'},
   paused: {symbol:'Ⅱ', title:'遊戲暫停', subtitle:'請等待主持人恢復活動', kind:'paused'},
   ended:  {symbol:'★', title:'活動結束', subtitle:'最終排名已經出爐', kind:'ended'},
 };
+
 
 export const ATTACK_FX = {
   quake:    {symbol:'⚡', title:'地裂震央', subtitle:'7×7 範圍強烈地震衝擊波'},
@@ -263,6 +265,38 @@ export const SoundFX = {
       });
     } catch {}
   },
+  playVictory() {
+    if (!soundEnabled) return;
+    const ctx = getAudioContext(); if (!ctx) return;
+    try {
+      const notes = [
+        { f: 523.25, d: 0.14, t: 0 },
+        { f: 659.25, d: 0.14, t: 0.14 },
+        { f: 783.99, d: 0.14, t: 0.28 },
+        { f: 1046.50, d: 0.4, t: 0.42 },
+        { f: 880.00, d: 0.18, t: 0.88 },
+        { f: 1046.50, d: 0.65, t: 1.08 }
+      ];
+      notes.forEach(({ f, d, t }) => {
+        setTimeout(() => {
+          if (!soundEnabled) return;
+          try {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, ctx.currentTime);
+            gain.gain.setValueAtTime(0.24, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + d);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + d);
+          } catch {}
+        }, t * 1000);
+      });
+    } catch {}
+  },
+
   playAttackHit() {
     if (!soundEnabled) return;
     const ctx = getAudioContext(); if (!ctx) return;

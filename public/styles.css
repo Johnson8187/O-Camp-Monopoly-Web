@@ -468,6 +468,61 @@ body.in-game .update-prompt{bottom:calc(12px + var(--safe-bottom))}
 @keyframes aftermathFade{0%,75%{opacity:1}100%{opacity:0}}
 
 .btn-sound-toggle{display:inline-flex;align-items:center;gap:5px;border:2px solid #f2c12e;background:#14110f;color:#f2c12e;padding:4px 8px;font:9px/1 'Press Start 2P',monospace;cursor:pointer;border-radius:4px;box-shadow:2px 2px 0 #1a2340}
+
+/* ===================================================================
+   SETTLEMENT & PODIUM CELEBRATION STYLES
+   =================================================================== */
+.settle-view{display:flex;flex-direction:column;gap:18px;margin-bottom:20px}
+.settle-hero{text-align:center;padding:24px 16px 20px;background:linear-gradient(180deg,#1f1a14 0%,#14110f 100%);border:4px solid #f2c12e;box-shadow:0 0 28px rgba(242,193,46,.35),6px 6px 0 #1a2340;position:relative;overflow:hidden}
+.settle-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 30%,rgba(255,215,0,.18),transparent 70%);pointer-events:none}
+.settle-kicker{font-family:'Press Start 2P',monospace;font-size:11px;color:#ffd700;letter-spacing:2px;margin-bottom:8px;text-shadow:0 0 8px rgba(255,215,0,.6)}
+.settle-title{font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:26px;color:#fffef5;margin:0 0 6px;text-shadow:2px 2px 0 #14110f}
+.settle-subtitle{font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:13px;color:#d5cbb8;margin:0}
+
+.podium-wrap{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:10px;align-items:end;margin:10px 0}
+.podium-card{background:#fffef5;border:3px solid #14110f;box-shadow:5px 5px 0 #1a2340;text-align:center;padding:14px 10px 16px;position:relative;border-radius:4px;display:flex;flex-direction:column;align-items:center;transition:transform .2s ease}
+.podium-card.rank-1{order:2;border-color:#ffd700;box-shadow:0 0 24px rgba(255,215,0,.45),6px 6px 0 #1a2340;transform:scale(1.04);z-index:2;background:linear-gradient(180deg,#fffef5 0%,#fff9db 100%)}
+.podium-card.rank-2{order:1}
+.podium-card.rank-3{order:3}
+.podium-badge{font-size:28px;line-height:1;margin-bottom:6px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3))}
+.podium-rank-label{font-family:'Press Start 2P',monospace;font-size:9px;padding:2px 6px;border-radius:3px;margin-bottom:8px;font-weight:bold}
+.rank-1 .podium-rank-label{background:#ffd700;color:#14110f}
+.rank-2 .podium-rank-label{background:#d5d8dc;color:#14110f}
+.rank-3 .podium-rank-label{background:#d98850;color:#fff}
+.podium-team-swatch{width:36px;height:36px;border-radius:50%;border:3px solid #14110f;display:grid;place-items:center;font-family:'Press Start 2P',monospace;font-size:13px;font-weight:bold;margin-bottom:6px;box-shadow:0 2px 4px rgba(0,0,0,.25)}
+.podium-name{font-size:15px;font-weight:bold;color:#14110f;margin-bottom:6px;word-break:break-word;line-height:1.3}
+.podium-worth{font-family:'Press Start 2P',monospace;font-size:12px;color:#c0392b;margin-bottom:6px;font-weight:bold}
+.podium-breakdown{font-size:11px;color:#666;line-height:1.4}
+
+.settle-table-wrap{background:#fffef5;border:3px solid #14110f;box-shadow:5px 5px 0 #1a2340;padding:12px;border-radius:4px;overflow-x:auto}
+.settle-table{width:100%;border-collapse:collapse;font-size:13px}
+.settle-table th{background:#14110f;color:#ffd700;padding:8px 10px;text-align:left;font-family:'Zpix','Microsoft JhengHei',sans-serif;font-size:12px}
+.settle-table td{padding:8px 10px;border-bottom:1px solid #e2ded0}
+.settle-table tr:nth-child(even){background:#faf7ee}
+.settle-table tr:hover{background:#fff3c4}
+.settle-table .rank-num{font-family:'Press Start 2P',monospace;font-size:10px;font-weight:bold;text-align:center;width:36px}
+.settle-table .team-cell{display:flex;align-items:center;gap:6px;font-weight:bold}
+.settle-table .worth-cell{font-family:'Press Start 2P',monospace;font-size:11px;color:#c0392b;font-weight:bold;text-align:right}
+
+.settle-highlights{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.highlight-card{background:#fffef5;border:2px solid #14110f;box-shadow:3px 3px 0 #1a2340;padding:10px 12px;border-radius:4px;display:flex;align-items:center;gap:10px}
+.highlight-icon{font-size:24px}
+.highlight-content h4{margin:0 0 2px;font-size:11px;color:#888;font-family:'Zpix','Microsoft JhengHei',sans-serif}
+.highlight-content strong{font-size:14px;color:#14110f;display:block}
+.highlight-content small{font-size:11px;color:#666}
+
+.host-danger-zone{border:2px dashed #e23b3b;background:#fff5f5;padding:12px;border-radius:4px;margin-top:16px}
+.host-danger-zone .sub{color:#e23b3b;margin-top:0}
+.host-danger-zone .btn{background:#e23b3b;color:#fff;border-color:#14110f}
+.host-danger-zone .btn:hover{background:#c0392b}
+
+@media (max-width:600px){
+  .podium-wrap{grid-template-columns:1fr;gap:12px}
+  .podium-card.rank-1{order:1;transform:none}
+  .podium-card.rank-2{order:2}
+  .podium-card.rank-3{order:3}
+}
+
 .btn-sound-toggle:active{transform:translate(2px,2px);box-shadow:none}
 .btn-sound-toggle.muted{color:#8a8676;border-color:#8a8676}
 .rk{cursor:pointer;transition:background .15s ease}.rk:hover{background:#fdf6dc}

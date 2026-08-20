@@ -374,12 +374,18 @@ function nextPhase(s) {
   s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; });
   s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
   return s;
-
 }
 
+function rankTeams(s) {
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,netWorth,ownerOf,assignBases,applyMove,landEffect,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount};
+  return [...s.teams]
+    .map((t, idx) => ({ ...t, originalIndex: idx, prop: propertyValue(s, t), worth: netWorth(s, t) }))
+    .sort((a, b) => b.worth - a.worth || b.cash - a.cash || b.pts - a.pts);
+}
+
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,netWorth,ownerOf,assignBases,applyMove,landEffect,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams};
 })();
+
 
 
 G.SPR = {

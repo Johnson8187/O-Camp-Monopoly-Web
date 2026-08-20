@@ -8,6 +8,7 @@ assert.equal(teamActionError(state('setup'),'roll'),'遊戲尚未開始');
 assert.equal(teamActionError(state('ended'),'sell'),'活動已經結束');
 assert.equal(teamActionError(state('shop',true),'gamble'),'活動目前已暫停');
 assert.equal(teamActionError(state('shop'),'roll'),'目前階段不能執行這個操作');
+assert.equal(teamActionError(state('settle'),'roll'),'目前階段不能執行這個操作');
 assert.equal(teamActionError(state('roll'),'sell'),'目前階段不能執行這個操作');
 assert.equal(teamActionError(state('sell'),'buyBack'),null);
 assert.equal(teamActionError(state('shop'),'buff'),null);
@@ -29,6 +30,19 @@ const pointsAfterAttack=configurable.teams[0].pts;
 assert.match(configRoom.applyAction(configurable,{role:'team',teamId:0},'attack',{kind:'quake'}).error,/本回合已使用過/);
 assert.equal(configurable.teams[0].pts,pointsAfterAttack);
 assert.equal(configurable.log.filter(message=>message.includes('發動「地震」')).length,1);
+
+const settleState = G.freshState('SETTLE', 2);
+settleState.phase = 'roll';
+settleState.teams[0].cash = 5000;
+settleState.teams[1].cash = 8000;
+const settleRoom = new GameRoom({storage:{}},{});
+assert.equal(settleRoom.applyAction(settleState, {role:'host', teamId:null}, 'settleGame'), undefined);
+assert.equal(settleState.phase, 'settle');
+const ranked = G.rankTeams(settleState);
+assert.equal(ranked[0].id, 1);
+assert.equal(settleRoom.applyAction(settleState, {role:'host', teamId:null}, 'resumeGame'), undefined);
+assert.equal(settleState.phase, 'roll');
+
 
 let proxiedRequest;
 const response=await worker.fetch(new Request('https://example.test/ws/ROOM123',{headers:{'x-control-action':'endGame'}}),{

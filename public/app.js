@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.20';
-import { G } from './game-core.js?v=2026.08.21.20';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.20';
+const BUILD_VERSION = '2026.08.21.21';
+import { G } from './game-core.js?v=2026.08.21.21';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.21';
+
 
 
 
@@ -32,7 +33,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫」把';
 function campFooterHTML(){ return `<footer class="camp-footer">© 2026 ${esc(CAMP_NAME)} 版權所有</footer>`; }
-const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', ended:'已結束', paused:'已暫停'};
+const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', settle:'最終結算', ended:'已結束', paused:'已暫停'};
+
 const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
 
 
@@ -263,14 +265,19 @@ function runNextFx(){
 
 function executePhaseFx(data,done){
   App.fx.phase=data;
-  SoundFX.playPhaseChange();
+  if(data?.kind==='settle'||data?.kind==='ended'){
+    SoundFX.playVictory();
+  }else{
+    SoundFX.playPhaseChange();
+  }
   renderFx();
   fxTimeout('phase',()=>{
     App.fx.phase=null;
     renderFx();
     done();
-  },reducedMotion?700:1900);
+  },reducedMotion?800:2200);
 }
+
 
 function executeUpgradeFx(team,done){
   if(!team||team.baseIdx===null){done();return;}
@@ -857,8 +864,10 @@ function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.st
 function teamControls(){
   const S=App.state, me=App.teamId!==null?S.teams[App.teamId]:null; if(App.role==='viewer') return stagePanelHTML(); if(!me) return `<div class="viewer-note">目前沒有可操作的隊伍。</div>`;
   if(S.phase==='setup')return `<div class="viewer-note">隊伍已連線，請等待主持人抽籤並開始遊戲。</div>`;
-  if(S.phase==='ended')return `<div class="viewer-note">活動已結束，操作功能已關閉。</div>`;
+  if(S.phase==='settle')return `<div class="viewer-note" style="border-left:4px solid #ffd700;background:#fffdf0;color:#7c5800;">🏆 <strong>活動已進入最終結算！</strong><br>請點選上方「🏆 結算頒獎」頁籤查看全場名次與頒獎典禮。</div>`;
+  if(S.phase==='ended')return `<div class="viewer-note">活動已結束，操作功能已關閉。請點選上方「🏆 結算頒獎」頁籤瀏覽最終成績。</div>`;
   if(S.paused)return `<div class="viewer-note">主持人已暫停活動，恢復後才能繼續操作。</div>`;
+
   let h=`<div class="card"><div class="ch">★ ${esc(me.name)} 的操作</div><div class="cb">`;
   if(S.phase==='market'){h+='<div class="note">正在公布本回合股市，請等待主持人進入下一階段。</div>';}
   if(S.phase==='roll'){
@@ -924,6 +933,124 @@ function attackSceneHTML(kind){
   return `<div class="attack-scene wildfire-scene"><div class="fire-wall">${Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>${Array.from({length:20},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div>`;
 }
 function cfgHTML(){ const S=App.state; const f=(label,path,val,suf='')=>`<label class="fl"><span>${label}</span><input class="cfg" data-p="${path}" type="number" min="0" value="${val}"><span class="u">${suf}</span></label>`; let h='<div class="cfgbox"><div class="note">修改完成後請按最下方的「儲存全部遊戲設定」，所有數值會一次驗證並套用。</div>'; h+=f('繞圈獎勵','lapBonus',S.settings.lapBonus);h+=f('稅收扣款','taxAmount',S.settings.taxAmount);h+=f('賭場花費','casinoCost',S.settings.casinoCost);h+=f('黑市折扣','blackDiscount',S.settings.blackDiscount,'%');h+=f('銀行密道取走','bankShare',S.settings.bankShare,'%');h+=f('骰子面數','diceSides',S.settings.diceSides,'面');h+=f('通行費佔過夜費','passRatio',S.settings.passRatio,'%');h+='<div class="sub">特殊操作費用</div><div class="grp">';Object.entries(S.settings.attacks).forEach(([k,a])=>{h+=f(`${a.name}所需諂媚點數`,`attacks.${k}.cost`,a.cost,'點');});h+='</div><div class="sub">基地等級</div>';S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});return h+'<button class="btn sm green" id="bSaveCfg">儲存全部遊戲設定</button></div>'; }
+function settleHTML(){
+  const S=App.state;
+  if(!S||!S.teams||!S.teams.length) return '<div class="card"><div class="cb">尚無隊伍資料</div></div>';
+  const ranked = G.rankTeams(S);
+  const top1 = ranked[0], top2 = ranked[1], top3 = ranked[2];
+
+  const highestCash = [...ranked].sort((a,b)=>b.cash-a.cash)[0];
+  const highestProp = [...ranked].sort((a,b)=>b.prop-a.prop)[0];
+  const highestPts = [...ranked].sort((a,b)=>b.pts-a.pts)[0];
+
+  let h = `<div class="settle-view">
+    <div class="settle-hero">
+      <div class="settle-kicker">★ VICTORY CEREMONY ★</div>
+      <h2 class="settle-title">🏆 最終結算 · 榮譽頒獎典禮 🏆</h2>
+      <p class="settle-subtitle">《${esc(CAMP_NAME)}》・ 第 ${S.round} 回合總成績公布</p>
+    </div>`;
+
+  h += `<div class="podium-wrap">`;
+  if(top2){
+    h += `<div class="podium-card rank-2">
+      <div class="podium-badge">🥈</div>
+      <div class="podium-rank-label">2ND 亞軍</div>
+      <div class="podium-team-swatch" style="background:${top2.color};color:${G.LIGHT_FG.includes(top2.originalIndex)?'#14110f':'#fff'}">${top2.originalIndex+1}</div>
+      <div class="podium-name">${esc(top2.name)}</div>
+      <div class="podium-worth">${G.money(top2.worth)}</div>
+      <div class="podium-breakdown">現金 ${G.money(top2.cash)}<br>房產 ${G.money(top2.prop)} ｜ 點數 ${top2.pts}</div>
+    </div>`;
+  }
+  if(top1){
+    h += `<div class="podium-card rank-1">
+      <div class="podium-badge">👑 🥇</div>
+      <div class="podium-rank-label">1ST 總冠軍</div>
+      <div class="podium-team-swatch" style="background:${top1.color};color:${G.LIGHT_FG.includes(top1.originalIndex)?'#14110f':'#fff'}">${top1.originalIndex+1}</div>
+      <div class="podium-name">${esc(top1.name)}</div>
+      <div class="podium-worth" style="font-size:15px;color:#d35400;">${G.money(top1.worth)}</div>
+      <div class="podium-breakdown">現金 ${G.money(top1.cash)}<br>房產 ${G.money(top1.prop)} ｜ 點數 ${top1.pts}</div>
+    </div>`;
+  }
+  if(top3){
+    h += `<div class="podium-card rank-3">
+      <div class="podium-badge">🥉</div>
+      <div class="podium-rank-label">3RD 季軍</div>
+      <div class="podium-team-swatch" style="background:${top3.color};color:${G.LIGHT_FG.includes(top3.originalIndex)?'#14110f':'#fff'}">${top3.originalIndex+1}</div>
+      <div class="podium-name">${esc(top3.name)}</div>
+      <div class="podium-worth">${G.money(top3.worth)}</div>
+      <div class="podium-breakdown">現金 ${G.money(top3.cash)}<br>房產 ${G.money(top3.prop)} ｜ 點數 ${top3.pts}</div>
+    </div>`;
+  }
+  h += `</div>`;
+
+  h += `<div class="settle-highlights">
+    <div class="highlight-card">
+      <div class="highlight-icon">💰</div>
+      <div class="highlight-content">
+        <h4>現金富豪</h4>
+        <strong>${esc(highestCash.name)}</strong>
+        <small>手握現金 ${G.money(highestCash.cash)}</small>
+      </div>
+    </div>
+    <div class="highlight-card">
+      <div class="highlight-icon">🏰</div>
+      <div class="highlight-content">
+        <h4>地產大亨</h4>
+        <strong>${esc(highestProp.name)}</strong>
+        <small>房產市值 ${G.money(highestProp.prop)}</small>
+      </div>
+    </div>
+    <div class="highlight-card">
+      <div class="highlight-icon">✨</div>
+      <div class="highlight-content">
+        <h4>諂媚之王</h4>
+        <strong>${esc(highestPts.name)}</strong>
+        <small>累積點數 ${highestPts.pts} 點</small>
+      </div>
+    </div>
+  </div>`;
+
+  h += `<div class="settle-table-wrap">
+    <div class="ch" style="margin-bottom:10px;">★ 全體隊伍最終總排名表</div>
+    <table class="settle-table">
+      <thead>
+        <tr>
+          <th style="width:44px;text-align:center;">名次</th>
+          <th>隊伍</th>
+          <th>基地狀態</th>
+          <th style="text-align:right;">現金</th>
+          <th style="text-align:right;">房產價值</th>
+          <th style="text-align:right;">諂媚點數</th>
+          <th style="text-align:right;">總資產</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ranked.map((t, idx) => {
+          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx+1}`;
+          const baseName = t.sold || t.baseIdx === null ? '無（已賣出）' : `LV${t.level} ${S.settings.levels[t.level-1]?.name || '營地'}`;
+          return `<tr>
+            <td class="rank-num">${medal}</td>
+            <td>
+              <div class="team-cell">
+                <span class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(t.originalIndex)?'#14110f':'#fff'};width:22px;height:22px;font-size:9px;">${t.originalIndex+1}</span>
+                <span>${esc(t.name)}</span>
+              </div>
+            </td>
+            <td>${esc(baseName)}</td>
+            <td style="text-align:right;">${G.money(t.cash)}</td>
+            <td style="text-align:right;">${G.money(t.prop)}</td>
+            <td style="text-align:right;">${t.pts} 點</td>
+            <td class="worth-cell">${G.money(t.worth)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  h += `</div>`;
+  return h;
+}
+
 function hostPanel(){
   const S=App.state; let h='<div class="card"><div class="ch">★ 主持人控制台</div><div class="cb">';
   h+=`<div class="note share-note">請讓隊輔從首頁底部導覽進入「隊輔」，隊員與觀眾直接留在首頁觀戰。</div>`;
@@ -933,17 +1060,32 @@ function hostPanel(){
   if(fxStat){
     h+=`<div class="note" style="border-left:4px solid #f2c12e;background:#fff8e6;color:#8a5d00;margin:10px 0;">⏳ <strong>排隊播放中：</strong>${esc(fxStat.text)}</div>`;
   }
-  h+=`<div class="sub">活動流程</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}<button class="btn sm dark" id="bEnd">結束並保存紀錄</button></div>`;
+  h+=`<div class="sub">活動流程控制</div><div class="small-grid">${S.phase==='setup'?'<button class="btn sm gold" id="bAssign">重新抽籤</button><button class="btn sm green" id="bStart">開始遊戲</button>':''}${!['setup','settle','ended'].includes(S.phase)?'<button class="btn sm blue" id="bNext">進入下一階段</button>':''}${!['setup','ended'].includes(S.phase)?(S.phase==='settle'?'<button class="btn sm purple" id="bResume">返回遊戲流程</button>':'<button class="btn sm gold" id="bSettle">🏆 進行最終結算</button>'):''}${S.phase!=='ended'?(S.paused?'<button class="btn sm green" id="bResume">恢復活動</button>':'<button class="btn sm gold" id="bPause">暫停活動</button>'):''}</div>`;
   h+='<div class="sub">隊伍名稱</div><textarea id="teamNames">'+esc(S.teams.map(t=>t.name).join('\n'))+'</textarea><button class="btn sm green" id="saveNames">儲存隊伍名稱</button>';
   h+='<div class="sub">隊輔連線</div><div class="team-connection-list">'+S.teams.map((t,i)=>`<div class="team-connection"><span class="sw" style="background:${t.color}">${i+1}</span><span>${esc(t.name)}<small>${t.joined?'已連線':'未連線'}</small></span>${t.joined?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div>`).join('')+'</div>'; h+='<div class="sub">主持人調整</div>'; h+=S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">現金 ${G.money(t.cash)}／點數 ${t.pts}</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">調整</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">調整</button></div></div>`).join('');
   h+='<div class="sub">股市與關卡</div><div class="row wrap mkrow">'+S.settings.marketOrder.map(k=>`<button class="tg mk" data-k="${k}">${S.settings.marketNames[k]}<span class="mx">×${S.settings.market[k]/100}</span></button>`).join('')+'</div><div class="row wrap">'+G.STAGE_IDX.map(i=>`<button class="btn xs purple unl" data-i="${i}">解封第 ${i+1} 格</button>`).join('')+'</div>';
-  h+='<button class="btn sm outline" id="showHistory">查看 D1 歷史紀錄</button><div id="historyBox"></div><button class="btn sm gold" id="bCfg">'+(App.cfg?'收起設定':'展開設定')+'</button>'+(App.cfg?cfgHTML():'')+'</div></div>';return h;
+  h+='<button class="btn sm outline" id="showHistory">查看 D1 歷史紀錄</button><div id="historyBox"></div><button class="btn sm gold" id="bCfg">'+(App.cfg?'收起設定':'展開設定')+'</button>'+(App.cfg?cfgHTML():'');
+
+  h+=`<div class="host-danger-zone"><div class="sub">⚠️ 活動封存與結束</div><div class="note warn">結束活動將封存所有遊戲紀錄並保存至 D1 資料庫，所有隊伍將無法再進行任何操作。請確認已完成頒獎結算。</div><button class="btn sm dark" id="bEnd">結束並保存紀錄</button></div>`;
+
+  h+='</div></div>';return h;
 }
 function renderGame(){
   const S=App.state;if(!S){$('app').innerHTML='<div class="card"><div class="cb">正在建立即時連線…</div></div>';return;}
-  const tabs=[['main','遊戲'],['log','紀錄']];if(App.role==='host')tabs.push(['host','主控']);if(!tabs.some(x=>x[0]===App.tab))App.tab='main';
-  const flow=[['market','股市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
-  let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`; if(App.tab==='log') body=logHTML(); if(App.tab==='host'&&App.role==='host') body=hostPanel();
+  const tabs=[['main','遊戲'],['settle','🏆 結算頒獎'],['log','紀錄']];if(App.role==='host')tabs.push(['host','主控']);
+  if(S.phase==='settle' && App.role!=='host' && !App._hasSwitchedSettleTab){
+    App.tab='settle';
+    App._hasSwitchedSettleTab=true;
+  }
+  if(S.phase!=='settle'){
+    App._hasSwitchedSettleTab=false;
+  }
+  if(!tabs.some(x=>x[0]===App.tab))App.tab='main';
+  const flow=[['market','股市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'||S.phase==='settle'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
+  let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
+  if(App.tab==='settle') body=settleHTML();
+  if(App.tab==='log') body=logHTML();
+  if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
   const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ WARNING // SPECIAL ATTACK DETECTED ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
@@ -953,6 +1095,7 @@ function renderGame(){
 
   bindGame(); fitBoard();
 }
+
 function clearPendingAction(){ clearTimeout(App.pendingTimer);App.pendingTimer=null;App.pendingAction=null;App.busy=false; }
 function send(action,payload={},options={}){
   if(App.busy){toast('上一個操作仍在處理中');return;}
@@ -1015,7 +1158,9 @@ function bindGame(){
     });
     bind('bPause',()=>ask('暫停活動？','暫停後隊輔暫時不能操作，但觀眾仍可觀看目前狀態。',()=>send('pauseGame')));
     bind('bResume',()=>send('resumeGame'));
-    bind('bEnd',()=>ask('結束活動？','結束後會保存到 D1 歷史紀錄，活動不再出現在公開入口。',()=>send('endGame')));
+    bind('bSettle',()=>ask('進行最終結算？','將進入榮譽頒獎典禮畫面，向全場隊伍與觀眾公開最終排行榜。',()=>send('settleGame')));
+    bind('bEnd',()=>ask('結束活動並保存紀錄？','活動將正式結束並寫入 D1 歷史資料庫，所有裝置將無法再進行遊戲操作。',()=>send('endGame')));
+
     document.querySelectorAll('.kick').forEach(b=>b.onclick=()=>ask('踢出隊輔？','會關閉該隊目前的 WebSocket 連線，隊伍狀態回到未連線。',()=>send('kickTeam',{teamId:Number(b.dataset.i)})));
     bind('bCfg',()=>{App.cfg=!App.cfg;render(true);});
 

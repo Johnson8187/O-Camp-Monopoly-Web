@@ -66,16 +66,21 @@ assert.deepEqual(lobby.games[0].teams,[
 ]);
 assert.equal(lobby.games[0].joinedCount,1);
 
+
+
 const passwordHash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('iii'))).toString('hex');
 const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{TEAM_PASSWORD_HASH:passwordHash});
 room.loaded=true;
 room.lastActivityAt=0;
 room.meta={id:'GAME1',name:'測試活動',teamCount:2,hostTokenHash:'unused'};
-room.state={phase:'setup',paused:false,teams:[{name:'紅隊',joined:true},{name:'藍隊',joined:false}]};
+room.state={phase:'setup',paused:false,teams:[{name:'紅隊',joined:true},{name:'藍隊',joined:false}],log:[]};
+
 function pendingSocket(){
+
   let attachment={role:'pending',teamId:null};
   return {sent:[],closed:false,send(data){this.sent.push(JSON.parse(data));},close(){this.closed=true;},deserializeAttachment(){return attachment;},serializeAttachment(value){attachment=value;}};
 }
+
 const wrongSocket=pendingSocket();
 await room.webSocketMessage(wrongSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'wrong',token:'not-needed'}));
 assert.equal(wrongSocket.closed,true);
@@ -83,5 +88,12 @@ const teamSocket=pendingSocket();
 await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'iii'}));
 assert.equal(teamSocket.closed,false);
 assert.equal(teamSocket.sent.at(-1).type,'hello_ok');
+
+const hostSocket=pendingSocket();
+hostSocket.serializeAttachment({role:'host',teamId:null});
+room.commit=async (next)=>{ room.state=next; };
+await room.webSocketMessage(hostSocket,JSON.stringify({type:'action',action:'settleGame',actionId:'test-settle-1'}));
+assert.equal(hostSocket.sent.find(m=>m.type==='action_ok')?.actionId,'test-settle-1');
+assert.equal(room.state.phase,'settle');
 
 console.log('reliability phase-guard, team-picker and control-header tests passed');

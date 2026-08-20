@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.23';
-import { G } from './game-core.js?v=2026.08.21.23';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.23';
+const BUILD_VERSION = '2026.08.21.24';
+import { G } from './game-core.js?v=2026.08.21.24';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.24';
+
 
 
 

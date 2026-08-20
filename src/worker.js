@@ -3,7 +3,8 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.23';
+const APP_BUILD_VERSION = '2026.08.21.24';
+
 
 
 
@@ -102,7 +103,8 @@ async function closeGame(id,request,env){
   const headers=new Headers({'x-game-id':id,'x-control-action':'endGame'});
   return getRoom(env,id).fetch(new Request('https://do.internal/control',{method:'POST',headers,body:'{}'}));
 }
-const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','endGame','setMarket','unlock','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
+const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','endGame','setMarket','unlock','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
+
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','attack','gamble','buff','upgrade','sell','buyBack']);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
 const CONFIG_RANGES={lapBonus:[0,1000000],taxAmount:[0,1000000],casinoCost:[0,1000000],blackDiscount:[1,100],bankShare:[0,100],diceSides:[2,20],passRatio:[0,100]};

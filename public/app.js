@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.3';
-import { G } from './game-core.js?v=2026.08.21.3';
-import { PHASE_FX, ATTACK_FX, SoundFX, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.3';
+const BUILD_VERSION = '2026.08.21.4';
+import { G } from './game-core.js?v=2026.08.21.4';
+import { PHASE_FX, ATTACK_FX, SoundFX, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.4';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -410,7 +410,7 @@ async function loadHistory(){
 }
 function render(force=false){ syncChrome(); if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
 
-window.addEventListener('DOMContentLoaded',()=>{
+function bootApp(){
   try{
     loadAccess(); App.entry=routeEntry();
     $('modalClose').onclick=()=>{$('modal').style.display='none';}; $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};
@@ -424,8 +424,15 @@ window.addEventListener('DOMContentLoaded',()=>{
     console.error('App bootstrap failed',error);
     window.__showBootFallback?.();
   }
-});
+}
+
+if(document.readyState==='loading'){
+  window.addEventListener('DOMContentLoaded',bootApp);
+}else{
+  bootApp();
+}
 window.addEventListener('popstate',()=>{App.socket?.close();App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.entry=routeEntry();App.screen='home';render(true);});
 window.addEventListener('resize',fitBoard);window.addEventListener('orientationchange',()=>setTimeout(fitBoard,300));
 window.addEventListener('online',()=>App.socket?.reconnectNow());
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!App.connected)App.socket?.reconnectNow();});
+

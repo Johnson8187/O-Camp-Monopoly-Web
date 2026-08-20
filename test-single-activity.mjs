@@ -25,6 +25,11 @@ function waitFor(ws, predicate, label, timeout = 5000) {
     ws.addEventListener('message', onMessage);
   });
 }
+function sendAndWait(ws, actionId, action, payload = {}) {
+  const result = waitFor(ws, message => message.actionId === actionId && (message.type === 'action_ok' || message.type === 'error'), actionId);
+  ws.send(JSON.stringify({ type: 'action', actionId, action, payload }));
+  return result;
+}
 async function connect(id, hello) {
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws/${encodeURIComponent(id)}`);
   await new Promise((resolve, reject) => {
@@ -88,6 +93,29 @@ const team = await connect(created.id, { role: 'team', teamId: 0, accessToken: '
 const viewer = await connect(created.id, { role: 'viewer' });
 if (team.welcome.state.teams[0].joined !== true) throw new Error('隊輔加入後狀態未同步');
 if (viewer.welcome.state.teams.length !== 2) throw new Error('觀眾未收到遊戲狀態');
+
+for (const [actionId, action, payload] of [
+  ['assign-1', 'assignBases', {}],
+  ['start-1', 'startGame', {}],
+  ['points-1', 'adjustPts', { teamId: 0, amount: 50 }],
+  ['phase-sell', 'nextPhase', {}],
+  ['phase-shop', 'nextPhase', {}],
+  ['phase-roll', 'nextPhase', {}],
+]) {
+  const result = await sendAndWait(host.ws, actionId, action, payload);
+  if (result.type !== 'action_ok') throw new Error(`${action} 失敗：${result.error}`);
+}
+const firstAttackState = waitFor(viewer.ws, message => message.type === 'state' && message.state?.lastAttack?.kind === 'quake', '第一次特殊操作狀態');
+const firstAttack = await sendAndWait(team.ws, 'attack-quake-1', 'attack', { kind: 'quake' });
+if (firstAttack.type !== 'action_ok') throw new Error(`第一次特殊操作失敗：${firstAttack.error}`);
+const afterFirstAttack = (await firstAttackState).state;
+const pointsAfterAttack = afterFirstAttack.teams[0].pts;
+const repeatedAttack = await sendAndWait(team.ws, 'attack-quake-2', 'attack', { kind: 'quake' });
+if (repeatedAttack.type !== 'error' || !/本回合已使用過/.test(repeatedAttack.error || '')) throw new Error('同一隊同一招在同回合內未被伺服器拒絕');
+const attackAudit = await connect(created.id, { role: 'viewer' });
+if (attackAudit.welcome.state.teams[0].pts !== pointsAfterAttack) throw new Error('重複特殊操作仍扣除了諂媚點數');
+if (attackAudit.welcome.state.log.filter(message => message.includes('發動「地震」')).length !== 1) throw new Error('重複特殊操作仍寫入遊戲紀錄');
+attackAudit.ws.close();
 
 const duplicateTeam = await connect(created.id, { role: 'team', teamId: 0, accessToken: 'iii' });
 duplicateTeam.ws.close();

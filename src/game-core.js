@@ -84,7 +84,7 @@ function freshState(code, teamCount, names) {
       jail:0, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
       buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, joined:false,
     })),
-    bank:0, market:"flat", disasters:0, unlocked:[], log:[],
+    bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[],
     settings: clone(DEFAULTS), lastRoll:null,
   };
 }
@@ -289,7 +289,8 @@ function tilesInSquare(col, row, half) {
 function playAttack(s, ti, kind, rnd = Math.random) {
   const t = s.teams[ti], A = s.settings.attacks[kind];
   if (!A) return {ok:false, msg:"找不到這個特殊操作"};
-  if (t.attackRounds?.[kind] === s.round) return {ok:false, msg:`「${A.name}」本回合已使用過`};
+  const useKey = `${Number(s.round)}:${ti}:${kind}`;
+  if (s.attackUsage?.[useKey] || Number(t.attackRounds?.[kind]) === Number(s.round)) return {ok:false, msg:`「${A.name}」本回合已使用過`};
   const cost = costWithDiscount(s, t, A.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   t.pts -= cost; if (t.discount) t.discount = false;
@@ -336,6 +337,7 @@ function playAttack(s, ti, kind, rnd = Math.random) {
     else pay(s, target.id, "bank", A.repair);
     hit = target.baseIdx !== null ? [target.baseIdx] : [];
   }
+  s.attackUsage = {...(s.attackUsage || {}), [useKey]:true};
   t.attackRounds = {...(t.attackRounds || {}), [kind]:s.round};
   s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, round:s.round};
   s.log.unshift(`${t.name} 發動「${A.name}」— ${msg}`);
@@ -350,8 +352,8 @@ function nextPhase(s) {
   if (i < PHASES.length-1) { s.phase = PHASES[i+1]; return s; }
   const d = s.disasters, th = s.settings.inflateThreshold;
   s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
-  s.round += 1; s.disasters = 0; s.phase = "market";
-  s.teams.forEach(t => { t.rolled = false; });
+  s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
+  s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; });
   s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
   return s;
 }

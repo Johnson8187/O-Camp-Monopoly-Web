@@ -21,6 +21,14 @@ assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setC
 assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfigs',{entries:[{path:'attacks.quake.cost',value:7},{path:'attacks.missile.cost',value:6}]}),undefined);
 assert.equal(configurable.settings.attacks.quake.cost,7);
 assert.equal(configurable.settings.attacks.missile.cost,6);
+configurable.phase='roll';
+configurable.round=1;
+configurable.teams[0].pts=100;
+assert.equal(configRoom.applyAction(configurable,{role:'team',teamId:0},'attack',{kind:'quake'}),undefined);
+const pointsAfterAttack=configurable.teams[0].pts;
+assert.match(configRoom.applyAction(configurable,{role:'team',teamId:0},'attack',{kind:'quake'}).error,/本回合已使用過/);
+assert.equal(configurable.teams[0].pts,pointsAfterAttack);
+assert.equal(configurable.log.filter(message=>message.includes('發動「地震」')).length,1);
 
 let proxiedRequest;
 const response=await worker.fetch(new Request('https://example.test/ws/ROOM123',{headers:{'x-control-action':'endGame'}}),{

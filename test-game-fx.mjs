@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { PHASE_FX, ATTACK_FX, classifyEvent, movementPath } from './public/game-fx.js';
 
 assert.equal(PHASE_FX.roll.title,'開始移動');
-assert.equal(ATTACK_FX.typhoon.title,'颱風登陸');
+assert.equal(ATTACK_FX.typhoon.title,'超級颱風');
+assert.equal(ATTACK_FX.quake.title,'地裂震央');
 assert.equal(classifyEvent('紅隊 發動「飛彈」'),'danger');
 assert.equal(classifyEvent('藍隊 停在稅收格，扣 $200'),'loss');
 assert.equal(classifyEvent('黃隊 基地升級為「商店」'),'reward');

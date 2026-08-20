@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.1';
-import { G } from './game-core.js?v=2026.08.21.1';
-import { PHASE_FX, ATTACK_FX, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.1';
+const BUILD_VERSION = '2026.08.21.3';
+import { G } from './game-core.js?v=2026.08.21.3';
+import { PHASE_FX, ATTACK_FX, SoundFX, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.3';
 
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
@@ -9,7 +9,8 @@ const App = {
   highlight: [], cfg: false, history: [], lobbyTimer: null,
   access: {host: '', team: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{}},
+  sound: SoundFX.isSoundEnabled(), radarFocus: null, _radarTimer: null,
+  fx: {phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
 };
 
 const $ = (id) => document.getElementById(id);
@@ -70,34 +71,59 @@ function ask(title, detail, onYes){
 const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 function fxTimeout(key,fn,delay){clearTimeout(App.fx.timers[key]);App.fx.timers[key]=setTimeout(()=>{delete App.fx.timers[key];fn();},delay);}
 function renderFx(){if(App.screen==='game')render(true);}
-function resetGameFx(){Object.values(App.fx.timers).forEach(clearTimeout);App.fx={phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{}};App.highlight=[];}
-function showPhaseFx(data){App.fx.phase=data;fxTimeout('phase',()=>{App.fx.phase=null;renderFx();},reducedMotion?700:1900);}
-function showEventFx(message){App.fx.event={message:String(message).slice(0,180),kind:classifyEvent(message)};fxTimeout('event',()=>{App.fx.event=null;renderFx();},reducedMotion?1500:3600);}
+function resetGameFx(){Object.values(App.fx.timers).forEach(clearTimeout);App.fx={phase:null,event:null,attack:null,aftershock:null,dice:null,camera:null,positions:{},timers:{},stepText:''};App.highlight=[];}
+function showPhaseFx(data){App.fx.phase=data;SoundFX.playPhaseChange();fxTimeout('phase',()=>{App.fx.phase=null;renderFx();},reducedMotion?700:1900);}
+function showEventFx(message){
+  const kind=classifyEvent(message);App.fx.event={message:String(message).slice(0,180),kind};
+  if(/獲得|獎勵|買回|升級|取走/.test(message))SoundFX.playCoinReward();
+  else if(/修繕|扣款|稅金|支付|進入監獄/.test(message))SoundFX.playAttackHit();
+  fxTimeout('event',()=>{App.fx.event=null;renderFx();},reducedMotion?1500:3600);
+}
 function showAttackFx(attack,message,next){
   const preset=ATTACK_FX[attack?.kind];if(!preset)return false;
   App.fx.event=null;App.fx.attack={...preset,kind:attack.kind,message:String(message||'').slice(0,180),teamName:next.teams?.[attack.team]?.name||''};
   App.fx.aftershock={kind:attack.kind,hit:Array.isArray(attack.hit)?attack.hit:[],message:String(message||'').slice(0,180)};
-  fxTimeout('attack',()=>{App.fx.attack=null;renderFx();},reducedMotion?1200:4600);
-  fxTimeout('aftershock',()=>{App.fx.aftershock=null;renderFx();},reducedMotion?3200:15000);
+  SoundFX.playAttackAlert();
+  fxTimeout('attack',()=>{App.fx.attack=null;renderFx();},reducedMotion?1200:4000);
+  fxTimeout('aftershock',()=>{App.fx.aftershock=null;renderFx();},reducedMotion?2400:4000);
   return true;
 }
 function startRollFx(previous,next){
   const roll=next.lastRoll,teamId=Number(roll?.team),team=next.teams?.[teamId],before=previous.teams?.[teamId];
   if(!roll||!team||!before)return;
   App.fx.dice={teamId,teamName:team.name,value:roll.n,rolling:!reducedMotion};
+  SoundFX.playDiceTumble();
   if(reducedMotion){fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},1200);return;}
-  fxTimeout('diceReveal',()=>{if(App.fx.dice)App.fx.dice.rolling=false;renderFx();},1050);
+  fxTimeout('diceReveal',()=>{if(App.fx.dice){App.fx.dice.rolling=false;SoundFX.playDiceResult();}renderFx();},900);
   const path=movementPath(before.pos,roll.n,team.pos,G.N);
   if(path.length){
     App.fx.positions[teamId]=before.pos;let step=0;
     const move=()=>{
-      const from=App.fx.positions[teamId],pos=path[step];App.fx.positions[teamId]=pos;App.fx.camera={teamId,from,pos};App.highlight=[pos];step+=1;renderFx();
-      if(step<path.length)fxTimeout('move',move,680);
-      else fxTimeout('move',()=>{delete App.fx.positions[teamId];App.fx.camera=null;App.highlight=[];renderFx();},900);
+      const from=App.fx.positions[teamId],pos=path[step];
+      App.fx.positions[teamId]=pos;
+      App.fx.camera={teamId,from,pos};
+      App.highlight=[pos];
+      App.fx.stepText=`${step+1} / ${path.length}`;
+      SoundFX.playStepHop();
+      step+=1;renderFx();
+      if(step<path.length){
+        fxTimeout('move',move,460);
+      }else{
+        SoundFX.playLanding();
+        App.fx.stepText='★ 抵達！';
+        renderFx();
+        fxTimeout('move',()=>{
+          delete App.fx.positions[teamId];
+          App.fx.camera=null;
+          App.highlight=[];
+          App.fx.stepText='';
+          renderFx();
+        },1100);
+      }
     };
-    fxTimeout('move',move,1450);
+    fxTimeout('move',move,1200);
   }
-  fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},2300);
+  fxTimeout('dice',()=>{App.fx.dice=null;renderFx();},2200);
 }
 function processGameFx(previous,next){
   if(!previous||!next)return;
@@ -257,12 +283,19 @@ function boardHUD(){
 }
 function boardHTML(){
   const S=App.state,cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||App.fx.aftershock?.kind||'',attackHit=App.fx.aftershock?.hit||[],cameraPos=App.fx.camera?.pos;let out=`<div class="bwrap ${App.zoom?'zoomed':'fit'} ${App.fx.camera?'camera-active':''}" id="bwrap"><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
-  G.TRACK.forEach((t,i)=>{const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>(App.fx.positions[x.id]??x.pos)===i),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),hot=attackHot||stepHot,locked=kind==='stage'&&!S.unlocked.includes(i);out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">${own.id+1}</div>`:''}${here.length?`<div class="pins">${here.slice(0,4).map(h=>`<i class="${App.fx.positions[h.id]!==undefined?'moving':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>4?`<i class="more">+${here.length-4}</i>`:''}</div>`:''}</div>`;});
+  G.TRACK.forEach((t,i)=>{
+    const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>(App.fx.positions[x.id]??x.pos)===i),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),radarHot=App.radarFocus===i,hot=attackHot||stepHot||radarHot,locked=kind==='stage'&&!S.unlocked.includes(i);
+    out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''} ${radarHot?'radar-beacon':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">🚩${own.id+1}</div>`:''}${here.length?`<div class="pins">${here.slice(0,4).map(h=>`<i class="${App.fx.positions[h.id]!==undefined?'moving':''} ${App.teamId===h.id?'is-me':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>4?`<i class="more">+${here.length-4}</i>`:''}</div>`:''}</div>`;
+  });
+  if(App.fx.stepText)out+=`<div class="step-progress-badge">${esc(App.fx.stepText)}</div>`;
   return out+boardAftermathHTML(attackKind)+boardHUD()+'</div></div><button class="btn sm gold" id="bZoom">'+(App.zoom?'符合螢幕':'放大檢視')+'</button>';
 }
 function fitBoard(){if(App.screen!=='game')return;const wrap=$('bwrap'),bd=$('board');if(!wrap||!bd)return;if(App.fx.camera){const height=Math.min(570,Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18)),scale=window.innerWidth<600?1.28:window.innerWidth<1000?1.48:1.7,point=pos=>{const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+23,y:tile[2]*50+23};},from=point(App.fx.camera.from),to=point(App.fx.camera.pos),centerX=wrap.clientWidth*.5,centerY=height*.57,screenY=p=>p.y*scale*.72;wrap.style.height=`${height}px`;wrap.classList.remove('compact-board');bd.style.transform='';bd.style.transformOrigin='0 0';bd.style.setProperty('--camera-scale',scale);bd.style.setProperty('--cam-from-x',`${centerX-from.x*scale}px`);bd.style.setProperty('--cam-from-y',`${centerY-screenY(from)}px`);bd.style.setProperty('--cam-to-x',`${centerX-to.x*scale}px`);bd.style.setProperty('--cam-to-y',`${centerY-screenY(to)}px`);return;}if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}const max=Math.max(240,wrap.clientWidth-4),stage=App.role==='viewer'&&window.innerWidth>=1100,viewerMax=stage?1.45:1,availableHeight=stage?Math.max(420,window.innerHeight-wrap.getBoundingClientRect().top-22):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);bd.style.transformOrigin='top left';bd.style.transform=`scale(${scale})`;wrap.style.height=`${bd.offsetHeight*scale}px`;wrap.classList.toggle('compact-board',scale<.78);}
 function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：抽取一張命運卡。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:'銀行密道：取得銀行池的一部分。',worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:'交易所：查看市場資訊。',stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}`:''}`; }
-function rankingHTML(){ const S=App.state,money=n=>`${Number(n||0).toLocaleString()}元`; return `<div class="card ranking-card"><div class="ch">★ 即時排行榜 · 依總資產排序</div><div class="cb ranking-list"><div class="rank-legend">現金 <i>/</i> 房產 <i>/</i> 諂媚</div>${[...S.teams].sort((a,b)=>G.netWorth(S,b)-G.netWorth(S,a)).map((t,i)=>`<div class="rk"><div class="rank-head"><div class="rn">${i+1}</div><div class="sw" style="background:${t.color}"></div><div class="rname">${esc(t.name)}<div class="dim">${t.joined?'已連線':'尚未連線'}</div></div></div><div class="rank-values"><b>${money(t.cash)}</b><i>/</i><b>${money(G.propertyValue(S,t))}</b><i>/</i><b>${Number(t.pts||0).toLocaleString()}點</b></div></div>`).join('')}</div></div>`; }
+function rankingHTML(){
+  const S=App.state,money=n=>`${Number(n||0).toLocaleString()}元`;
+  return `<div class="card ranking-card"><div class="ch">★ 即時排行榜 · 點擊隊伍地圖定位</div><div class="cb ranking-list"><div class="rank-legend">點擊隊伍可在棋盤定位 <i>/</i> 現金 <i>/</i> 房產 <i>/</i> 點數</div>${[...S.teams].sort((a,b)=>G.netWorth(S,b)-G.netWorth(S,a)).map((t,i)=>`<div class="rk" data-team="${t.id}" title="點擊在棋盤定位 ${esc(t.name)}"><div class="rank-head"><div class="rn">${i+1}</div><div class="sw" style="background:${t.color}"></div><div class="rname">${esc(t.name)}<div class="dim">${t.joined?'已連線':'尚未連線'} · 第 ${t.pos+1} 格</div></div></div><div class="rank-values"><b>${money(t.cash)}</b><i>/</i><b>${money(G.propertyValue(S,t))}</b><i>/</i><b>${Number(t.pts||0).toLocaleString()}點</b></div></div>`).join('')}</div></div>`;
+}
 function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</div><div class="cb">${(App.state.log||[]).slice(0,80).map(x=>`<div class="lg">${esc(x)}</div>`).join('')||'<div class="note">尚無紀錄</div>'}</div></div>`; }
 function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIVE ARENA</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>股市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
 function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.state.log?.[0]||'活動即將開始，請各隊做好準備';return `<div class="stage-ticker"><span>● LIVE</span><div><b>現場快報</b>${esc(message)}</div></div>`;}
@@ -273,7 +306,11 @@ function teamControls(){
   if(S.paused)return `<div class="viewer-note">主持人已暫停活動，恢復後才能繼續操作。</div>`;
   let h=`<div class="card"><div class="ch">★ ${esc(me.name)} 的操作</div><div class="cb">`;
   if(S.phase==='market'){h+='<div class="note">正在公布本回合股市，請等待主持人進入下一階段。</div>';}
-  if(S.phase==='roll'){const mine=App.fx.dice?.teamId===me.id,lastMine=S.lastRoll?.team===me.id?S.lastRoll.n:1;if(me.rolled||App.busy)h+=`<div class="dice-result-panel ${mine&&App.fx.dice?.rolling?'rolling':''}">${diceCubeHTML(mine?App.fx.dice.value:lastMine)}<b>${App.busy?'骰子飛行中…':`本回合擲出 ${lastMine} 點`}</b></div>`;else h+=`<div class="dice-throw-pad" id="diceThrow" role="button" tabindex="0" aria-label="向上滑動擲骰子"><div class="throw-lane"><span>FLICK TO ROLL</span>${diceCubeHTML(1)}<i class="throw-arrow">↑</i></div><strong>按住骰子向上滑動，放手擲出</strong><small>滑得越有氣勢，動畫飛得越高；點數仍由伺服器公平決定</small></div>`;}
+  if(S.phase==='roll'){
+    const mine=App.fx.dice?.teamId===me.id,lastMine=S.lastRoll?.team===me.id?S.lastRoll.n:1;
+    if(me.rolled||App.busy)h+=`<div class="dice-result-panel ${mine&&App.fx.dice?.rolling?'rolling':''}">${diceCubeHTML(mine?App.fx.dice.value:lastMine)}<b>${App.busy?'骰子飛行中…':`本回合擲出 ${lastMine} 點`}</b></div>`;
+    else h+=`<div class="dice-throw-pad" id="diceThrow" role="button" tabindex="0" aria-label="向上滑動擲骰子"><div class="throw-lane"><span>FLICK TO ROLL</span>${diceCubeHTML(1)}<i class="throw-arrow">↑</i><i class="throw-status">向上甩動</i></div><strong>按住骰子向上滑動，放手擲出</strong><small>快速輕甩或拉過紅線即可；點數仍由伺服器公平決定</small></div>`;
+  }
   if(S.phase==='shop'){ h+=`<div class="note">目前是商店階段。</div>${S.settings.gambles.map((g,i)=>`<button class="btn sm purple gam" data-i="${i}">${g.name}　${G.costWithDiscount(S,me,g.cost)} 點</button>`).join('')}${Object.entries(S.settings.buffs).map(([k,b])=>`<button class="btn sm blue buf" data-k="${k}">${b.name}　${G.costWithDiscount(S,me,b.cost)} 點</button>`).join('')}`; }
   if(S.phase==='roll'){ h+=`<div class="seg">特殊操作・每招每回合限一次</div><div class="attack-list">${Object.entries(S.settings.attacks).map(([k,a])=>{const used=Boolean(S.attackUsage?.[`${Number(S.round)}:${me.id}:${k}`])||Number(me.attackRounds?.[k])===Number(S.round),cost=G.costWithDiscount(S,me,a.cost),lack=me.pts<cost;return `<div class="attack-action"><button class="btn sm dark atk ${used?'used':lack?'lack':''}" data-k="${k}" ${used||lack?'disabled':''}><span>${a.name}</span><b>${used?'本回合已使用':lack?`還差 ${cost-me.pts} 點`:cost+' 點'}</b></button><div class="attack-help">${esc(attackDescription(S,k,a))}</div></div>`;}).join('')}</div><button class="btn sm ink" id="bBattle">使用 BATTLE（剩 ${me.battles} 次）</button>`; }
   if(S.phase==='sell'){h+=`<div class="seg">基地操作</div><div class="small-grid"><button class="btn sm green" id="bUp">升級基地</button><button class="btn sm gold" id="bSell">賣出基地</button><button class="btn sm blue" id="bBuyBack">買回基地</button></div>`;}
@@ -303,29 +340,58 @@ function renderGame(){
   const S=App.state;if(!S){$('app').innerHTML='<div class="card"><div class="cb">正在建立即時連線…</div></div>';return;}
   const tabs=[['main','遊戲'],['log','紀錄']];if(App.role==='host')tabs.push(['host','主控']);if(!tabs.some(x=>x[0]===App.tab))App.tab='main';
   const flow=[['market','股市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
-  let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">左上方塊＝領地　右下標記＝隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`; if(App.tab==='log') body=logHTML(); if(App.tab==='host'&&App.role==='host') body=hostPanel();
+  let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`; if(App.tab==='log') body=logHTML(); if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
-  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">SPECIAL ATTACK // ${esc(App.fx.attack.kind.toUpperCase())}</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">${esc(App.fx.attack.teamName)}｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
+  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ WARNING // SPECIAL ATTACK DETECTED ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
   const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲骰</div>${diceCubeHTML(App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':App.fx.dice.value}</strong></div>`:'';
-  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${eventFx}${phaseFx}${diceFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 音效 ON':'🔇 音效 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'即時連線':'正在重新連線'}</span></div></div>${phaseTrack}<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div><div class="head-actions"><button class="btn xs ink" id="leaveGame">離開</button></div></div>${body}${eventFx}${phaseFx}${diceFx}${attackFx}`;
   bindGame(); fitBoard();
 }
 function clearPendingAction(){ clearTimeout(App.pendingTimer);App.pendingTimer=null;App.pendingAction=null;App.busy=false; }
-function send(action,payload={}){
+function send(action,payload={},options={}){
   if(App.busy){toast('上一個操作仍在處理中');return;}
   if(!App.socket){toast('尚未連線',true);return;}
   const actionId=`${Date.now()}-${++App.actionSeq}`;
   if(!App.socket.send({type:'action',action,payload,actionId}))return;
-  App.pendingAction=actionId;App.busy=true;render(true);
+  App.pendingAction=actionId;App.busy=true;if(!options.preserveView)render(true);
   App.pendingTimer=setTimeout(()=>{if(App.pendingAction===actionId){clearPendingAction();render(true);toast('操作回應較慢，請先確認畫面狀態再重試',true);}},10000);
 }
-function bindDiceGesture(){const pad=$('diceThrow');if(!pad)return;let active=false,startY=0,pull=0,launched=false;const reset=()=>{active=false;pull=0;pad.classList.remove('dragging');pad.style.setProperty('--throw-pull','0px');pad.style.setProperty('--throw-spin','0deg');};const launch=()=>{if(launched||App.busy)return;launched=true;pad.classList.remove('dragging');pad.classList.add('launch');navigator.vibrate?.(35);setTimeout(()=>send('roll'),360);};pad.onpointerdown=e=>{if(launched)return;active=true;startY=e.clientY;pull=0;pad.classList.add('dragging');pad.setPointerCapture?.(e.pointerId);};pad.onpointermove=e=>{if(!active)return;pull=Math.max(0,Math.min(150,startY-e.clientY));pad.style.setProperty('--throw-pull',`${pull}px`);pad.style.setProperty('--throw-spin',`${pull*2.2}deg`);};pad.onpointerup=()=>{if(!active)return;active=false;if(pull>=58)launch();else reset();};pad.onpointercancel=reset;pad.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();launch();}};}
+function bindDiceGesture(){
+  const pad=$('diceThrow');if(!pad)return;let active=false,startY=0,startX=0,pull=0,tilt=0,velocity=0,lastY=0,lastAt=0,frame=0,launched=false;
+  const status=pad.querySelector('.throw-status'),paint=()=>{const power=Math.min(1,pull/82);frame=0;pad.style.setProperty('--throw-pull',`${pull}px`);pad.style.setProperty('--throw-y',`${-pull}px`);pad.style.setProperty('--throw-spin',`${pull*1.75}deg`);pad.style.setProperty('--throw-tilt',`${tilt}deg`);pad.style.setProperty('--throw-shadow-scale',String(1-power*.24));pad.style.setProperty('--throw-shadow-opacity',String(.22+power*.24));if(status)status.textContent=pull>=52?'放手擲出！':pull>12?'再往上一點':'向上甩動';},queuePaint=()=>{if(!frame)frame=requestAnimationFrame(paint);};
+  const reset=()=>{active=false;if(frame)cancelAnimationFrame(frame);frame=0;pad.classList.remove('dragging');pad.classList.add('settling');pull=0;tilt=0;paint();setTimeout(()=>pad.classList.remove('settling'),280);};
+  const launch=()=>{if(launched||App.busy)return;launched=true;active=false;if(frame)cancelAnimationFrame(frame);paint();pad.classList.remove('dragging','settling');pad.classList.add('launch');if(status)status.textContent='擲出中…';navigator.vibrate?.([20,25,35]);SoundFX.playDiceTumble();setTimeout(()=>{pad.classList.add('waiting');if(status)status.textContent='等待骰點…';send('roll',{}, {preserveView:true});},540);};
+  pad.onpointerdown=e=>{if(launched)return;e.preventDefault();active=true;startY=lastY=e.clientY;startX=e.clientX;lastAt=performance.now();pull=0;tilt=0;velocity=0;pad.classList.remove('settling');pad.classList.add('dragging');pad.setPointerCapture?.(e.pointerId);queuePaint();};
+  pad.onpointermove=e=>{if(!active)return;e.preventDefault();const now=performance.now(),dy=lastY-e.clientY,dt=Math.max(8,now-lastAt);velocity=velocity*.6+(dy/dt)*.4;lastY=e.clientY;lastAt=now;pull=Math.max(0,Math.min(132,startY-e.clientY));tilt=Math.max(-12,Math.min(12,(e.clientX-startX)*.12));queuePaint();};
+  pad.onpointerup=e=>{if(!active)return;pad.releasePointerCapture?.(e.pointerId);if(pull>=52||(pull>=32&&velocity>.55))launch();else reset();};pad.onpointercancel=reset;pad.onlostpointercapture=()=>{if(active)reset();};pad.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pull=82;paint();launch();}};
+}
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{App.tab=b.dataset.k;render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？')){clearSession();go(App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/');}}); bind('bZoom',()=>{App.zoom=!App.zoom;render(true);});
-  document.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{const i=Number(t.dataset.i);$('modalTitle').textContent=`第 ${i+1} 格 — ${G.TILE[G.TRACK[i][0]].n}`;$('modalBody').innerHTML=`<div class="mrow">${sprite(G.TRACK[i][0],40)}<div>${tileDesc(i)}</div></div>`;$('modal').style.display='flex';});
+  bind('bSound',()=>{App.sound=toggleSound();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
+  document.querySelectorAll('.tile').forEach(t=>{
+    t.onclick=()=>{
+      const i=Number(t.dataset.i),teamsHere=S.teams.filter(x=>x.pos===i);
+      $('modalTitle').textContent=`第 ${i+1} 格 — ${G.TILE[G.TRACK[i][0]].n}`;
+      let body=`<div class="mrow">${sprite(G.TRACK[i][0],40)}<div>${tileDesc(i)}</div></div>`;
+      if(teamsHere.length>0){
+        body+=`<div class="sub" style="margin-top:12px;">★ 目前駐留隊伍 (${teamsHere.length} 隊)</div><div class="tile-team-list">${teamsHere.map(team=>`<div class="tile-team-item"><div class="sw" style="background:${team.color}">${team.id+1}</div><div><b>${esc(team.name)}</b><span class="dim" style="display:block">現金 ${G.money(team.cash)} ｜ 點數 ${team.pts}</span></div></div>`).join('')}</div>`;
+      }
+      $('modalBody').innerHTML=body;$('modal').style.display='flex';
+    };
+  });
+  document.querySelectorAll('.rk[data-team]').forEach(row=>{
+    row.onclick=()=>{
+      const teamId=Number(row.dataset.team),team=S.teams[teamId];
+      if(team&&team.pos!==undefined){
+        App.radarFocus=team.pos;SoundFX.playStepHop();render(true);
+        clearTimeout(App._radarTimer);
+        App._radarTimer=setTimeout(()=>{App.radarFocus=null;render(true);},3000);
+      }
+    };
+  });
   if(App.role==='team'&&App.teamId!==null){
     const me=S.teams[App.teamId];bindDiceGesture();bind('bReroll',()=>ask('使用重骰卡？','會清除本回合骰點，重新骰一次',()=>send('reroll')));bind('bBattle',()=>ask('使用 BATTLE？','使用一次 BATTLE 並交由關主裁決',()=>send('battle')));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
     document.querySelectorAll('.atk').forEach(b=>b.onclick=()=>{const kind=b.dataset.k,a=S.settings.attacks[kind],cost=G.costWithDiscount(S,me,a.cost);ask(`發動「${a.name}」？`,`${esc(attackDescription(S,kind,a))}<br>將消耗 ${cost} 點諂媚點數，本回合不能再次發動同一招。`,()=>send('attack',{kind}));});document.querySelectorAll('.gam').forEach(b=>b.onclick=()=>send('gamble',{index:Number(b.dataset.i)}));document.querySelectorAll('.buf').forEach(b=>b.onclick=()=>send('buff',{kind:b.dataset.k}));
@@ -337,12 +403,13 @@ function bindGame(){
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.cash[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustCash',{teamId:Number(b.dataset.i),amount:v});});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.pts[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustPts',{teamId:Number(b.dataset.i),amount:v});});
     bind('bSaveCfg',()=>{const entries=[...document.querySelectorAll('.cfg')].map(inp=>({path:inp.dataset.p,value:Number(inp.value)}));send('setConfigs',{entries});});
   }
-  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bZoom'))b.disabled=true;});
+  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bZoom,#bSound'))b.disabled=true;});
 }
 async function loadHistory(){
   try{const auth=App.token||App.access.host;const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${auth}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(e.createdAt)}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
 }
 function render(force=false){ syncChrome(); if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
+
 window.addEventListener('DOMContentLoaded',()=>{
   try{
     loadAccess(); App.entry=routeEntry();

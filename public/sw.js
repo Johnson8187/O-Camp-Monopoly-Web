@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.21.1';
+const BUILD_VERSION = '2026.08.21.3';
 const CACHE_NAME = `preview-static-${BUILD_VERSION}`;
 const CORE = [
   './?v=' + BUILD_VERSION,
@@ -13,6 +13,7 @@ const CORE = [
   './icon-512.png?v=' + BUILD_VERSION,
   './version.json?v=' + BUILD_VERSION,
 ];
+
 
 async function cacheOne(cache, url){
   try{

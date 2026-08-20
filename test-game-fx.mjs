@@ -12,7 +12,9 @@ assert.equal(typeof SoundFX.playAttackAlert, 'function');
 assert.equal(typeof SoundFX.playPhaseChange, 'function');
 assert.equal(typeof SoundFX.playAttackHit, 'function');
 assert.equal(typeof SoundFX.playCoinReward, 'function');
+assert.equal(typeof SoundFX.playUpgrade, 'function');
 assert.equal(typeof isSoundEnabled, 'function');
+
 assert.equal(typeof toggleSound, 'function');
 
 assert.equal(PHASE_FX.roll.title,'開始移動');

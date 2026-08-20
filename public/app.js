@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.25';
-import { G } from './game-core.js?v=2026.08.21.25';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.25';
+const BUILD_VERSION = '2026.08.21.26';
+import { G } from './game-core.js?v=2026.08.21.26';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.26';
+
 
 
 
@@ -849,12 +850,13 @@ function fitBoard(){
     return;
   }
   if(App.zoom){bd.style.transform='';wrap.style.height='';wrap.classList.remove('compact-board');return;}
-  const max=Math.max(240,wrap.clientWidth-4),stage=(App.role==='viewer'||App.projector)&&window.innerWidth>=960,viewerMax=stage?1.5:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-18):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,viewerMax=stage?1.35:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
   bd.style.transformOrigin='top left';
   bd.style.transform=`scale(${scale})`;
   wrap.style.height=`${bd.offsetHeight*scale}px`;
   wrap.classList.toggle('compact-board',scale<.78);
 }
+
 
 
 

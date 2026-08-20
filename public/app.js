@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.13';
-import { G } from './game-core.js?v=2026.08.21.13';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.13';
+const BUILD_VERSION = '2026.08.21.14';
+import { G } from './game-core.js?v=2026.08.21.14';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.14';
+
 
 
 
@@ -298,16 +299,40 @@ function ensureMovingToken(teamId,pos,team){
   return token;
 }
 
+function finishRollTask(teamId,done){
+  delete App.fx.positions[teamId];
+  if(App.fx.camera?.teamId===teamId){
+    App.fx.camera=null;
+    App.fx.stepText='';
+    App.highlight=[];
+  }
+  document.querySelector(`[data-moving-team="${teamId}"]`)?.remove();
+  const wrap=$('bwrap');
+  if(wrap&&!Object.keys(App.fx.positions).length){
+    wrap.classList.remove('camera-active');
+  }
+  fitBoard();
+  renderFx();
+  done();
+}
+
 function executeRollFx(task,done){
   const {teamId,team,beforePos,targetPos,rollVal}=task;
   if(!team){done();return;}
-  const isMyTeam=App.role==='team'&&App.teamId===teamId, isViewerOrHost=App.role==='viewer'||App.role==='host';
+
   App.fx.dice={teamId,teamName:team.name,value:rollVal,rolling:!reducedMotion};
   SoundFX.playDiceTumble();
   renderFx();
 
-  const path=movementPath(beforePos,rollVal,targetPos,G.N);
-  if(reducedMotion||!path.length){
+  const walkSteps=Math.max(0,Math.floor(Number(rollVal)||0));
+  const walkPath=[];
+  for(let i=1;i<=walkSteps;i++){
+    walkPath.push((beforePos+i)%G.N);
+  }
+  const landPos=walkPath.length?walkPath[walkPath.length-1]:beforePos;
+  const isTeleport=targetPos!==landPos;
+
+  if(reducedMotion||(!walkPath.length&&!isTeleport)){
     revealRollFx();
     fxTimeout('diceDone',()=>{
       App.fx.dice=null;
@@ -322,54 +347,69 @@ function executeRollFx(task,done){
   fxTimeout('diceDismiss',()=>{App.fx.dice=null;removeRollFx();},2200);
 
   App.fx.positions[teamId]=beforePos;
-  if(isMyTeam||isViewerOrHost)App.fx.stepText=`0 / ${path.length}`;
+  App.fx.stepText=`0 / ${walkPath.length}`;
   ensureMovingToken(teamId,beforePos,team);
 
   let step=0;
   const moveNext=()=>{
-    const pos=path[step];
-    App.fx.positions[teamId]=pos;
-    if(isMyTeam||isViewerOrHost){
-      const from=step>0?path[step-1]:beforePos;
+    if(step<walkPath.length){
+      const pos=walkPath[step];
+      App.fx.positions[teamId]=pos;
+      const from=step>0?walkPath[step-1]:beforePos;
       App.fx.camera={teamId,from,pos};
       App.highlight=[pos];
-      App.fx.stepText=`${step+1} / ${path.length}`;
+      App.fx.stepText=`${step+1} / ${walkPath.length}`;
       activateMovementCamera();
-    }
-    SoundFX.playStepHop();
-    updateMovementDom(teamId,pos);
-    step+=1;
-    if(step<path.length){
-      fxTimeout('rollStep',moveNext,520);
-    }else{
-      if(isMyTeam||isViewerOrHost){
-        App.fx.stepText='★ 抵達！';
-        finishMovementDom(pos);
+      SoundFX.playStepHop();
+      updateMovementDom(teamId,pos);
+      step+=1;
+
+      if(step<walkPath.length){
+        fxTimeout('rollStep',moveNext,520);
+      }else{
+        if(isTeleport){
+          const token=document.querySelector(`[data-moving-team="${teamId}"]`);
+          const isWorm=G.TRACK[landPos]?.[0]==='worm';
+          App.fx.stepText=isWorm?'🌀 蟲洞吸入…':'⚡ 傳送中…';
+          if(token)token.classList.add('warp-out');
+          SoundFX.playStepHop();
+
+          fxTimeout('warpJump',()=>{
+            App.fx.positions[teamId]=targetPos;
+            if(token){
+              token.style.transition='none';
+              token.classList.remove('warp-out');
+              token.classList.add('warp-in');
+            }
+            App.fx.camera={teamId,from:landPos,pos:targetPos};
+            App.highlight=[targetPos];
+            App.fx.stepText=isWorm?'✨ 蟲洞躍遷！':'★ 傳送抵達！';
+            updateMovementDom(teamId,targetPos);
+            activateMovementCamera();
+            finishMovementDom(targetPos);
+
+            setTimeout(()=>{
+              if(token)token.style.transition='';
+            },50);
+
+            fxTimeout('rollFinish',()=>{
+              finishRollTask(teamId,done);
+            },1200);
+          },450);
+        }else{
+          App.fx.stepText='★ 抵達！';
+          finishMovementDom(pos);
+          fxTimeout('rollFinish',()=>{
+            finishRollTask(teamId,done);
+          },1000);
+        }
       }
-      fxTimeout('rollFinish',()=>{
-        delete App.fx.positions[teamId];
-        if(App.fx.camera?.teamId===teamId){
-          App.fx.camera=null;
-          App.fx.stepText='';
-          App.highlight=[];
-        }
-        document.querySelector(`[data-moving-team="${teamId}"]`)?.remove();
-        const wrap=$('bwrap');
-        if(wrap&&!Object.keys(App.fx.positions).length){
-          wrap.classList.remove('camera-active');
-        }
-        fitBoard();
-        renderFx();
-        done();
-      },1000);
     }
   };
 
   fxTimeout('rollStart',()=>{
-    if(isMyTeam||isViewerOrHost){
-      App.fx.camera={teamId,from:beforePos,pos:beforePos};
-      activateMovementCamera();
-    }
+    App.fx.camera={teamId,from:beforePos,pos:beforePos};
+    activateMovementCamera();
     moveNext();
   },850);
 }
@@ -405,22 +445,23 @@ function processGameFx(previous,next){
     enqueueFx({type:'attack',attack:next.lastAttack,message,next});
   }
 
-  // 5. Rolls & Movements
+  // 5. Rolls & Movements (captures both latest roll and any simultaneous movers)
   const rollChanged=next.lastRoll&&next.lastRoll.seq!==previous.lastRoll?.seq;
+  const lastRollTeam=rollChanged?Number(next.lastRoll.team):null;
   if(rollChanged){
-    const roll=next.lastRoll,teamId=Number(roll.team),team=next.teams?.[teamId],before=previous.teams?.[teamId];
+    const teamId=lastRollTeam,team=next.teams?.[teamId],before=previous.teams?.[teamId];
     if(team&&before){
-      enqueueFx({type:'roll',teamId,team,beforePos:before.pos,targetPos:team.pos,rollVal:roll.n});
+      enqueueFx({type:'roll',teamId,team,beforePos:before.pos,targetPos:team.pos,rollVal:next.lastRoll.n});
     }
-  }else{
-    (next.teams||[]).forEach((team,i)=>{
-      const before=previous.teams?.[i];
-      if(before&&before.pos!==team.pos){
-        const rollVal=(team.pos-before.pos+G.N)%G.N||1;
-        enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,targetPos:team.pos,rollVal});
-      }
-    });
   }
+  (next.teams||[]).forEach((team,i)=>{
+    const before=previous.teams?.[i];
+    if(before&&before.pos!==team.pos&&team.id!==lastRollTeam){
+      const rollVal=(team.pos-before.pos+G.N)%G.N||1;
+      enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,targetPos:team.pos,rollVal});
+    }
+  });
+
 
   // 6. Announcements & Event logs in FIFO order
   if(next.log&&previous.log){

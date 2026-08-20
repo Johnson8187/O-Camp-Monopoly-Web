@@ -36,7 +36,8 @@
 
 網站包含 `manifest.webmanifest`、192／512 像素圖示與 Service Worker，可加入 iOS 或 Android 主畫面。iOS 請使用 Safari 開啟網站，按分享後選擇「加入主畫面」；Android 請使用 Chrome 開啟網站，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
 
-每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本會先在背景等待，前端偵測到更新時顯示提示，且進入遊戲後會延後提示與重新載入，避免活動途中被強制刷新。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.21.13`。
+每次版本更新都會同步修改 `public/version.json` 與 `public/sw.js` 的 `BUILD_VERSION`／cache name。Service Worker 使用 network-first 策略取得 HTML、JavaScript、CSS 與 manifest；新版本會先在背景等待，前端偵測到更新時顯示提示，且進入遊戲後會延後提示與重新載入，避免活動途中被強制刷新。API 與 WebSocket 不會被 Service Worker 快取，因此不需要再以無痕模式進入網站。目前前端版本為 `2026.08.21.14`。
+
 
 
 

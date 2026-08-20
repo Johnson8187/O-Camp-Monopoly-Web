@@ -339,10 +339,12 @@ function playAttack(s, ti, kind, rnd = Math.random) {
   }
   s.attackUsage = {...(s.attackUsage || {}), [useKey]:true};
   t.attackRounds = {...(t.attackRounds || {}), [kind]:s.round};
-  s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, round:s.round};
+  const targetInfo = kind === "missile" ? { targetTeam: s.teams.find((_, i) => hit[0] === s.teams[i]?.baseIdx)?.id, targetPos: s.teams.find((_, i) => hit[0] === s.teams[i]?.baseIdx)?.pos } : {};
+  s.lastAttack = {seq:(s.lastAttack?.seq || 0)+1, team:ti, kind, name:A.name, hit, ...targetInfo, round:s.round};
   s.log.unshift(`${t.name} 發動「${A.name}」— ${msg}`);
   return {ok:true, hit};
 }
+
 
 /* ---------- 回合流程 ---------- */
 const PHASES = ["market","sell","shop","roll"];

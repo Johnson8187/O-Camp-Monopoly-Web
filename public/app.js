@@ -1,6 +1,7 @@
-const BUILD_VERSION = '2026.08.21.14';
-import { G } from './game-core.js?v=2026.08.21.14';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.14';
+const BUILD_VERSION = '2026.08.21.15';
+import { G } from './game-core.js?v=2026.08.21.15';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.15';
+
 
 
 
@@ -59,11 +60,114 @@ function registerPWA(){
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
-function enableInstallPrompt(){
-  const b=$('installPwa'); if(!b) return;
-  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();App.installPrompt=e;b.hidden=false;});
-  b.onclick=async()=>{ if(App.installPrompt){await App.installPrompt.prompt();App.installPrompt=null;b.hidden=true;} else toast('iPhone 請使用分享選單的「加入主畫面」；Android 請從瀏覽器選單選擇「安裝 App」。'); };
+function showInstallGuideModal(){
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if(isStandalone){
+    toast('目前已在 App 全螢幕模式中運行！');
+    return;
+  }
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  $('modalTitle').textContent = '📱 安裝 App / 加入手機主畫面';
+  $('modalBody').innerHTML = `
+    <div class="install-guide-box">
+      <p style="font-size:12px;color:#555;margin-bottom:12px;line-height:1.5;">加入主畫面後即可如同原生 App 一樣，享有全螢幕、無網址列干擾、離線快速載入的遊戲體驗！</p>
+      <div class="guide-tabs-bar">
+        <button type="button" class="btn sm ${isIOS ? 'gold' : 'outline'}" id="btnTabIos">🍎 iPhone / iPad (iOS)</button>
+        <button type="button" class="btn sm ${!isIOS ? 'gold' : 'outline'}" id="btnTabAndroid">🤖 Android 安卓手機</button>
+      </div>
+
+      <div id="guideIosBox" style="display:${isIOS ? 'block' : 'none'};margin-top:10px;">
+        <div class="guide-step-card">
+          <span class="guide-num">1</span>
+          <div>使用 <b>Safari 瀏覽器</b> 開啟網站，點擊下方工具列的 <b>「分享」按鈕</b>（方框向上箭頭 <i class="ios-icon">📤</i>）。</div>
+        </div>
+        <div class="guide-step-card">
+          <span class="guide-num">2</span>
+          <div>在選單中往下滑動，點選 <b>「加入主畫面」</b>（<i class="ios-icon">➕ Add to Home Screen</i>）。</div>
+        </div>
+        <div class="guide-step-card">
+          <span class="guide-num">3</span>
+          <div>點擊右上角的 <b>「新增」</b>，即可在手機桌面找到圖示，點開直接全螢幕暢玩！</div>
+        </div>
+      </div>
+
+      <div id="guideAndroidBox" style="display:${!isIOS ? 'block' : 'none'};margin-top:10px;">
+        <div class="guide-step-card">
+          <span class="guide-num">1</span>
+          <div>使用 <b>Chrome / Edge / 三星瀏覽器</b>，點擊右上角的 <b>「選單（三個點 ⋮）」</b>。</div>
+        </div>
+        <div class="guide-step-card">
+          <span class="guide-num">2</span>
+          <div>在選單中點選 <b>「安裝應用程式」</b> 或 <b>「加到主畫面」</b>。</div>
+        </div>
+        <div class="guide-step-card">
+          <span class="guide-num">3</span>
+          <div>點擊 <b>「安裝」</b> 確認，即可在桌面生成 App 圖示！</div>
+        </div>
+        ${App.installPrompt ? `<div style="text-align:center;margin-top:14px;"><button type="button" class="btn green" id="btnPromptInstall">⚡ 立即一鍵安裝到手機</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  $('modal').style.display = 'flex';
+
+  const tabIos = $('btnTabIos'), tabAndroid = $('btnTabAndroid');
+  const boxIos = $('guideIosBox'), boxAndroid = $('guideAndroidBox');
+  if(tabIos && tabAndroid && boxIos && boxAndroid){
+    tabIos.onclick = () => {
+      tabIos.className = 'btn sm gold'; tabAndroid.className = 'btn sm outline';
+      boxIos.style.display = 'block'; boxAndroid.style.display = 'none';
+    };
+    tabAndroid.onclick = () => {
+      tabAndroid.className = 'btn sm gold'; tabIos.className = 'btn sm outline';
+      boxAndroid.style.display = 'block'; boxIos.style.display = 'none';
+    };
+  }
+  const btnPrompt = $('btnPromptInstall');
+  if(btnPrompt){
+    btnPrompt.onclick = async () => {
+      if(App.installPrompt){
+        await App.installPrompt.prompt();
+        App.installPrompt = null;
+        $('modal').style.display = 'none';
+      }
+    };
+  }
 }
+
+function enableInstallPrompt(){
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  const b = $('installPwa');
+  if(b){
+    if(!isStandalone){
+      b.hidden = false;
+      b.style.display = 'inline-flex';
+    }else{
+      b.hidden = true;
+      b.style.display = 'none';
+    }
+    b.onclick = () => {
+      if(App.installPrompt){
+        App.installPrompt.prompt().then(() => {
+          App.installPrompt = null;
+        }).catch(() => {
+          showInstallGuideModal();
+        });
+      }else{
+        showInstallGuideModal();
+      }
+    };
+  }
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    App.installPrompt = e;
+    if(b && !isStandalone){
+      b.hidden = false;
+      b.style.display = 'inline-flex';
+    }
+  });
+}
+
 
 function toast(msg, bad=false){
   const el = $('toast'); if(!el) return;
@@ -223,13 +327,36 @@ function executeAttackFx(attack,message,next,done){
   const preset=ATTACK_FX[attack?.kind];
   if(!preset){done();return;}
   App.fx.event=null;
-  App.fx.attack={...preset,kind:attack.kind,message:String(message||'').slice(0,180),teamName:next.teams?.[attack.team]?.name||''};
+  let targetTeamId = attack.targetTeam;
+  if(targetTeamId === undefined || targetTeamId === null){
+    const match = (next.teams||[]).find(t => (message||'').includes(`鎖定 ${t.name}`));
+    if(match) targetTeamId = match.id;
+  }
+  const targetTeam = targetTeamId !== undefined && targetTeamId !== null ? next.teams?.[targetTeamId] : null;
+  const targetPos = attack.targetPos ?? targetTeam?.pos ?? (Array.isArray(attack.hit) && attack.hit.length ? attack.hit[0] : null);
+
+  App.fx.attack={
+    ...preset,
+    kind:attack.kind,
+    message:String(message||'').slice(0,180),
+    teamName:next.teams?.[attack.team]?.name||'',
+    targetTeam:targetTeamId,
+    targetTeamName:targetTeam?.name||'',
+    targetPos
+  };
   App.fx.aftershock=null;
   SoundFX.playAttackAlert(attack?.kind);
   renderFx();
   fxTimeout('attack',()=>{
     App.fx.attack=null;
-    App.fx.aftershock={kind:attack.kind,hit:Array.isArray(attack.hit)?attack.hit:[],message:String(message||'').slice(0,180)};
+    App.fx.aftershock={
+      kind:attack.kind,
+      hit:Array.isArray(attack.hit)?attack.hit:[],
+      targetTeam:targetTeamId,
+      targetTeamName:targetTeam?.name||'',
+      targetPos,
+      message:String(message||'').slice(0,180)
+    };
     renderFx();
     fxTimeout('aftershock',()=>{
       App.fx.aftershock=null;
@@ -238,6 +365,7 @@ function executeAttackFx(attack,message,next,done){
     },reducedMotion?1800:3600);
   },reducedMotion?1200:3200);
 }
+
 
 function executeEventFx(message,done){
   const kind=classifyEvent(message);
@@ -550,7 +678,29 @@ function diceCubeHTML(value=1){
 }
 
 function baseBuildingHTML(owner){const level=Math.max(1,Math.min(3,Number(owner.level)||1)),names=['營地','商店','豪華賭場'];return `<div class="base-building lv${level}" style="--owner:${owner.color}" aria-label="${names[level-1]}"><i class="base-roof"></i><i class="base-body"><b></b><b></b><b></b></i><em>LV${level}</em></div>`;}
-function boardAftermathHTML(kind){if(!kind)return '';if(kind==='quake')return `<div class="board-aftermath board-quake">${Array.from({length:5},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;if(kind==='missile')return `<div class="board-aftermath board-missile"><i></i><i></i><i></i><b>LOCK</b></div>`;if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;}
+function boardAftermathHTML(kind){
+  if(!kind)return '';
+  if(kind==='quake')return `<div class="board-aftermath board-quake">${Array.from({length:5},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
+  if(kind==='missile'){
+    const after = App.fx.aftershock;
+    let targetPos = after?.targetPos;
+    if (targetPos === null || targetPos === undefined) {
+      if (after?.targetTeam !== undefined && App.state?.teams?.[after.targetTeam]?.pos !== undefined) {
+        targetPos = App.state.teams[after.targetTeam].pos;
+      } else if (after?.hit?.length) {
+        targetPos = after.hit[0];
+      } else {
+        const found = App.state?.teams?.find(t => (after?.message || '').includes(t.name));
+        targetPos = found ? found.pos : 0;
+      }
+    }
+    const pt = movementPoint(targetPos || 0);
+    const targetName = after?.targetTeamName || (after?.targetTeam !== undefined ? App.state?.teams?.[after.targetTeam]?.name : '');
+    return `<div class="board-aftermath board-missile" style="--lock-x:${pt.x}px;--lock-y:${pt.y}px"><div class="missile-target-circle"><i></i><i></i><i></i><b>LOCK ${targetName ? esc(targetName) : ''}</b></div></div>`;
+  }
+  if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
+  return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
+}
 function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':'home'; }
 function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':'home'; history.pushState({},'',path); render(true); }
 function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
@@ -577,10 +727,13 @@ function renderHome(){
   if(App.entry==='admin') return renderAdminHome();
   if(App.entry==='team') return renderTeamHome();
   $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰</div></div>
-  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>`;
+  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>
+  <div class="card"><div class="ch">📲 安裝至手機主畫面</div><div class="cb"><p style="font-size:12px;color:#555;margin-bottom:8px;">支援 iOS 與 Android 手機桌面捷徑，全螢幕無網址列干擾！</p><button class="btn sm gold" id="btnHomeInstallGuide">📱 查看手機安裝教學</button></div></div>`;
   $('refreshLobby').onclick=refreshLobby;
+  $('btnHomeInstallGuide').onclick=showInstallGuideModal;
   clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
 }
+
 function renderGate(role){
   const host=role==='host';
   $('app').innerHTML=`<div class="hd"><div class="t1">${host?'主持人控制台':'隊輔系統'}</div><div class="t2">${host?'請輸入控制台密碼':'輸入共用密碼後直接選隊'}</div></div><div class="card"><div class="ch">★ ${host?'主持人登入':'隊輔登入'}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn green" id="accessLogin">登入</button><div class="note">${host?'這台裝置會保留活動連線，方便斷線或重新整理後恢復。':'驗證成功後會直接顯示目前隊伍，不需要房號或 PIN。'}密碼不會寫入網址。</div></div></div>`;

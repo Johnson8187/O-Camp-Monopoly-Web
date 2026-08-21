@@ -86,11 +86,6 @@ input.code{font-family:'Press Start 2P',monospace;font-size:19px;letter-spacing:
 .sell-frame-3d::before{left:-5px;top:-5px}.sell-frame-3d::after{right:-5px;bottom:-5px}
 .sell-badge{position:absolute;top:-26px;left:50%;translate:-50% 0;padding:3px 7px;border:2px solid #14110f;background:#3fbf5a;color:#14110f;font:8px/1 'Press Start 2P',monospace;white-space:nowrap;box-shadow:3px 3px 0 #1a2340,0 0 14px #3fbf5a;animation:upgradeBadgeRise 2.0s cubic-bezier(.16,.9,.2,1) both;z-index:30}
 
-.board-zoom-bar{position:absolute;top:8px;right:8px;z-index:25;display:inline-flex;align-items:center;gap:5px;padding:4px 6px;border:3px solid #14110f;background:rgba(20,17,15,.88);box-shadow:3px 3px 0 #1a2340;backdrop-filter:blur(4px);border-radius:4px}
-.zoom-btn{width:28px;height:28px;border:2px solid #14110f;background:#f2c12e;color:#14110f;font-family:'Press Start 2P',monospace;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:2px 2px 0 #1a2340;touch-action:manipulation;user-select:none;-webkit-user-select:none;padding:0}
-.zoom-btn:active{transform:translate(2px,2px);box-shadow:none}
-.zoom-btn:hover{background:#ffd700;filter:brightness(1.1)}
-.zoom-btn.reset{font-size:14px;background:#fffef5}
 .tile.fx-hit{z-index:10;animation:attackTileHit .32s steps(2,end) 12;filter:saturate(1.6)}
 .tile.fx-hit-quake{background:#f2c12e!important;box-shadow:0 0 14px rgba(242,193,46,.9)!important}
 .tile.fx-hit-missile{background:#ffe0e0!important;box-shadow:0 0 16px rgba(226,59,59,.9)!important}

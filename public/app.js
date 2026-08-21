@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.31';
-import { G } from './game-core.js?v=2026.08.21.31';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.31';
+const BUILD_VERSION = '2026.08.21.32';
+import { G } from './game-core.js?v=2026.08.21.32';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.32';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -39,14 +39,14 @@ document.addEventListener('touchend', (e) => {
 const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
   token: null, gameMeta: null, socket: null, connected: false,
-  tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
+  tab: 'main', zoom: false, zoomScale: 1.0, panX: 0, panY: 0, dice: null, rolling: false, busy: false,
   highlight: [], cfg: false, history: [], lobbyTimer: null,
   access: {host: '', team: '', dev: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
   sound: isSoundEnabled(), radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
 };
 
 const $ = (id) => document.getElementById(id);
@@ -192,7 +192,7 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
   const wrap=$('bwrap');
@@ -205,6 +205,7 @@ function activeFxStatus(){
   if(App.fx.dice) currentDesc = `【${App.fx.dice.teamName || '隊伍'}】擲骰移動`;
   else if(Object.keys(App.fx.positions || {}).length) currentDesc = '隊伍棋盤移動';
   else if(App.fx.upgrade) currentDesc = `【${App.fx.upgrade.teamName || '隊伍'}】基地升級`;
+  else if(App.fx.sell) currentDesc = `【${App.fx.sell.teamName || '隊伍'}】變賣基地`;
   else if(App.fx.attack) currentDesc = `【${App.fx.attack.teamName || '隊伍'}】${App.fx.attack.title || '特殊操作'}`;
   else if(App.fx.aftershock) currentDesc = '特殊操作棋盤餘波';
   else if(App.fx.assignment) currentDesc = '命運基地抽籤';
@@ -212,7 +213,7 @@ function activeFxStatus(){
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -263,6 +264,9 @@ function runNextFx(){
       case 'upgrade':
         executeUpgradeFx(task.team,done);
         break;
+      case 'sell':
+        executeSellFx(task.team,task.tileIndex,done);
+        break;
       case 'attack':
         executeAttackFx(task.attack,task.message,task.next,done);
         break;
@@ -306,6 +310,25 @@ function executeUpgradeFx(team,done){
   renderFx();
   fxTimeout('upgrade',()=>{
     App.fx.upgrade=null;
+    App.fx.camera=null;
+    const wrap=$('bwrap');
+    if(wrap&&!Object.keys(App.fx.positions).length)wrap.classList.remove('camera-active');
+    fitBoard();
+    renderFx();
+    done();
+  },reducedMotion?1000:2100);
+}
+
+function executeSellFx(team,tileIndex,done){
+  const idx=tileIndex??team?.baseIdx;
+  if(!team||idx===null||idx===undefined){done();return;}
+  App.fx.sell={tileIndex:idx,teamId:team.id,teamName:team.name,color:team.color};
+  App.fx.camera={teamId:team.id,pos:idx};
+  activateMovementCamera();
+  SoundFX.playSell();
+  renderFx();
+  fxTimeout('sell',()=>{
+    App.fx.sell=null;
     App.fx.camera=null;
     const wrap=$('bwrap');
     if(wrap&&!Object.keys(App.fx.positions).length)wrap.classList.remove('camera-active');
@@ -577,9 +600,17 @@ function processGameFx(previous,next){
     enqueueFx({type:'assignment',next});
   }
 
-  // 3. Base upgrades (queues all teams that leveled up)
+  // 3. Base upgrades and sells
   const upgradedTeams=(next.teams||[]).filter((t,i)=>previous.teams?.[i]&&t.level>previous.teams[i].level&&t.baseIdx!==null);
   upgradedTeams.forEach(team=>{
+    enqueueFx({type:'upgrade',team});
+  });
+  const soldTeams=(next.teams||[]).filter((t,i)=>previous.teams?.[i]&&!previous.teams[i].sold&&t.sold&&t.baseIdx!==null);
+  soldTeams.forEach(team=>{
+    enqueueFx({type:'sell',team,tileIndex:team.baseIdx});
+  });
+  const buyBackTeams=(next.teams||[]).filter((t,i)=>previous.teams?.[i]&&previous.teams[i].sold&&!t.sold&&t.baseIdx!==null);
+  buyBackTeams.forEach(team=>{
     enqueueFx({type:'upgrade',team});
   });
 
@@ -1563,11 +1594,11 @@ function boardHUD(){
   return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>股市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>最近行動</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
 }
 function boardHTML(){
-  const S=App.state,cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||App.fx.aftershock?.kind||'',attackHit=App.fx.aftershock?.hit||[],cameraPos=App.fx.camera?.pos,upgradeIdx=App.fx.upgrade?.tileIndex;
-  let out=`<div class="bwrap fit ${App.fx.camera?'camera-active':''}" id="bwrap"><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
+  const S=App.state,cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||App.fx.aftershock?.kind||'',attackHit=App.fx.aftershock?.hit||[],cameraPos=App.fx.camera?.pos,upgradeIdx=App.fx.upgrade?.tileIndex,sellIdx=App.fx.sell?.tileIndex;
+  let out=`<div class="bwrap fit ${App.fx.camera?'camera-active':''}" id="bwrap"><div class="board-zoom-bar" id="boardZoomBar"><button type="button" class="zoom-btn" id="bZoomIn" title="放大棋盤" aria-label="放大棋盤">➕</button><button type="button" class="zoom-btn" id="bZoomOut" title="縮小棋盤" aria-label="縮小棋盤">➖</button><button type="button" class="zoom-btn reset" id="bZoomReset" title="恢復原本大小" aria-label="恢復原本大小">⟲</button></div><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
   G.TRACK.forEach((t,i)=>{
-    const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>App.fx.positions[x.id]===undefined&&x.pos===i),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),radarHot=App.radarFocus===i,upgradeHot=upgradeIdx===i,hot=attackHot||stepHot||radarHot||upgradeHot,locked=kind==='stage'&&!S.unlocked.includes(i),garrison=here[0];
-    out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''} ${radarHot?'radar-beacon':''} ${upgradeHot?'fx-upgrade':''} ${here.length?'has-garrison':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'};--garrison:${garrison?.color||'#f2c12e'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">🚩${own.id+1}</div>`:''}${here.length?`<div class="garrison-aura" aria-hidden="true"></div><div class="pins">${here.slice(0,3).map(h=>`<i class="${App.teamId===h.id?'is-me':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>3?`<i class="more">+${here.length-3}</i>`:''}</div>`:''}${upgradeHot?`<div class="upgrade-frame-3d"></div><div class="upgrade-badge">▲ 基地升級 LV${App.fx.upgrade.level} ▲</div>`:''}</div>`;
+    const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>App.fx.positions[x.id]===undefined&&x.pos===i),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),radarHot=App.radarFocus===i,upgradeHot=upgradeIdx===i,sellHot=sellIdx===i,hot=attackHot||stepHot||radarHot||upgradeHot||sellHot,locked=kind==='stage'&&!S.unlocked.includes(i),garrison=here[0];
+    out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''} ${radarHot?'radar-beacon':''} ${upgradeHot?'fx-upgrade':''} ${sellHot?'fx-sell':''} ${here.length?'has-garrison':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'};--garrison:${garrison?.color||'#f2c12e'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">🚩${own.id+1}</div>`:''}${here.length?`<div class="garrison-aura" aria-hidden="true"></div><div class="pins">${here.slice(0,3).map(h=>`<i class="${App.teamId===h.id?'is-me':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>3?`<i class="more">+${here.length-3}</i>`:''}</div>`:''}${upgradeHot?`<div class="upgrade-frame-3d"></div><div class="upgrade-badge">▲ 基地升級 LV${App.fx.upgrade.level} ▲</div>`:''}${sellHot?`<div class="sell-frame-3d"></div><div class="sell-badge">💰 變賣基地 💰</div>`:''}</div>`;
 
   });
   S.teams.filter(team=>App.fx.positions[team.id]!==undefined).forEach(team=>{const point=movementPoint(App.fx.positions[team.id]);out+=`<div class="moving-token" data-moving-team="${team.id}" style="--token-x:${point.x}px;--token-y:${point.y}px;--token-color:${team.color};--token-fg:${G.LIGHT_FG.includes(team.id)?'#14110f':'#fff'}"><span>${team.id+1}</span></div>`;});
@@ -1602,11 +1633,44 @@ function fitBoard(){
     bd.style.transform=`translate3d(${tx}px, ${ty}px, 0) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`;
     return;
   }
-  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,viewerMax=stage?1.35:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,viewerMax=stage?1.35:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,baseScale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight),scale=baseScale*(App.zoomScale||1.0);
   bd.style.transformOrigin='top left';
-  bd.style.transform=`scale(${scale})`;
+  bd.style.transform=`translate3d(${App.panX||0}px, ${App.panY||0}px, 0) scale(${scale})`;
   wrap.style.height=`${bd.offsetHeight*scale}px`;
   wrap.classList.toggle('compact-board',scale<.78);
+}
+
+function bindBoardPan(){
+  const wrap=$('bwrap'),bd=$('board');
+  if(!wrap||!bd||bd._panBound)return;
+  bd._panBound=true;
+  let isPanning=false,startX=0,startY=0,initialPanX=0,initialPanY=0;
+  const onDown=e=>{
+    if(e.target.closest('.tile')||e.target.closest('.board-zoom-bar')||e.target.closest('button'))return;
+    isPanning=true;
+    startX=e.clientX;
+    startY=e.clientY;
+    initialPanX=App.panX||0;
+    initialPanY=App.panY||0;
+    bd.style.cursor='grabbing';
+    try{if(e.pointerId)bd.setPointerCapture?.(e.pointerId);}catch{}
+  };
+  const onMove=e=>{
+    if(!isPanning)return;
+    App.panX=initialPanX+(e.clientX-startX);
+    App.panY=initialPanY+(e.clientY-startY);
+    fitBoard();
+  };
+  const onUp=e=>{
+    if(!isPanning)return;
+    isPanning=false;
+    bd.style.cursor='';
+    try{if(e.pointerId)bd.releasePointerCapture?.(e.pointerId);}catch{}
+  };
+  bd.addEventListener('pointerdown',onDown);
+  bd.addEventListener('pointermove',onMove);
+  bd.addEventListener('pointerup',onUp);
+  bd.addEventListener('pointercancel',onUp);
 }
 
 
@@ -1934,6 +1998,10 @@ function bindGame(){
     setTimeout(fitBoard,120);
   });
   bind('bSound',()=>{App.sound=toggleSound();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
+  bind('bZoomIn',()=>{App.zoomScale=Math.min(2.5,Math.round(((App.zoomScale||1.0)+0.25)*100)/100);fitBoard();});
+  bind('bZoomOut',()=>{App.zoomScale=Math.max(0.75,Math.round(((App.zoomScale||1.0)-0.25)*100)/100);fitBoard();});
+  bind('bZoomReset',()=>{App.zoomScale=1.0;App.panX=0;App.panY=0;fitBoard();});
+  bindBoardPan();
 
   document.querySelectorAll('.tile').forEach(t=>{
     t.onclick=()=>{
@@ -1988,7 +2056,7 @@ function bindGame(){
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.cash[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustCash',{teamId:Number(b.dataset.i),amount:v});});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const v=Number(document.querySelector(`.pts[data-i="${b.dataset.i}"]`).value);if(Number.isFinite(v))send('adjustPts',{teamId:Number(b.dataset.i),amount:v});});
     bind('bSaveCfg',()=>{const entries=[...document.querySelectorAll('.cfg')].map(inp=>({path:inp.dataset.p,value:Number(inp.value)}));send('setConfigs',{entries});});
   }
-  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bSound'))b.disabled=true;});
+  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bSound,.zoom-btn'))b.disabled=true;});
 }
 async function loadHistory(){
   try{const auth=App.token||App.access.host;const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${auth}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件（台灣時間 UTC+8）</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(formatTWTime(e.createdAt))}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}

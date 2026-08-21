@@ -13,6 +13,7 @@ assert.equal(typeof SoundFX.playPhaseChange, 'function');
 assert.equal(typeof SoundFX.playAttackHit, 'function');
 assert.equal(typeof SoundFX.playCoinReward, 'function');
 assert.equal(typeof SoundFX.playUpgrade, 'function');
+assert.equal(typeof SoundFX.playSell, 'function');
 assert.equal(typeof isSoundEnabled, 'function');
 
 assert.equal(typeof toggleSound, 'function');

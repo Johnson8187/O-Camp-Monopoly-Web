@@ -336,7 +336,31 @@ export const SoundFX = {
         }, idx * 80);
       });
     } catch {}
+  },
+  playSell() {
+    if (!soundEnabled) return;
+    const ctx = getAudioContext(); if (!ctx) return;
+    try {
+      [659.25, 880.00, 1174.66, 1567.98].forEach((freq, idx) => {
+        setTimeout(() => {
+          if (!soundEnabled) return;
+          try {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+            gain.gain.setValueAtTime(0.22, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.22);
+          } catch {}
+        }, idx * 65);
+      });
+    } catch {}
   }
 };
+
 
 

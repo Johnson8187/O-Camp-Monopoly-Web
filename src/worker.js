@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.30';
+const APP_BUILD_VERSION = '2026.08.21.31';
 
 
 
@@ -671,7 +671,7 @@ export class GameRoom {
     if(actor.role==='team'){
       const i=actor.teamId;if(i===null||!s.teams[i])return {error:'找不到隊伍'};
       if(action==='roll'){if(s.phase!=='roll'||s.teams[i].rolled||s.teams[i].jail>0||s.teams[i].jailedThisTurn)return {error:'在監獄中或目前不能擲骰'};G.applyMove(s,i,1+Math.floor(Math.random()*(s.settings.diceSides||6)));return;}
-      if(action==='reroll'){const t=s.teams[i];if(t.buffs.reroll<=0||!t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能重骰'};t.buffs.reroll-=1;t.rolled=false;s.log.unshift(`${t.name} 使用重骰卡`);return;}
+      if(action==='reroll'){const t=s.teams[i];if(t.buffs.reroll<=0||!t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能重骰'};t.buffs.reroll-=1;t.rolled=false;t.lastRoll=null;s.log.unshift(`${t.name} 使用重骰卡`);return;}
       if(action==='battle'){const t=s.teams[i];if(t.battles<=0)return {error:'BATTLE 次數已用完'};t.battles-=1;s.log.unshift(`${t.name} 使用 BATTLE（剩 ${t.battles} 次），由關主裁決`);return;}
       if(action==='attack'){const kind=String(p.kind||''),useKey=`${Number(s.round)}:${i}:${kind}`;if(s.attackUsage?.[useKey]||Number(s.teams[i].attackRounds?.[kind])===Number(s.round))return {error:`「${s.settings.attacks?.[kind]?.name||'特殊操作'}」本回合已使用過`};const r=G.playAttack(s,i,kind);if(!r.ok)return {error:r.msg};s.attackUsage={...(s.attackUsage||{}),[useKey]:true};return;}
       if(action==='gamble'){const r=G.buyGamble(s,i,Number(p.index));return r.ok?undefined:{error:r.msg};}

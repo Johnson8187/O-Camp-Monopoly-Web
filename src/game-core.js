@@ -82,7 +82,7 @@ function freshState(code, teamCount, names) {
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
-      buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, joined:false,
+      buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, joined:false,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[],
     settings: clone(DEFAULTS), lastRoll:null,
@@ -144,6 +144,7 @@ function applyMove(s, ti, steps, rnd = Math.random) {
   if (t.jail > 0 || t.jailedThisTurn) {
     if (t.jail > 0) t.jail -= 1;
     t.rolled = true;
+    t.lastRoll = 0;
     t.jailedThisTurn = false;
     s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
     s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
@@ -177,6 +178,7 @@ function applyMove(s, ti, steps, rnd = Math.random) {
   landEffect(s, ti, notes, rnd);
 
   t.rolled = true;
+  t.lastRoll = steps;
   s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:steps, from, landPos:dest, targetPos:t.pos, note:notes.join("；") || "平安無事"};
 
   s.log.unshift(`${t.name} 骰出 ${steps} → ${TILE[TRACK[t.pos][0]].n}${notes.length ? "：" + notes.join("；") : ""}`);
@@ -398,6 +400,7 @@ function nextPhase(s) {
         if (t.jail > 0) {
           t.jail -= 1;
           t.rolled = true;
+          t.lastRoll = 0;
           t.jailedThisTurn = true;
           s.log.unshift(`${t.name} 在監獄中，跳過本回合行動`);
         } else {
@@ -410,7 +413,7 @@ function nextPhase(s) {
   const d = s.disasters, th = s.settings.inflateThreshold;
   s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
   s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
-  s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; t.jailedThisTurn = false; });
+  s.teams.forEach(t => { t.rolled = false; t.lastRoll = null; t.attackRounds = {}; t.jailedThisTurn = false; });
   s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
   return s;
 }

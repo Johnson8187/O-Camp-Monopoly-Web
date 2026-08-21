@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.26';
-import { G } from './game-core.js?v=2026.08.21.26';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.26';
+const BUILD_VERSION = '2026.08.21.27';
+import { G } from './game-core.js?v=2026.08.21.27';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.27';
 
 
 
@@ -23,16 +23,13 @@ const App = {
   token: null, gameMeta: null, socket: null, connected: false,
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
   highlight: [], cfg: false, history: [], lobbyTimer: null,
-  access: {host: '', team: ''}, installPrompt: null,
+  access: {host: '', team: '', dev: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
   sound: isSoundEnabled(), radarFocus: null, _radarTimer: null,
+  devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
   fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
 };
-
-
-
-
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -40,18 +37,16 @@ const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫
 function campFooterHTML(){ return `<footer class="camp-footer">© 2026 ${esc(CAMP_NAME)} 版權所有</footer>`; }
 const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布股市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', settle:'最終結算', ended:'已結束', paused:'已暫停'};
 
-const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾'};
+const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾', dev:'開發者'};
 
-
-
-function accessKey(role){ return role === 'host' ? 'preview:admin-access' : 'preview:team-access'; }
-function loadAccess(){ try{ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; }catch{} }
+function accessKey(role){ return role === 'host' ? 'preview:admin-access' : role === 'team' ? 'preview:team-access' : 'preview:dev-access'; }
+function loadAccess(){ try{ App.access.host=sessionStorage.getItem(accessKey('host'))||''; App.access.team=sessionStorage.getItem(accessKey('team'))||''; App.access.dev=sessionStorage.getItem(accessKey('dev'))||''; }catch{} }
 function saveAccess(role,password){ App.access[role]=password; try{ sessionStorage.setItem(accessKey(role),password); }catch{} }
 function clearAccess(role){ App.access[role]=''; try{ sessionStorage.removeItem(accessKey(role)); }catch{} }
 
-function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':'/'; }
+function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':App.entry==='dev'?'/dev':'/'; }
 function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
-function syncChrome(){ const inGame=App.screen==='game'; const nav=$('bottomNav'); if(nav)nav.hidden=inGame; document.body.classList.toggle('in-game',inGame); ['host','team','viewer'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); updateNav(); syncUpdatePrompt(); }
+function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); updateNav(); syncUpdatePrompt(); }
 function syncUpdatePrompt(){ const el=$('pwaUpdate');if(!el)return;el.hidden=!App.updateReady||App.screen==='game'; }
 function showUpdatePrompt(){ App.updateReady=true;syncUpdatePrompt(); }
 async function applyPwaUpdate(){
@@ -714,8 +709,8 @@ function boardAftermathHTML(kind){
   if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
   return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
 }
-function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':'home'; }
-function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':'home'; history.pushState({},'',path); render(true); }
+function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':(p==='/dev'||p==='/developer')?'dev':'home'; }
+function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':(path==='/dev'||path==='/developer')?'dev':'home'; history.pushState({},'',path); render(true); }
 function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
 function entryURL(path){ return `${location.origin}${path}`; }
 function openGame(game, role, token='', teamId=null, accessToken=''){
@@ -739,18 +734,651 @@ async function refreshLobby(){
 function renderHome(){
   if(App.entry==='admin') return renderAdminHome();
   if(App.entry==='team') return renderTeamHome();
+  if(App.entry==='dev') return renderDevHome();
   $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰</div></div>
   <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>${campFooterHTML()}`;
   $('refreshLobby').onclick=refreshLobby;
   clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
 }
 
-
 function renderGate(role){
   const host=role==='host';
-  $('app').innerHTML=`<div class="hd"><div class="t1">${host?'主持人控制台':'隊輔系統'}</div><div class="t2">${host?'請輸入控制台密碼':'輸入共用密碼後直接選隊'}</div></div><div class="card"><div class="ch">★ ${host?'主持人登入':'隊輔登入'}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn green" id="accessLogin">登入</button><div class="note">${host?'這台裝置會保留活動連線，方便斷線或重新整理後恢復。':'驗證成功後會直接顯示目前隊伍，不需要房號或 PIN。'}密碼不會寫入網址。</div></div></div>${campFooterHTML()}`;
-  $('accessLogin').onclick=async()=>{ const p=$('accessPassword').value||''; if(!p){toast('請輸入密碼',true);return;} try{await api('/api/auth',{method:'POST',body:JSON.stringify({role,password:p})});saveAccess(role,p);render(true);toast(host?'主持人登入成功':'隊輔登入成功');}catch(e){toast('登入失敗：'+e.message,true);} };
+  const dev=role==='dev';
+  const title = dev ? '開發者後台' : host ? '主持人控制台' : '隊輔系統';
+  const subtitle = dev ? '系統監控、D1 資料庫記錄與 DO 服務管理' : host ? '請輸入控制台密碼' : '輸入共用密碼後直接選隊';
+  const cardTitle = dev ? '★ 開發者登入' : host ? '★ 主持人登入' : '★ 隊輔登入';
+  const note = dev ? '驗證成功後可檢視 D1 資料庫、管理活動、查詢事件日誌與切換 DO 伺服器開關。' : host ? '這台裝置會保留活動連線，方便斷線或重新整理後恢復。密碼不會寫入網址。' : '驗證成功後會直接顯示目前隊伍，不需要房號或 PIN。密碼不會寫入網址。';
+  $('app').innerHTML=`<div class="hd"><div class="t1">${esc(title)}</div><div class="t2">${esc(subtitle)}</div></div><div class="card"><div class="ch">${esc(cardTitle)}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn ${dev?'gold':'green'}" id="accessLogin">登入</button><div class="note">${esc(note)}</div></div></div>${campFooterHTML()}`;
+  $('accessLogin').onclick=async()=>{
+    const p=$('accessPassword').value||''; if(!p){toast('請輸入密碼',true);return;}
+    try{
+      if(dev){
+        await api('/api/dev/auth',{method:'POST',body:JSON.stringify({password:p})});
+        saveAccess('dev',p);
+        render(true);
+        toast('開發者登入成功');
+      }else{
+        await api('/api/auth',{method:'POST',body:JSON.stringify({role,password:p})});
+        saveAccess(role,p);
+        render(true);
+        toast(host?'主持人登入成功':'隊輔登入成功');
+      }
+    }catch(e){toast('登入失敗：'+e.message,true);}
+  };
   $('accessPassword').onkeydown=e=>{if(e.key==='Enter')$('accessLogin').click();}; updateNav();
+}
+
+async function devApi(path, options={}){
+  return api(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${App.access.dev}`,
+      ...(options.headers||{})
+    }
+  });
+}
+
+function showJsonModal(title, data){
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = `<div class="dev-json-viewer">${esc(JSON.stringify(data, null, 2))}</div><div style="margin-top:10px;display:flex;gap:6px"><button class="btn sm gold" id="copyJsonBtn">複製 JSON</button></div>`;
+  $('copyJsonBtn').onclick = () => {
+    navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
+    toast('已複製 JSON 至剪貼簿');
+  };
+  $('modal').style.display = 'flex';
+}
+
+function downloadJson(filename, data){
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function renderDevHome(){
+  if(!App.access.dev) return renderGate('dev');
+  const tab = App.devTab || 'overview';
+  $('app').innerHTML = `
+    <div class="dev-container">
+      <div class="dev-header">
+        <div class="dev-title-wrap">
+          <span style="font-size:22px">🛠️</span>
+          <div>
+            <div class="dev-title">DEVELOPER DASHBOARD</div>
+            <div class="dev-subtitle">Cloudflare D1 & Durable Objects 後台管理</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn xs ink" id="devLogoutBtn">登出後台</button>
+          <button class="btn xs gold" id="devHomeBtn">返回大廳</button>
+        </div>
+      </div>
+      <div class="dev-nav-tabs">
+        <button class="dev-tab ${tab==='overview'?'active':''}" data-tab="overview">📊 總覽與 DO</button>
+        <button class="dev-tab ${tab==='games'?'active':''}" data-tab="games">🎮 活動記錄</button>
+        <button class="dev-tab ${tab==='events'?'active':''}" data-tab="events">📜 事件審計</button>
+        <button class="dev-tab ${tab==='sql'?'active':''}" data-tab="sql">💻 SQL 終端</button>
+        <button class="dev-tab ${tab==='tools'?'active':''}" data-tab="tools">⚙️ 維護工具</button>
+      </div>
+      <div id="devTabContent"><div class="note">載入中…</div></div>
+    </div>
+    ${campFooterHTML()}
+  `;
+
+  $('devLogoutBtn').onclick = () => { clearAccess('dev'); go('/'); };
+  $('devHomeBtn').onclick = () => { go('/'); };
+  document.querySelectorAll('.dev-tab').forEach(b => {
+    b.onclick = () => { App.devTab = b.dataset.tab; renderDevHome(); };
+  });
+
+  const content = $('devTabContent');
+  if(!content) return;
+  try{
+    if(tab === 'overview') return await renderDevOverview(content);
+    if(tab === 'games') return await renderDevGames(content);
+    if(tab === 'events') return await renderDevEvents(content);
+    if(tab === 'sql') return renderDevSql(content);
+    if(tab === 'tools') return await renderDevTools(content);
+  }catch(e){
+    content.innerHTML = `<div class="card"><div class="cb"><div class="note warn">載入失敗：${esc(e.message)}</div><button class="btn sm gold" id="retryDevTab" style="margin-top:8px">重試</button></div></div>`;
+    $('retryDevTab')?.addEventListener('click', renderDevHome);
+  }
+}
+
+async function renderDevOverview(container){
+  container.innerHTML = '<div class="note">正在讀取 D1 與 DO 狀態…</div>';
+  const data = await devApi('/api/dev/overview');
+  const doEnabled = Boolean(data.doEnabled);
+  const stats = data.stats || {};
+  const active = data.activeGame;
+
+  container.innerHTML = `
+    <div class="dev-do-banner ${doEnabled ? 'enabled' : 'disabled'}">
+      <div class="dev-do-info">
+        <h3>
+          <span>${doEnabled ? '🟢' : '🔴'}</span>
+          <span>Durable Object 伺服器狀態：${doEnabled ? '已啟用 (允許開房與連線)' : '已停用 (全域鎖定中)'}</span>
+        </h3>
+        <p>${doEnabled ? '伺服器目前正常提供服務，主持人可建立新活動且隊伍可正常即時連線。' : '已關閉 DO 服務。目前全域禁止建立新活動，且所有即時連線將被阻擋拒絕。'}</p>
+      </div>
+      <button class="btn sm ${doEnabled ? 'dark' : 'green'}" id="toggleDoBtn" style="width:auto;margin:0">
+        ${doEnabled ? '🔴 關閉 DO 伺服器' : '🟢 啟用 DO 伺服器'}
+      </button>
+    </div>
+
+    <div class="dev-stats-grid">
+      <div class="dev-stat-card">
+        <div class="dev-stat-label">總活動場次</div>
+        <div class="dev-stat-val">${stats.totalGames ?? 0}</div>
+      </div>
+      <div class="dev-stat-card">
+        <div class="dev-stat-label">進行中活動</div>
+        <div class="dev-stat-val" style="color:#3fbf5a">${stats.activeGames ?? 0}</div>
+      </div>
+      <div class="dev-stat-card">
+        <div class="dev-stat-label">已結束活動</div>
+        <div class="dev-stat-val" style="color:#8a8676">${stats.endedGames ?? 0}</div>
+      </div>
+      <div class="dev-stat-card">
+        <div class="dev-stat-label">總事件日誌數</div>
+        <div class="dev-stat-val" style="color:#3f86e0">${stats.totalEvents ?? 0}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ 當前活動即時狀態</div>
+      <div class="cb">
+        ${active ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <div>
+              <strong style="font-size:16px">${esc(active.name)}</strong>
+              <code style="margin-left:6px">${esc(active.id)}</code>
+              <span class="dev-badge ${active.status==='running'?'green':active.status==='paused'?'gold':'blue'}" style="margin-left:6px">${esc(phaseNames[active.status]||active.status)}</span>
+            </div>
+            <div style="font-size:12px;color:#7a6a45">
+              階段：<b>${esc(phaseNames[active.phase]||active.phase)}</b> ｜ 回合：<b>${active.round}</b> ｜ 隊伍：<b>${active.joinedTeams}/${active.teamCount}</b>
+            </div>
+          </div>
+          <div class="row wrap" style="margin-top:10px">
+            <button class="btn sm blue" id="devWatchActive" style="flex:1">進入觀戰</button>
+            <button class="btn sm gold" id="devViewActiveEvents" style="flex:1">查看事件紀錄</button>
+            <button class="btn sm dark" id="devForceEndActive" style="flex:1">強制結束活動</button>
+          </div>
+        ` : `
+          <div class="note">目前系統中沒有運行中的活動。</div>
+        `}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ 最新事件紀錄</div>
+      <div class="cb">
+        ${stats.latestEvent ? `
+          <div style="font-size:13px;line-height:1.6">
+            時間：<code>${esc(stats.latestEvent.created_at)}</code><br>
+            活動 ID：<code>${esc(stats.latestEvent.game_id)}</code><br>
+            類型：<span class="dev-badge gold">${esc(stats.latestEvent.event_type)}</span><br>
+            內容：<b>${esc(stats.latestEvent.message || '(無訊息)')}</b>
+          </div>
+        ` : `
+          <div class="note">尚無事件記錄。</div>
+        `}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ Worker & D1 系統資訊</div>
+      <div class="cb">
+        <div style="font-size:12.5px;line-height:1.8">
+          版本：<code>${esc(data.version)}</code><br>
+          D1 資料庫 Binding：<span class="dev-badge ${data.envStatus?.hasDb ? 'green' : 'red'}">${data.envStatus?.hasDb ? '正常' : '未連接'}</span><br>
+          Durable Objects Binding：<span class="dev-badge ${data.envStatus?.hasDo ? 'green' : 'red'}">${data.envStatus?.hasDo ? '正常' : '未連接'}</span><br>
+          Secret 憑證驗證：<span class="dev-badge ${data.envStatus?.hasDevSecret ? 'green' : 'gold'}">${data.envStatus?.hasDevSecret ? 'Worker Secret' : '預設 Hash'}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $('toggleDoBtn').onclick = async () => {
+    const nextState = !doEnabled;
+    const msg = nextState
+      ? '確定要開啟 Durable Object 伺服器服務嗎？主持人將可建立活動且隊輔可正常連線。'
+      : '確定要關閉 Durable Object 伺服器服務嗎？關閉後將全面禁止建立新活動與 WebSocket 即時連線！';
+    ask(nextState ? '開啟 DO 服務？' : '關閉 DO 服務？', msg, async () => {
+      try{
+        await devApi('/api/dev/settings', { method: 'POST', body: JSON.stringify({ doEnabled: nextState }) });
+        toast(nextState ? 'DO 服務已成功開啟' : 'DO 服務已成功關閉');
+        renderDevOverview(container);
+      }catch(e){
+        toast('切換失敗：' + e.message, true);
+      }
+    });
+  };
+
+  if(active){
+    $('devWatchActive')?.addEventListener('click', () => {
+      openGame({ id: active.id, name: active.name }, 'viewer');
+    });
+    $('devViewActiveEvents')?.addEventListener('click', () => {
+      App.devEventsFilter.gameId = active.id;
+      App.devTab = 'events';
+      renderDevHome();
+    });
+    $('devForceEndActive')?.addEventListener('click', () => {
+      ask('強制結束當前活動？', `活動「${esc(active.name)}」(${active.id}) 將被強制結束並保存 D1 紀錄。`, async () => {
+        try{
+          await devApi(`/api/dev/games/${encodeURIComponent(active.id)}/force-end`, { method: 'POST' });
+          toast('活動已強制結束');
+          renderDevOverview(container);
+        }catch(e){
+          toast('結束活動失敗：' + e.message, true);
+        }
+      });
+    });
+  }
+}
+
+async function renderDevGames(container){
+  const filter = App.devGamesFilter || { status: 'all', search: '' };
+  container.innerHTML = '<div class="note">正在載入 D1 活動資料…</div>';
+
+  const queryParams = new URLSearchParams({
+    status: filter.status,
+    search: filter.search,
+    limit: '50'
+  });
+  const data = await devApi(`/api/dev/games?${queryParams}`);
+  const games = data.games || [];
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="ch">★ D1 活動清單管理 (${data.total} 筆)</div>
+      <div class="cb">
+        <div class="dev-filter-bar">
+          <select id="devGameStatusFilter">
+            <option value="all" ${filter.status==='all'?'selected':''}>全部狀態</option>
+            <option value="active" ${filter.status==='active'?'selected':''}>進行中 / 準備中</option>
+            <option value="ended" ${filter.status==='ended'?'selected':''}>已結束</option>
+          </select>
+          <input type="text" id="devGameSearchInput" placeholder="搜尋活動名稱或 ID" value="${esc(filter.search)}">
+          <button class="btn sm gold" id="devGameFilterBtn" style="width:auto;margin:0">篩選</button>
+          <button class="btn sm ink" id="devGameResetBtn" style="width:auto;margin:0">重設</button>
+        </div>
+
+        <div class="dev-table-wrap">
+          <table class="dev-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>活動名稱</th>
+                <th>狀態</th>
+                <th>隊數</th>
+                <th>建立時間</th>
+                <th>更新時間</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${games.length ? games.map(g => `
+                <tr>
+                  <td><code>${esc(g.id)}</code></td>
+                  <td><b>${esc(g.name)}</b></td>
+                  <td><span class="dev-badge ${g.status==='ended'?'gray':g.status==='running'?'green':g.status==='paused'?'gold':'blue'}">${esc(phaseNames[g.status]||g.status)}</span></td>
+                  <td>${g.team_count} 隊</td>
+                  <td><small>${esc(g.created_at?.slice(5, 19).replace('T', ' '))}</small></td>
+                  <td><small>${esc(g.updated_at?.slice(5, 19).replace('T', ' '))}</small></td>
+                  <td class="actions">
+                    <button class="btn xs gold dev-view-game" data-id="${esc(g.id)}" title="檢視狀態">🔍 狀態</button>
+                    <button class="btn xs blue dev-events-game" data-id="${esc(g.id)}" title="查看事件">📜 事件</button>
+                    <button class="btn xs ink dev-export-game" data-id="${esc(g.id)}" title="匯出 JSON">📥 匯出</button>
+                    ${g.status !== 'ended' ? `<button class="btn xs dark dev-end-game" data-id="${esc(g.id)}" title="強制結束">🛑 結束</button>` : ''}
+                    <button class="btn xs dark dev-del-game" data-id="${esc(g.id)}" title="刪除紀錄">🗑️ 刪除</button>
+                  </td>
+                </tr>
+              `).join('') : `
+                <tr><td colspan="7" style="text-align:center;padding:20px;color:#8a8676">沒有符合條件的活動記錄</td></tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $('devGameFilterBtn').onclick = () => {
+    App.devGamesFilter.status = $('devGameStatusFilter').value;
+    App.devGamesFilter.search = $('devGameSearchInput').value.trim();
+    renderDevGames(container);
+  };
+  $('devGameResetBtn').onclick = () => {
+    App.devGamesFilter = { status: 'all', search: '' };
+    renderDevGames(container);
+  };
+  $('devGameSearchInput').onkeydown = e => { if(e.key === 'Enter') $('devGameFilterBtn').click(); };
+
+  container.querySelectorAll('.dev-view-game').forEach(b => {
+    b.onclick = async () => {
+      try{
+        const id = b.dataset.id;
+        const res = await devApi(`/api/dev/games/${encodeURIComponent(id)}`);
+        showJsonModal(`活動 ${id} 詳細資料`, res);
+      }catch(e){ toast('讀取失敗：' + e.message, true); }
+    };
+  });
+
+  container.querySelectorAll('.dev-events-game').forEach(b => {
+    b.onclick = () => {
+      App.devEventsFilter.gameId = b.dataset.id;
+      App.devTab = 'events';
+      renderDevHome();
+    };
+  });
+
+  container.querySelectorAll('.dev-export-game').forEach(b => {
+    b.onclick = async () => {
+      try{
+        const id = b.dataset.id;
+        const res = await devApi(`/api/dev/export/${encodeURIComponent(id)}`);
+        downloadJson(`game-${id}-export.json`, res);
+        toast(`活動 ${id} 資料匯出成功`);
+      }catch(e){ toast('匯出失敗：' + e.message, true); }
+    };
+  });
+
+  container.querySelectorAll('.dev-end-game').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.id;
+      ask('強制結束活動？', `確定要結束活動 ${id} 嗎？`, async () => {
+        try{
+          await devApi(`/api/dev/games/${encodeURIComponent(id)}/force-end`, { method: 'POST' });
+          toast(`活動 ${id} 已結束`);
+          renderDevGames(container);
+        }catch(e){ toast('操作失敗：' + e.message, true); }
+      });
+    };
+  });
+
+  container.querySelectorAll('.dev-del-game').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.id;
+      ask('刪除活動紀錄？', `此操作將從 D1 永久刪除活動 ${id} 及所有關聯事件！`, async () => {
+        try{
+          await devApi(`/api/dev/games/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          toast(`活動 ${id} 已刪除`);
+          renderDevGames(container);
+        }catch(e){ toast('刪除失敗：' + e.message, true); }
+      });
+    };
+  });
+}
+
+async function renderDevEvents(container){
+  const filter = App.devEventsFilter || { gameId: '', eventType: '', actorRole: '', search: '' };
+  container.innerHTML = '<div class="note">正在讀取 D1 事件日誌…</div>';
+
+  const queryParams = new URLSearchParams({
+    gameId: filter.gameId,
+    eventType: filter.eventType,
+    actorRole: filter.actorRole,
+    search: filter.search,
+    limit: '60'
+  });
+  const data = await devApi(`/api/dev/events?${queryParams}`);
+  const events = data.events || [];
+
+  const eventTypes = [
+    'roll','reroll','attack','battle','gamble','buff','upgrade','sell','buyBack',
+    'assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','endGame',
+    'kickTeam','idleTimeout','teamJoin','teamLeave','forceEnd'
+  ];
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="ch">★ D1 事件審計日誌 (${data.total} 筆)</div>
+      <div class="cb">
+        <div class="dev-filter-bar">
+          <input type="text" id="devEvGameId" placeholder="活動 ID (例：AB12CD)" value="${esc(filter.gameId)}" style="max-width:140px">
+          <select id="devEvType">
+            <option value="">全部事件類型</option>
+            ${eventTypes.map(t => `<option value="${t}" ${filter.eventType===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+          <select id="devEvRole">
+            <option value="">全部角色</option>
+            <option value="host" ${filter.actorRole==='host'?'selected':''}>host (主持人)</option>
+            <option value="team" ${filter.actorRole==='team'?'selected':''}>team (隊輔)</option>
+            <option value="viewer" ${filter.actorRole==='viewer'?'selected':''}>viewer (觀眾)</option>
+            <option value="system" ${filter.actorRole==='system'?'selected':''}>system (系統)</option>
+            <option value="dev" ${filter.actorRole==='dev'?'selected':''}>dev (開發者)</option>
+          </select>
+          <input type="text" id="devEvSearch" placeholder="關鍵字搜尋訊息" value="${esc(filter.search)}">
+          <button class="btn sm gold" id="devEvFilterBtn" style="width:auto;margin:0">查詢</button>
+          <button class="btn sm ink" id="devEvResetBtn" style="width:auto;margin:0">清除</button>
+        </div>
+
+        <div class="dev-table-wrap">
+          <table class="dev-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>時間</th>
+                <th>活動 ID</th>
+                <th>角色 / 隊伍</th>
+                <th>事件類型</th>
+                <th>訊息內容</th>
+                <th>Rev</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${events.length ? events.map(e => `
+                <tr>
+                  <td><code>${e.id}</code></td>
+                  <td><small>${esc(e.createdAt?.slice(5, 19).replace('T', ' '))}</small></td>
+                  <td><code>${esc(e.gameId)}</code></td>
+                  <td>
+                    <span class="dev-badge ${e.actorRole==='host'?'gold':e.actorRole==='team'?'green':e.actorRole==='system'?'blue':'gray'}">${esc(e.actorRole)}</span>
+                    ${e.actorTeam !== null && e.actorTeam !== undefined ? `<small>隊${e.actorTeam+1}</small>` : ''}
+                  </td>
+                  <td><span class="dev-badge ${e.eventType==='attack'||e.eventType==='kickTeam'||e.eventType==='forceEnd'?'red':e.eventType==='roll'||e.eventType==='buff'?'green':'gold'}">${esc(e.eventType)}</span></td>
+                  <td>${esc(e.message || '')}</td>
+                  <td><code>${e.stateRev}</code></td>
+                  <td>
+                    <button class="btn xs ink dev-view-payload" data-payload='${esc(JSON.stringify(e.payload))}'>🔍 檢視</button>
+                  </td>
+                </tr>
+              `).join('') : `
+                <tr><td colspan="8" style="text-align:center;padding:20px;color:#8a8676">沒有符合條件的事件記錄</td></tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $('devEvFilterBtn').onclick = () => {
+    App.devEventsFilter.gameId = $('devEvGameId').value.trim();
+    App.devEventsFilter.eventType = $('devEvType').value;
+    App.devEventsFilter.actorRole = $('devEvRole').value;
+    App.devEventsFilter.search = $('devEvSearch').value.trim();
+    renderDevEvents(container);
+  };
+  $('devEvResetBtn').onclick = () => {
+    App.devEventsFilter = { gameId: '', eventType: '', actorRole: '', search: '' };
+    renderDevEvents(container);
+  };
+  $('devEvSearch').onkeydown = e => { if(e.key === 'Enter') $('devEvFilterBtn').click(); };
+  $('devEvGameId').onkeydown = e => { if(e.key === 'Enter') $('devEvFilterBtn').click(); };
+
+  container.querySelectorAll('.dev-view-payload').forEach(b => {
+    b.onclick = () => {
+      try{
+        const payload = JSON.parse(b.dataset.payload || '{}');
+        showJsonModal('事件 Payload 詳細內容', payload);
+      }catch(e){}
+    };
+  });
+}
+
+function renderDevSql(container){
+  container.innerHTML = `
+    <div class="card">
+      <div class="ch">★ D1 SQL 查詢終端機</div>
+      <div class="cb">
+        <div class="dev-sql-presets">
+          <button data-sql="SELECT * FROM games ORDER BY updated_at DESC LIMIT 10;">活動清單 (10 筆)</button>
+          <button data-sql="SELECT * FROM game_events ORDER BY id DESC LIMIT 20;">最新事件 (20 筆)</button>
+          <button data-sql="SELECT event_type, count(*) as count FROM game_events GROUP BY event_type ORDER BY count DESC;">事件統計</button>
+          <button data-sql="SELECT game_id, actor_team, message, created_at FROM game_events WHERE event_type='attack' ORDER BY id DESC LIMIT 20;">特殊操作紀錄</button>
+          <button data-sql="SELECT * FROM system_settings;">系統設定表</button>
+          <button data-sql="PRAGMA table_info(games);">games 欄位結構</button>
+          <button data-sql="PRAGMA table_info(game_events);">game_events 欄位結構</button>
+        </div>
+        <textarea id="devSqlInput" class="dev-sql-input" placeholder="請輸入 SQL 查詢指令...">SELECT * FROM games ORDER BY updated_at DESC LIMIT 10;</textarea>
+        <div class="row" style="margin-bottom:10px">
+          <button class="btn sm gold" id="devSqlRunBtn">▶ 執行 SQL</button>
+        </div>
+        <div id="devSqlOutput"><div class="note">點擊上方範本或輸入 SQL 後點選「執行 SQL」。</div></div>
+      </div>
+    </div>
+  `;
+
+  container.querySelectorAll('.dev-sql-presets button').forEach(b => {
+    b.onclick = () => {
+      $('devSqlInput').value = b.dataset.sql;
+      $('devSqlRunBtn').click();
+    };
+  });
+
+  $('devSqlRunBtn').onclick = async () => {
+    const sql = $('devSqlInput').value.trim();
+    if(!sql){ toast('請輸入 SQL 語法', true); return; }
+    const out = $('devSqlOutput');
+    out.innerHTML = '<div class="note">正在執行查詢…</div>';
+    try{
+      const start = performance.now();
+      const res = await devApi('/api/dev/sql', { method: 'POST', body: JSON.stringify({ sql }) });
+      const elapsed = (performance.now() - start).toFixed(1);
+      const rows = res.results || [];
+      if(!rows.length){
+        out.innerHTML = `<div class="note" style="color:#3fbf5a">執行成功（耗時 ${elapsed} ms）：查詢無回傳資料或受影響列數為 ${res.changes || 0}。</div>`;
+        return;
+      }
+      const cols = Object.keys(rows[0] || {});
+      out.innerHTML = `
+        <div style="font-size:12px;color:#7a6a45;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+          <span>共 <b>${rows.length}</b> 筆結果（耗時 ${elapsed} ms）</span>
+          <button class="btn xs ink" id="devToggleSqlJson">📋 檢視原始 JSON</button>
+        </div>
+        <div class="dev-table-wrap">
+          <table class="dev-table">
+            <thead>
+              <tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr>${cols.map(c => {
+                  const val = r[c];
+                  const str = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
+                  return `<td>${esc(str.length > 80 ? str.slice(0, 80) + '…' : str)}</td>`;
+                }).join('')}</tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      $('devToggleSqlJson').onclick = () => showJsonModal('SQL 查詢結果', rows);
+    }catch(e){
+      out.innerHTML = `<div class="note warn">SQL 執行錯誤：${esc(e.message)}</div>`;
+    }
+  };
+}
+
+async function renderDevTools(container){
+  container.innerHTML = '<div class="note">正在載入系統設定…</div>';
+  const data = await devApi('/api/dev/overview');
+  const doEnabled = Boolean(data.doEnabled);
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="ch">★ Durable Object 伺服器開關</div>
+      <div class="cb">
+        <p style="font-size:13px;line-height:1.6">
+          當關閉 DO 伺服器時，系統會立即拒絕新活動的建立與所有 WebSocket 即時連線。這可以用於活動結束後鎖定伺服器、維護更新或防止未授權操作。
+        </p>
+        <div style="margin:12px 0">
+          目前狀態：<span class="dev-badge ${doEnabled ? 'green' : 'red'}">${doEnabled ? '🟢 運行中' : '🔴 已鎖定停用'}</span>
+        </div>
+        <button class="btn sm ${doEnabled ? 'dark' : 'green'}" id="toolsToggleDoBtn">
+          ${doEnabled ? '🔴 立即關閉 DO 服務' : '🟢 立即開啟 DO 服務'}
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ 歷史資料批次清理</div>
+      <div class="cb">
+        <p style="font-size:13px;line-height:1.6">
+          批次清理 D1 中已結束的舊活動與關聯事件記錄，釋放資料庫空間。進行中或準備中的活動不會被刪除。
+        </p>
+        <label class="fl">
+          <span>保留期限</span>
+          <select id="cleanupRetainDays" style="width:180px;border:3px solid #14110f;padding:6px">
+            <option value="7">清理超過 7 天前活動</option>
+            <option value="30">清理超過 30 天前活動</option>
+            <option value="0">清理全部已結束活動</option>
+          </select>
+        </label>
+        <button class="btn sm dark" id="btnRunCleanup">執行歷史資料清理</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ D1 資料表檢查</div>
+      <div class="cb">
+        <button class="btn sm gold" id="btnCheckSchema">檢查 D1 資料表與索引狀態</button>
+        <div id="schemaCheckResult" style="margin-top:10px"></div>
+      </div>
+    </div>
+  `;
+
+  $('toolsToggleDoBtn').onclick = () => {
+    const nextState = !doEnabled;
+    ask(nextState ? '開啟 DO 服務？' : '關閉 DO 服務？', nextState ? '確定要開啟 DO 服務嗎？' : '確定要關閉 DO 服務嗎？', async () => {
+      try{
+        await devApi('/api/dev/settings', { method: 'POST', body: JSON.stringify({ doEnabled: nextState }) });
+        toast(nextState ? 'DO 服務已開啟' : 'DO 服務已關閉');
+        renderDevTools(container);
+      }catch(e){ toast('操作失敗：' + e.message, true); }
+    });
+  };
+
+  $('btnRunCleanup').onclick = () => {
+    const days = Number($('cleanupRetainDays').value);
+    ask('確定執行清理？', days === 0 ? '將永久刪除所有已結束活動的紀錄！' : `將刪除 ${days} 天前所有已結束活動的紀錄！`, async () => {
+      try{
+        const res = await devApi('/api/dev/cleanup', { method: 'POST', body: JSON.stringify({ retainDays: days }) });
+        toast(`清理完成，已刪除 ${res.deletedGamesCount || 0} 場已結束活動`);
+      }catch(e){ toast('清理失敗：' + e.message, true); }
+    });
+  };
+
+  $('btnCheckSchema').onclick = async () => {
+    const resultBox = $('schemaCheckResult');
+    resultBox.innerHTML = '<div class="note">正在檢查資料表結構…</div>';
+    try{
+      const tables = await devApi('/api/dev/sql', { method: 'POST', body: JSON.stringify({ sql: "SELECT type, name FROM sqlite_master WHERE type IN ('table','index') ORDER BY type, name;" }) });
+      resultBox.innerHTML = `
+        <div class="note" style="color:#3fbf5a;margin-bottom:8px">✓ D1 資料庫連線正常，共有 ${tables.results?.length || 0} 個資料表與索引。</div>
+        <div class="dev-json-viewer">${esc(JSON.stringify(tables.results, null, 2))}</div>
+      `;
+    }catch(e){
+      resultBox.innerHTML = `<div class="note warn">檢查失敗：${esc(e.message)}</div>`;
+    }
+  };
 }
 async function renderTeamHome(){
   if(!App.access.team) return renderGate('team');

@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.26';
+const APP_BUILD_VERSION = '2026.08.21.27';
 
 
 
@@ -30,6 +30,42 @@ function getRoom(env,id){ return env.GAME_ROOMS.get(env.GAME_ROOMS.idFromName(id
 const DEFAULT_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 function idleTimeoutMs(env){ const value=Number(env.IDLE_TIMEOUT_MS); return Number.isFinite(value)&&value>0?value:DEFAULT_IDLE_TIMEOUT_MS; }
 
+const DEFAULT_DEV_PASSWORD_HASH = 'da5d26410ae112bfd2513b4d4eb0497ccf8eeb095cd613fee834e521705d8f20';
+
+async function ensureSystemSettingsTable(env){
+  try{
+    await env.DB.prepare("CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+  }catch{}
+}
+
+export async function isDoEnabled(env){
+  try{
+    await ensureSystemSettingsTable(env);
+    const row=await env.DB.prepare("SELECT value FROM system_settings WHERE key='do_enabled'").first();
+    if(!row) return true;
+    return row.value !== '0' && row.value !== 'false';
+  }catch{
+    return true;
+  }
+}
+
+export async function setDoEnabled(env, enabled){
+  await ensureSystemSettingsTable(env);
+  const val = enabled ? '1' : '0';
+  const timestamp = now();
+  await env.DB.prepare("INSERT INTO system_settings (key, value, updated_at) VALUES ('do_enabled', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+    .bind(val, timestamp).run();
+  return enabled;
+}
+
+export async function verifyDevSecret(password, env={}){
+  if(!password) return false;
+  if(env.DEV_PASSWORD && password === env.DEV_PASSWORD) return true;
+  if(env.DEV_PASSWORD_HASH && (await verifySecret(password, env.DEV_PASSWORD_HASH))) return true;
+  if(env.DEV_SECRET && (password === env.DEV_SECRET || (await verifySecret(password, env.DEV_SECRET)))) return true;
+  return (await hashSecret(password)) === DEFAULT_DEV_PASSWORD_HASH;
+}
+
 export default {
   async fetch(request, env){
     const url=new URL(request.url);
@@ -44,8 +80,17 @@ export default {
       if(historyMatch && request.method==='GET') return getHistory(historyMatch[1],request,env);
       const closeMatch=url.pathname.match(/^\/api\/games\/([^/]+)\/close$/);
       if(closeMatch && request.method==='POST') return closeGame(closeMatch[1],request,env);
+
+      // Developer Dashboard APIs
+      if(url.pathname.startsWith('/api/dev')){
+        return handleDevApi(url, request, env);
+      }
+
       const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
-      if(wsMatch){ const id=decodeURIComponent(wsMatch[1]); const headers=new Headers(request.headers); headers.delete('x-control-action');headers.set('x-game-id',id); return getRoom(env,id).fetch(new Request(request,{headers})); }
+      if(wsMatch){
+        if(!(await isDoEnabled(env))) return json({error:'伺服器維護中，DO 服務目前已停用'}, 503);
+        const id=decodeURIComponent(wsMatch[1]); const headers=new Headers(request.headers); headers.delete('x-control-action');headers.set('x-game-id',id); return getRoom(env,id).fetch(new Request(request,{headers}));
+      }
       if(env.ASSETS){
         const requestHeaders=new Headers(request.headers);
         requestHeaders.set('cache-control','no-store, no-cache, must-revalidate, max-age=0');
@@ -63,13 +108,322 @@ export default {
 
 async function authenticate(request,env){
   const body=await request.json().catch(()=>({})); const role=text(body.role); const password=text(body.password);
+  if(role==='dev'){
+    if(!(await verifyDevSecret(password, env))) return json({error:'密碼錯誤'},401);
+    return json({ok:true,role:'dev',token:password});
+  }
   const hash=role==='host'?env.ADMIN_PASSWORD_HASH:role==='team'?env.TEAM_PASSWORD_HASH:null;
   if(!hash || !(await verifySecret(password,hash))) return json({error:'密碼錯誤'},401);
   return json({ok:true,role});
 }
 function bearer(request){ return (request.headers.get('authorization')||'').replace(/^Bearer\s+/i,''); }
 async function isAdmin(request,env){ const token=bearer(request); return Boolean(token && env.ADMIN_PASSWORD_HASH && await verifySecret(token,env.ADMIN_PASSWORD_HASH)); }
+async function isDevUser(request,env){ const token=bearer(request); return verifyDevSecret(token, env); }
+
+async function handleDevApi(url, request, env){
+  const pathname = url.pathname;
+  if(pathname==='/api/dev/auth' && request.method==='POST'){
+    const body=await request.json().catch(()=>({}));
+    const password=text(body.password);
+    if(!(await verifyDevSecret(password, env))) return json({error:'開發者密碼錯誤'}, 401);
+    return json({ok:true, role:'dev', token:password});
+  }
+
+  // All other /api/dev/* require valid dev token
+  if(!(await isDevUser(request, env))){
+    return json({error:'需要開發者授權'}, 401);
+  }
+
+  if(pathname==='/api/dev/overview' && request.method==='GET'){
+    return devOverview(request, env);
+  }
+  if(pathname==='/api/dev/settings'){
+    if(request.method==='GET') return json({ok:true, doEnabled: await isDoEnabled(env)});
+    if(request.method==='POST'){
+      const body=await request.json().catch(()=>({}));
+      const enabled=Boolean(body.doEnabled);
+      await setDoEnabled(env, enabled);
+      return json({ok:true, doEnabled: enabled});
+    }
+  }
+  if(pathname==='/api/dev/games' && request.method==='GET'){
+    return devListGames(url, request, env);
+  }
+  const gameDetailMatch=pathname.match(/^\/api\/dev\/games\/([^/]+)$/);
+  if(gameDetailMatch){
+    const id=decodeURIComponent(gameDetailMatch[1]);
+    if(request.method==='GET') return devGetGame(id, request, env);
+    if(request.method==='DELETE') return devDeleteGame(id, request, env);
+  }
+  const gameForceEndMatch=pathname.match(/^\/api\/dev\/games\/([^/]+)\/force-end$/);
+  if(gameForceEndMatch && request.method==='POST'){
+    const id=decodeURIComponent(gameForceEndMatch[1]);
+    return devForceEndGame(id, request, env);
+  }
+  const exportMatch=pathname.match(/^\/api\/dev\/export\/([^/]+)$/);
+  if(exportMatch && request.method==='GET'){
+    const id=decodeURIComponent(exportMatch[1]);
+    return devExportGame(id, request, env);
+  }
+  if(pathname==='/api/dev/events' && request.method==='GET'){
+    return devListEvents(url, request, env);
+  }
+  if(pathname==='/api/dev/sql' && request.method==='POST'){
+    return devExecuteSql(request, env);
+  }
+  if(pathname==='/api/dev/cleanup' && request.method==='POST'){
+    return devCleanup(request, env);
+  }
+  return json({error:'未知的開發者端點'}, 404);
+}
+
+async function devOverview(request, env){
+  await ensureSystemSettingsTable(env);
+  const [totalGamesRes, activeGamesRes, endedGamesRes, totalEventsRes, latestEventRes, activeGameRes] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) as cnt FROM games").first().catch(()=>({cnt:0})),
+    env.DB.prepare("SELECT COUNT(*) as cnt FROM games WHERE status IN ('lobby','running','paused')").first().catch(()=>({cnt:0})),
+    env.DB.prepare("SELECT COUNT(*) as cnt FROM games WHERE status='ended'").first().catch(()=>({cnt:0})),
+    env.DB.prepare("SELECT COUNT(*) as cnt FROM game_events").first().catch(()=>({cnt:0})),
+    env.DB.prepare("SELECT created_at, event_type, message, game_id FROM game_events ORDER BY id DESC LIMIT 1").first().catch(()=>null),
+    env.DB.prepare("SELECT id, name, status, team_count, updated_at, state_json FROM games WHERE status IN ('lobby','running','paused') ORDER BY updated_at DESC LIMIT 1").first().catch(()=>null)
+  ]);
+
+  let activeGame = null;
+  if(activeGameRes){
+    let s={};try{s=JSON.parse(activeGameRes.state_json||'{}');}catch{}
+    activeGame = {
+      id: activeGameRes.id,
+      name: activeGameRes.name,
+      status: activeGameRes.status,
+      teamCount: activeGameRes.team_count,
+      phase: s.phase || activeGameRes.status,
+      round: s.round || 0,
+      paused: Boolean(s.paused),
+      updatedAt: activeGameRes.updated_at,
+      joinedTeams: (s.teams||[]).filter(t=>t.joined).length
+    };
+  }
+
+  const doEnabled = await isDoEnabled(env);
+
+  return json({
+    ok: true,
+    version: APP_BUILD_VERSION,
+    doEnabled,
+    stats: {
+      totalGames: Number(totalGamesRes?.cnt || 0),
+      activeGames: Number(activeGamesRes?.cnt || 0),
+      endedGames: Number(endedGamesRes?.cnt || 0),
+      totalEvents: Number(totalEventsRes?.cnt || 0),
+      latestEvent: latestEventRes
+    },
+    activeGame,
+    envStatus: {
+      hasDb: Boolean(env.DB),
+      hasDo: Boolean(env.GAME_ROOMS),
+      hasAssets: Boolean(env.ASSETS),
+      hasDevSecret: Boolean(env.DEV_PASSWORD || env.DEV_PASSWORD_HASH || env.DEV_SECRET)
+    }
+  });
+}
+
+async function devListGames(url, request, env){
+  const status = url.searchParams.get('status') || 'all';
+  const search = text(url.searchParams.get('search'));
+  const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit')) || 25));
+  const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+
+  let whereClauses = [];
+  let params = [];
+
+  if(status === 'active'){
+    whereClauses.push("status IN ('lobby','running','paused')");
+  } else if(status === 'ended'){
+    whereClauses.push("status = 'ended'");
+  }
+
+  if(search){
+    whereClauses.push("(id LIKE ? OR name LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM games ${whereSql}`).bind(...params).first().catch(()=>({cnt:0}));
+  const rows = await env.DB.prepare(`SELECT id, name, status, team_count, created_at, updated_at, ended_at FROM games ${whereSql} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+    .bind(...params, limit, offset).all().catch(()=>({results:[]}));
+
+  return json({
+    ok: true,
+    total: Number(countRow?.cnt || 0),
+    limit,
+    offset,
+    games: rows.results || []
+  });
+}
+
+async function devGetGame(id, request, env){
+  const row = await env.DB.prepare("SELECT * FROM games WHERE id=?").bind(id).first();
+  if(!row) return json({error:'找不到指定活動'}, 404);
+  const eventCountRow = await env.DB.prepare("SELECT COUNT(*) as cnt FROM game_events WHERE game_id=?").bind(id).first().catch(()=>({cnt:0}));
+  let state = {};
+  try{ state = JSON.parse(row.state_json || '{}'); }catch{}
+  return json({
+    ok: true,
+    game: {
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      teamCount: row.team_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      endedAt: row.ended_at,
+      eventCount: Number(eventCountRow?.cnt || 0)
+    },
+    state
+  });
+}
+
+async function devForceEndGame(id, request, env){
+  const row = await env.DB.prepare("SELECT id, status FROM games WHERE id=?").bind(id).first();
+  if(!row) return json({error:'找不到活動'}, 404);
+  const timestamp = now();
+  try{
+    const headers = new Headers({'x-game-id':id, 'x-control-action':'endGame'});
+    await getRoom(env,id).fetch(new Request('https://do.internal/control',{method:'POST',headers,body:'{}'}));
+  }catch{}
+  await env.DB.batch([
+    env.DB.prepare("UPDATE games SET status='ended', ended_at=?, updated_at=? WHERE id=?").bind(timestamp, timestamp, id),
+    env.DB.prepare("INSERT INTO game_events (game_id, event_type, actor_role, actor_team, message, payload_json, state_rev, created_at) VALUES (?, 'forceEnd', 'dev', NULL, '開發者強制結束活動', '{}', 9999, ?)").bind(id, timestamp)
+  ]);
+  return json({ok:true, id, status:'ended'});
+}
+
+async function devDeleteGame(id, request, env){
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM game_events WHERE game_id=?").bind(id),
+    env.DB.prepare("DELETE FROM games WHERE id=?").bind(id)
+  ]);
+  return json({ok:true, id});
+}
+
+async function devListEvents(url, request, env){
+  const gameId = url.searchParams.get('gameId');
+  const eventType = url.searchParams.get('eventType');
+  const actorRole = url.searchParams.get('actorRole');
+  const search = text(url.searchParams.get('search'));
+  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit')) || 50));
+  const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+
+  let whereClauses = [];
+  let params = [];
+
+  if(gameId){
+    whereClauses.push("game_id = ?");
+    params.push(gameId);
+  }
+  if(eventType){
+    whereClauses.push("event_type = ?");
+    params.push(eventType);
+  }
+  if(actorRole){
+    whereClauses.push("actor_role = ?");
+    params.push(actorRole);
+  }
+  if(search){
+    whereClauses.push("(message LIKE ? OR payload_json LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM game_events ${whereSql}`).bind(...params).first().catch(()=>({cnt:0}));
+  const rows = await env.DB.prepare(`SELECT id, game_id, event_type, actor_role, actor_team, message, payload_json, state_rev, created_at FROM game_events ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .bind(...params, limit, offset).all().catch(()=>({results:[]}));
+
+  return json({
+    ok: true,
+    total: Number(countRow?.cnt || 0),
+    limit,
+    offset,
+    events: (rows.results || []).map(r=>{
+      let payload = {};
+      try{ payload = JSON.parse(r.payload_json || '{}'); }catch{}
+      return {
+        id: r.id,
+        gameId: r.game_id,
+        eventType: r.event_type,
+        actorRole: r.actor_role,
+        actorTeam: r.actor_team,
+        message: r.message,
+        payload,
+        stateRev: r.state_rev,
+        createdAt: r.created_at
+      };
+    })
+  });
+}
+
+async function devExecuteSql(request, env){
+  const body = await request.json().catch(()=>({}));
+  const sql = text(body.sql);
+  if(!sql) return json({error:'請提供 SQL 語法'}, 400);
+
+  try{
+    const res = await env.DB.prepare(sql).all();
+    return json({
+      ok: true,
+      results: res.results || [],
+      meta: res.meta || {},
+      changes: res.meta?.changes ?? (res.results ? res.results.length : 0)
+    });
+  }catch(e){
+    return json({error: e?.message || 'SQL 執行失敗'}, 400);
+  }
+}
+
+async function devCleanup(request, env){
+  const body = await request.json().catch(()=>({}));
+  const retainDays = Number(body.retainDays) || 7;
+  const cutoff = new Date(Date.now() - retainDays * 86400000).toISOString();
+
+  const oldGames = await env.DB.prepare("SELECT id FROM games WHERE status='ended' AND updated_at < ?").bind(cutoff).all().catch(()=>({results:[]}));
+  const ids = (oldGames.results || []).map(r => r.id);
+
+  if(ids.length > 0){
+    const placeholders = ids.map(()=>'?').join(',');
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM game_events WHERE game_id IN (${placeholders})`).bind(...ids),
+      env.DB.prepare(`DELETE FROM games WHERE id IN (${placeholders})`).bind(...ids)
+    ]);
+  }
+
+  return json({ok:true, deletedGamesCount: ids.length, cutoff});
+}
+
+async function devExportGame(id, request, env){
+  const game = await env.DB.prepare("SELECT * FROM games WHERE id=?").bind(id).first();
+  if(!game) return json({error:'找不到活動'}, 404);
+  const events = await env.DB.prepare("SELECT * FROM game_events WHERE game_id=? ORDER BY id ASC").bind(id).all().catch(()=>({results:[]}));
+
+  let state = {};
+  try{ state = JSON.parse(game.state_json || '{}'); }catch{}
+
+  return json({
+    ok: true,
+    exportedAt: now(),
+    game: {
+      ...game,
+      state
+    },
+    events: (events.results || []).map(e=>{
+      let p = {};
+      try{ p = JSON.parse(e.payload_json || '{}'); }catch{}
+      return { ...e, payload: p };
+    })
+  });
+}
+
 async function createGame(request,env){
+  if(!(await isDoEnabled(env))) return json({error:'伺服器目前已被開發者關閉（DO 服務停用中），無法建立新活動'}, 503);
   if(!(await isAdmin(request,env))) return json({error:'需要主持人授權'},401);
   const active=await env.DB.prepare("SELECT id FROM games WHERE status IN ('lobby','running','paused') LIMIT 1").first();
   if(active) return json({error:'目前已有一場活動，請先由主持人結束後再建立新活動'},409);
@@ -93,12 +447,12 @@ async function createGame(request,env){
 async function getHistory(id,request,env){
   const token=bearer(request);
   const row=await env.DB.prepare('SELECT host_token_hash FROM games WHERE id=?').bind(id).first();
-  if(!row || !((await verifySecret(token,row.host_token_hash)) || (env.ADMIN_PASSWORD_HASH && await verifySecret(token,env.ADMIN_PASSWORD_HASH)))) return json({error:'需要主持人授權'},401);
+  if(!row || !((await verifySecret(token,row.host_token_hash)) || (env.ADMIN_PASSWORD_HASH && await verifySecret(token,env.ADMIN_PASSWORD_HASH)) || (await verifyDevSecret(token, env)))) return json({error:'需要主持人授權'},401);
   const rows=await env.DB.prepare('SELECT event_type,actor_role,actor_team,message,state_rev,created_at FROM game_events WHERE game_id=? ORDER BY id DESC LIMIT 500').bind(id).all();
   return json({events:(rows.results||[]).map(r=>({eventType:r.event_type,actorRole:r.actor_role,actorTeam:r.actor_team,message:r.message,stateRev:r.state_rev,createdAt:r.created_at}))});
 }
 async function closeGame(id,request,env){
-  if(!(await isAdmin(request,env))) return json({error:'需要主持人授權'},401);
+  if(!((await isAdmin(request,env)) || (await isDevUser(request,env)))) return json({error:'需要主持人授權'},401);
   const row=await env.DB.prepare("SELECT id,status FROM games WHERE id=?").bind(id).first();
   if(!row) return json({error:'找不到活動'},404);
   if(row.status==='ended') return json({ok:true,status:'ended'});

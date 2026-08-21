@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.36';
-import { G } from './game-core.js?v=2026.08.22.36';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.22.36';
+const BUILD_VERSION = '2026.08.22.37';
+import { G } from './game-core.js?v=2026.08.22.37';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.22.37';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -1665,12 +1665,13 @@ function fitBoard(){
     bd.style.transform=`translate3d(${tx}px, ${ty}px, 0) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`;
     return;
   }
-  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,viewerMax=App.role==='viewer'?1.65:stage?1.35:1,availableHeight=stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,mobileTeam=App.role==='team'&&!stage,teamPreview=mobileTeam&&App.tab!=='main',viewerMax=App.role==='viewer'?1.65:stage?1.35:1,mobileBoardHeight=window.innerHeight*(teamPreview?0.28:0.46),availableHeight=mobileTeam?mobileBoardHeight:stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
   bd.style.transformOrigin='top left';
   const centerOffset=App.role==='viewer'?Math.max(0,(wrap.clientWidth-bd.offsetWidth*scale)/2):0;
   bd.style.transform=`translateX(${centerOffset}px) scale(${scale})`;
   wrap.style.height=`${bd.offsetHeight*scale}px`;
   wrap.classList.toggle('compact-board',scale<.78);
+  wrap.classList.toggle('team-board-preview',teamPreview);
 }
 
 
@@ -1998,7 +1999,7 @@ function renderGame(){
   if(App.role==='viewer'&&App.tab==='main'){
     body=`<div class="viewer-dashboard">${boardCard}<aside class="viewer-live-rail">${stagePanelHTML()}${activeTurnHTML()}${rankingHTML()}${viewerActivityHTML()}</aside></div>`;
   }else if(App.role==='team'&&['main','backpack','receipts','log'].includes(App.tab)){
-    body=`<div class="game-layout team-persistent-layout">${boardCard}<aside class="game-sidebar team-tab-panel" data-team-tab="${App.tab}">${teamSideHTML(App.tab)}</aside></div>`;
+    body=`<div class="game-layout team-persistent-layout team-tab-${App.tab}">${boardCard}<aside class="game-sidebar team-tab-panel" data-team-tab="${App.tab}">${teamSideHTML(App.tab)}</aside></div>`;
   }else if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout">${boardCard}<aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
   if(App.tab==='settle') body=settleHTML();
   if(App.tab==='receipts'&&App.role!=='team') body=receiptsHTML();
@@ -2055,10 +2056,13 @@ function teamSideHTML(tab){
 }
 function switchTeamPanel(tab){
   if(App.role!=='team'||!['main','backpack','receipts','log'].includes(tab))return false;
-  const panel=document.querySelector('.team-tab-panel');if(!panel)return false;
+  const panel=document.querySelector('.team-tab-panel'),layout=document.querySelector('.team-persistent-layout');if(!panel)return false;
   App.tab=tab;panel.dataset.teamTab=tab;panel.innerHTML=teamSideHTML(tab);
+  if(layout){layout.classList.remove('team-tab-main','team-tab-backpack','team-tab-receipts','team-tab-log');layout.classList.add(`team-tab-${tab}`);}
   document.querySelectorAll('.tb').forEach(b=>b.classList.toggle('on',b.dataset.k===tab));
-  bindGame();return true;
+  bindGame();fitBoard();
+  if(window.innerWidth<860)requestAnimationFrame(()=>layout?.scrollIntoView({block:'start',behavior:'smooth'}));
+  return true;
 }
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};

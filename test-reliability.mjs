@@ -4,9 +4,14 @@ import worker, { GameRoom, normalizeGameState, teamActionError } from './src/wor
 import { G } from './src/game-core.js';
 
 const appSource=await readFile(new URL('./public/app.js',import.meta.url),'utf8');
+const stylesSource=await readFile(new URL('./public/styles.css',import.meta.url),'utf8');
 assert.match(appSource,/viewer-dashboard/);
 assert.match(appSource,/team-command-hud/);
 assert.match(appSource,/host-console-nav/);
+assert.match(appSource,/teamPreview\?0\.28:0\.46/);
+assert.match(appSource,/team-tab-\$\{App\.tab\}/);
+assert.match(stylesSource,/\.team-persistent-layout \.game-primary\{position:sticky;z-index:34;top:4px;order:0/);
+assert.match(stylesSource,/\.team-persistent-layout \.team-tab-panel\{order:1\}/);
 assert.doesNotMatch(appSource,/bProjector/);
 
 const state=(phase,paused=false)=>({phase,paused});

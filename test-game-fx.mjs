@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
@@ -14,20 +14,33 @@ assert.equal(typeof SoundFX.playAttackHit, 'function');
 assert.equal(typeof SoundFX.playCoinReward, 'function');
 assert.equal(typeof SoundFX.playUpgrade, 'function');
 assert.equal(typeof SoundFX.playSell, 'function');
+assert.equal(typeof SoundFX.unlockAudio, 'function');
+assert.equal(typeof SoundFX.playFestivalIntro, 'function');
+assert.equal(typeof SoundFX.playPayment, 'function');
+assert.equal(typeof SoundFX.playShield, 'function');
+assert.equal(typeof SoundFX.playRankUp, 'function');
 assert.equal(typeof isSoundEnabled, 'function');
 
 assert.equal(typeof toggleSound, 'function');
 
-assert.equal(PHASE_FX.roll.title,'開始移動');
+assert.equal(PHASE_FX.roll.title,'踏上人生道路');
 assert.equal(ATTACK_FX.typhoon.title,'超級颱風');
 assert.equal(ATTACK_FX.quake.title,'地裂震央');
 assert.equal(classifyEvent('紅隊 發動「飛彈」'),'danger');
 assert.equal(classifyEvent('藍隊 停在稅收格，扣 $200'),'loss');
 assert.equal(classifyEvent('黃隊 基地升級為「商店」'),'reward');
 assert.equal(classifyEvent('股市公布：熱絡'),'phase');
+assert.equal(presentationTier({role:'viewer',width:1920,hardwareConcurrency:8,deviceMemory:8}),'cinematic');
+assert.equal(presentationTier({role:'team',width:800,hardwareConcurrency:8,deviceMemory:8}),'party');
+assert.equal(presentationTier({role:'team',width:390,hardwareConcurrency:2,deviceMemory:2}),'lite');
+assert.equal(presentationTier({role:'viewer',width:1920,reducedMotion:true}),'reduced');
+const audienceState={teams:[{id:0,pos:5},{id:1,pos:9}]};
+assert.equal(isPresentationTaskRelevant({type:'roll',teamId:0},{role:'team',teamId:0,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'roll',teamId:1},{role:'team',teamId:0,state:audienceState}),false);
+assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[5]}},{role:'team',teamId:0,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[9]}},{role:'team',teamId:0,state:audienceState}),false);
 assert.deepEqual(movementPath(42,4,2,44),[43,0,1,2]);
 assert.deepEqual(movementPath(5,2,20,44),[6,7,20]);
 assert.deepEqual(movementPath(5,0,5,44),[]);
 
 console.log('game atmosphere helper and SoundFX tests passed');
-

@@ -8,10 +8,16 @@ const stylesSource=await readFile(new URL('./public/styles.css',import.meta.url)
 assert.match(appSource,/viewer-dashboard/);
 assert.match(appSource,/team-command-hud/);
 assert.match(appSource,/host-console-nav/);
+assert.match(appSource,/life-square/);
+assert.match(appSource,/teamMomentFxHTML/);
+assert.match(appSource,/isPresentationTaskRelevant/);
+assert.match(appSource,/bSkipFx/);
 assert.match(appSource,/teamPreview\?0\.28:0\.46/);
 assert.match(appSource,/team-tab-\$\{App\.tab\}/);
 assert.match(stylesSource,/\.team-persistent-layout \.game-primary\{position:sticky;z-index:34;top:4px;order:0/);
 assert.match(stylesSource,/\.team-persistent-layout \.team-tab-panel\{order:1\}/);
+assert.match(stylesSource,/\.life-title-banner/);
+assert.match(stylesSource,/\.team-moment-card/);
 assert.doesNotMatch(appSource,/bProjector/);
 
 const state=(phase,paused=false)=>({phase,paused});

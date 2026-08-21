@@ -1,12 +1,12 @@
 export const PHASE_FX = {
-  setup:  {symbol:'READY', title:'準備開始', subtitle:'等待主持人開始遊戲', kind:'setup'},
-  market: {symbol:'🏠', title:'房市公布', subtitle:'注意本回合房產倍率', kind:'market'},
-  sell:   {symbol:'＄', title:'基地階段', subtitle:'升級、出售或買回基地', kind:'sell'},
-  shop:   {symbol:'◆', title:'商店開張', subtitle:'購買道具與抽獎機會', kind:'shop'},
-  roll:   {symbol:'⚄', title:'開始移動', subtitle:'隊輔可以擲骰行動', kind:'roll'},
-  settle: {symbol:'🏆', title:'最終結算', subtitle:'榮譽頒獎典禮・最終戰報', kind:'settle'},
+  setup:  {symbol:'READY', title:'人生廣場集結', subtitle:'等待所有隊伍抵達人生起點', kind:'setup'},
+  market: {symbol:'🏠', title:'城市房市快報', subtitle:'注意本回合房產倍率', kind:'market'},
+  sell:   {symbol:'＄', title:'基地發展階段', subtitle:'升級、出售或買回人生基地', kind:'sell'},
+  shop:   {symbol:'◆', title:'人生補給站', subtitle:'購買旅途道具與實體物品', kind:'shop'},
+  roll:   {symbol:'⚄', title:'踏上人生道路', subtitle:'隊輔可以擲骰前進', kind:'roll'},
+  settle: {symbol:'🏆', title:'人生里程碑', subtitle:'最終成果與頒獎典禮', kind:'settle'},
   paused: {symbol:'Ⅱ', title:'遊戲暫停', subtitle:'請等待主持人恢復活動', kind:'paused'},
-  ended:  {symbol:'★', title:'活動結束', subtitle:'最終排名已經出爐', kind:'ended'},
+  ended:  {symbol:'★', title:'旅途告一段落', subtitle:'每一隊都留下自己的城市與故事', kind:'ended'},
 };
 
 
@@ -39,6 +39,31 @@ export function movementPath(from,steps,finalPosition,trackLength){
   return path;
 }
 
+export function presentationTier({role='',width=0,reducedMotion=false,hardwareConcurrency=8,deviceMemory=8}={}){
+  if(reducedMotion)return 'reduced';
+  const constrained=Number(hardwareConcurrency||8)<=4||Number(deviceMemory||8)<=4;
+  if(role==='viewer'&&Number(width)>=900&&!constrained)return 'cinematic';
+  if(role==='team'&&Number(width)>=700&&!constrained)return 'party';
+  return constrained?'lite':'compact';
+}
+
+export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}={}){
+  if(!task)return false;
+  if(role!=='team')return true;
+  const mine=Number(teamId);
+  if(!Number.isInteger(mine))return false;
+  if(['phase','assignment','event'].includes(task.type))return true;
+  if(['upgrade','sell','purchase'].includes(task.type))return Number(task.team?.id)===mine;
+  if(task.type==='roll')return Number(task.teamId)===mine;
+  if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
+  if(task.type==='attack'){
+    const attack=task.attack||{},myPos=state?.teams?.[mine]?.pos;
+    if(Number(attack.team)===mine||Number(attack.targetTeam)===mine)return true;
+    return myPos!==undefined&&Array.isArray(attack.hit)&&attack.hit.includes(myPos);
+  }
+  return true;
+}
+
 /* ===================================================================
    WEB AUDIO API 8-BIT RETRO SYNTHESIZER
    =================================================================== */
@@ -67,9 +92,37 @@ function getAudioContext() {
   return audioCtx;
 }
 
+export function unlockAudio(){
+  if(!soundEnabled)return false;
+  const ctx=getAudioContext();if(!ctx)return false;
+  try{
+    const gain=ctx.createGain();gain.gain.setValueAtTime(0.0001,ctx.currentTime);gain.connect(ctx.destination);
+    const osc=ctx.createOscillator();osc.frequency.setValueAtTime(220,ctx.currentTime);osc.connect(gain);osc.start();osc.stop(ctx.currentTime+0.01);
+  }catch{}
+  return ctx.state==='running';
+}
+export function isAudioReady(){return Boolean(audioCtx&&audioCtx.state==='running');}
+
+function playNotes(notes,type='square',volume=.16){
+  if(!soundEnabled)return;
+  const ctx=getAudioContext();if(!ctx)return;
+  notes.forEach(({f,t=0,d=.12})=>setTimeout(()=>{
+    if(!soundEnabled)return;
+    try{
+      const osc=ctx.createOscillator(),gain=ctx.createGain();osc.type=type;osc.frequency.setValueAtTime(f,ctx.currentTime);gain.gain.setValueAtTime(volume,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+d);osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+d);
+    }catch{}
+  },t*1000));
+}
+
 export const SoundFX = {
   isSoundEnabled,
   toggleSound,
+  unlockAudio,
+  isAudioReady,
+  playFestivalIntro(){playNotes([{f:261.63,d:.15},{f:329.63,t:.12,d:.15},{f:392,t:.24,d:.18},{f:523.25,t:.38,d:.42}],'triangle',.2);},
+  playPayment(){playNotes([{f:660,d:.09},{f:440,t:.08,d:.09},{f:294,t:.16,d:.18}],'square',.13);},
+  playShield(){playNotes([{f:330,d:.12},{f:660,t:.08,d:.16},{f:990,t:.17,d:.3}],'triangle',.2);},
+  playRankUp(){playNotes([{f:523.25,d:.12},{f:659.25,t:.1,d:.12},{f:783.99,t:.2,d:.12},{f:1046.5,t:.3,d:.34}],'square',.15);},
   playStepHop() {
 
     if (!soundEnabled) return;
@@ -361,5 +414,3 @@ export const SoundFX = {
     } catch {}
   }
 };
-
-

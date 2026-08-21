@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.37';
-import { G } from './game-core.js?v=2026.08.22.37';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.22.37';
+const BUILD_VERSION = '2026.08.22.38';
+import { G } from './game-core.js?v=2026.08.22.38';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant } from './game-fx.js?v=2026.08.22.38';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -40,13 +40,13 @@ const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
   token: null, gameMeta: null, socket: null, connected: false,
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
-  highlight: [], cfg: false, history: [], lobbyTimer: null,
+  highlight: [], cfg: false, history: [], lobbyTimer: null, homeIntroTimer:null,
   access: {host: '', team: '', dev: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
-  sound: isSoundEnabled(), radarFocus: null, _radarTimer: null,
+  sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
   hostDrafts:{}, hostSection:'flow', receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null,
 };
 
@@ -65,7 +65,8 @@ function clearAccess(role){ App.access[role]=''; try{ sessionStorage.removeItem(
 
 function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':App.entry==='dev'?'/dev':'/'; }
 function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
-function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase); const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); updateNav(); syncUpdatePrompt(); }
+function currentPresentationTier(){return presentationTier({role:App.role||'',width:window.innerWidth,reducedMotion:Boolean(reducedMotion),hardwareConcurrency:navigator.hardwareConcurrency||8,deviceMemory:navigator.deviceMemory||8});}
+function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase),lifeHome=App.screen==='home'&&App.entry==='home',tier=currentPresentationTier(); const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('life-home-mode',lifeHome);if(!lifeHome)document.body.classList.remove('life-intro-active'); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); ['cinematic','party','compact','lite','reduced'].forEach(level=>document.body.classList.toggle(`fx-${level}`,inGame&&tier===level)); updateNav(); syncUpdatePrompt(); }
 function syncUpdatePrompt(){ const el=$('pwaUpdate');if(!el)return;el.hidden=!App.updateReady||App.screen==='game'; }
 function showUpdatePrompt(){ App.updateReady=true;syncUpdatePrompt(); }
 async function applyPwaUpdate(){
@@ -193,7 +194,7 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
   const wrap=$('bwrap');
@@ -208,14 +209,15 @@ function activeFxStatus(){
   else if(App.fx.upgrade) currentDesc = `【${App.fx.upgrade.teamName || '隊伍'}】基地升級`;
   else if(App.fx.sell) currentDesc = `【${App.fx.sell.teamName || '隊伍'}】變賣基地`;
   else if(App.fx.purchase) currentDesc = `【${App.fx.purchase.teamName || '隊伍'}】購買道具`;
+  else if(App.fx.teamMoment) currentDesc = `【${App.fx.teamMoment.teamName || '隊伍'}】${App.fx.teamMoment.title || '小隊事件'}`;
   else if(App.fx.attack) currentDesc = `【${App.fx.attack.teamName || '隊伍'}】${App.fx.attack.title || '特殊操作'}`;
   else if(App.fx.aftershock) currentDesc = '特殊操作棋盤餘波';
-  else if(App.fx.assignment) currentDesc = '命運基地抽籤';
+  else if(App.fx.assignment) currentDesc = '人生起點抽籤';
   else if(App.fx.phase) currentDesc = `${App.fx.phase.title || '階段切換'}`;
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -231,6 +233,8 @@ function activeFxStatus(){
 function enqueueFx(task){
 
   if(!task)return;
+  if(!isPresentationTaskRelevant(task,{role:App.role,teamId:App.teamId,state:App.state}))return;
+  task.presentationId=task.presentationId||`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   App.fxQueue.push(task);
   if(!App.isFxRunning){
     runNextFx();
@@ -271,6 +275,11 @@ function runNextFx(){
         break;
       case 'purchase':
         executePurchaseFx(task.purchase,task.team,done);
+        break;
+      case 'teamMoment':
+      case 'rank':
+      case 'teamTurn':
+        executeTeamMomentFx(task,done);
         break;
       case 'attack':
         executeAttackFx(task.attack,task.message,task.next,done);
@@ -342,6 +351,7 @@ function executeSellFx(team,tileIndex,done){
     done();
   },reducedMotion?1000:2100);
 }
+function skipPresentationFx(){resetGameFx();render(true);toast('已略過目前視覺演出，遊戲狀態未受影響');}
 
 function executePurchaseFx(purchase,team,done){
   if(!purchase||!team){done();return;}
@@ -349,6 +359,25 @@ function executePurchaseFx(purchase,team,done){
   SoundFX.playCoinReward();
   renderFx();
   fxTimeout('purchase',()=>{App.fx.purchase=null;renderFx();done();},reducedMotion?900:2100);
+}
+
+function executeTeamMomentFx(task,done){
+  const team=task.team||App.state?.teams?.[task.teamId];if(!team){done();return;}
+  const moment=task.moment||task.type,receipt=task.receipt||null;
+  const presets={
+    gain:{icon:'＋$',kicker:'LIFE RESOURCE',title:'資源入袋',detail:receipt?.reason||'本隊獲得資源',tone:'gain'},
+    loss:{icon:'−$',kicker:'LIFE EXPENSE',title:'人生支出',detail:receipt?.reason||'本隊支付款項',tone:'loss'},
+    points:{icon:'＋✦',kicker:'SOCIAL MOMENT',title:'諂媚點數變動',detail:receipt?.reason||'人際影響力改變',tone:Number(receipt?.ptsDelta||0)>=0?'gain':'loss'},
+    shield:{icon:'▣',kicker:'PROTECTION USED',title:'防災卡展開',detail:'護盾已抵擋本次災害並消耗一張防災卡',tone:'shield'},
+    rank:{icon:'▲',kicker:'LIFE MILESTONE',title:'排名提升',detail:`${task.fromRank} → ${task.toRank} 名`,tone:'rank'},
+    turn:{icon:'⚄',kicker:'YOUR TURN',title:'輪到本隊',detail:'主持人已開放本隊擲骰',tone:'turn'},
+  },preset=presets[moment]||presets.gain;
+  const cash=Number(receipt?.cashDelta||0),pts=Number(receipt?.ptsDelta||0),amount=cash?`${cash>0?'+':''}${G.money(cash)}`:pts?`${pts>0?'+':''}${pts} 點`:'';
+  App.fx.teamMoment={...preset,moment,teamId:team.id,teamName:team.name,color:team.color,amount};
+  if(moment==='gain')SoundFX.playCoinReward();else if(moment==='loss')SoundFX.playPayment();else if(moment==='shield')SoundFX.playShield();else if(moment==='rank')SoundFX.playRankUp();else SoundFX.playPhaseChange();
+  if(App.role==='team')navigator.vibrate?.(moment==='shield'?[35,30,70]:moment==='turn'?[25,35,25]:[25]);
+  renderFx();
+  fxTimeout('teamMoment',()=>{App.fx.teamMoment=null;renderFx();done();},reducedMotion?800:1900);
 }
 
 function executeAssignmentFx(next,done){
@@ -384,6 +413,7 @@ function executeAttackFx(attack,message,next,done){
     kind:attack.kind,
     message:String(message||'').slice(0,180),
     teamName:next.teams?.[attack.team]?.name||'',
+    teamId:Number(attack.team),
     targetTeam:targetTeamId,
     targetTeamName:targetTeam?.name||'',
     targetPos
@@ -640,6 +670,20 @@ function processGameFx(previous,next){
     enqueueFx({type:'attack',attack:next.lastAttack,message,next});
   }
 
+  // 4b. Team-local life moments. These are visual-only reactions to confirmed state.
+  if(App.role==='team'&&App.teamId!==null){
+    const mine=next.teams?.[App.teamId],beforeMine=previous.teams?.[App.teamId];
+    const previousReceipts=new Set((previous.receipts||[]).map(r=>`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`));
+    const freshReceipts=(next.receipts||[]).filter(r=>Number(r.teamId)===App.teamId&&!previousReceipts.has(`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`)).slice(0,3).reverse();
+    freshReceipts.forEach(receipt=>enqueueFx({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
+    if(Number(beforeMine?.buffs?.shield||0)>Number(mine?.buffs?.shield||0))enqueueFx({type:'teamMoment',team:mine,moment:'shield'});
+    if(previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll')enqueueFx({type:'teamTurn',team:mine,moment:'turn'});
+    try{
+      const previousRank=G.rankTeams(previous).findIndex(t=>t.originalIndex===App.teamId)+1,nextRank=G.rankTeams(next).findIndex(t=>t.originalIndex===App.teamId)+1;
+      if(previousRank>0&&nextRank>0&&nextRank<previousRank)enqueueFx({type:'rank',team:mine,moment:'rank',fromRank:previousRank,toRank:nextRank});
+    }catch{}
+  }
+
   // 5. Rolls & Movements (captures both latest roll and any simultaneous movers)
   const rollChanged = next.lastRoll && (
     next.lastRoll.seq !== previous.lastRoll?.seq ||
@@ -800,34 +844,84 @@ function boardAftermathHTML(kind){
   return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
 }
 function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':(p==='/dev'||p==='/developer')?'dev':'home'; }
-function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':(path==='/dev'||path==='/developer')?'dev':'home'; history.pushState({},'',path); render(true); }
+function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();clearTimeout(App.homeIntroTimer);App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':(path==='/dev'||path==='/developer')?'dev':'home'; history.pushState({},'',path); render(true); }
 function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
 function entryURL(path){ return `${location.origin}${path}`; }
 function openGame(game, role, token='', teamId=null, accessToken=''){
   clearInterval(App.lobbyTimer);clearPendingAction();resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId; App.access[role]=accessToken||App.access[role]||''; App.screen='game'; App.tab=role==='host'?'host':'main'; App.state=null; App.connected=false;
+  if(role==='team'||role==='viewer')App.audioReady=SoundFX.unlockAudio();else App.audioReady=SoundFX.isAudioReady();
   App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId,App.access[role]); App.socket.connect(); render(true);
 }
+
+function hasSeenLifeIntro(){try{return localStorage.getItem('life-festival:intro-v1')==='seen';}catch{return false;}}
+function finishLifeIntro(remember=true){
+  clearTimeout(App.homeIntroTimer);App.homeIntroTimer=null;
+  document.body.classList.remove('life-intro-active');
+  document.querySelector('.life-home')?.classList.remove('intro-active');
+  document.querySelector('.life-intro')?.remove();
+  if(remember)try{localStorage.setItem('life-festival:intro-v1','seen');}catch{}
+}
+function lifeFlagsHTML(teams=[]){return teams.map((team,i)=>`<i class="life-team-flag ${team.joined?'joined':''}" style="--team:${esc(team.color||'#8a8676')};--flag-delay:${i*.12}s"><b>${i+1}</b><span>${esc(team.name||`第 ${i+1} 組`)}</span></i>`).join('');}
+function bindHomeRoutes(){document.querySelectorAll('[data-home-route]').forEach(button=>button.onclick=()=>go(button.dataset.homeRoute));}
 
 async function refreshLobby(){
   if(App.screen!=='home') return;
   const list=$('lobbyList'); if(!list) return;
   try{
     const data=await api('/api/lobby');
-    if(!data.games?.length){ list.innerHTML='<div class="note">目前沒有開放中的活動。主持人建立活動後，這裡會出現可加入的活動。</div>'; return; }
+    const square=$('lifeSquare'),status=$('lifeStatus'),flags=$('lifeFlags'),primary=$('watchPrimary');
+    if(!data.games?.length){
+      list.innerHTML='<div class="life-empty"><b>廣場正在準備</b><span>主持人建立活動後，人生道路就會點亮。</span></div>';
+      if(square)square.dataset.activity='waiting';
+      if(status)status.innerHTML='<small>FESTIVAL STATUS</small><b>等待活動建立</b><span>工作人員可先由下方入口登入。</span>';
+      if(flags)flags.innerHTML='<i class="life-team-flag placeholder"><b>?</b><span>等待隊伍</span></i>';
+      if(primary){primary.disabled=true;primary.dataset.id='';primary.querySelector('small').textContent='尚未開放';}
+      return;
+    }
     list.innerHTML=data.games.map(g=>`<div class="lobby-item">
-      <h3>${esc(g.name)}</h3><div class="lobby-meta">隊伍：${g.teamCount} 隊　已連線：${g.joinedCount} 隊<br>狀態：${esc(phaseNames[g.status]||g.status)}</div>
-      <div class="lobby-actions"><button class="btn blue watch" data-id="${esc(g.id)}">進入觀戰</button></div>
+      <div><small>NOW OPEN</small><h3>${esc(g.name)}</h3><div class="lobby-meta">${g.joinedCount}/${g.teamCount} 隊已抵達 · ${esc(phaseNames[g.status]||g.status)}</div></div>
+      <div class="lobby-actions"><button class="btn blue watch" data-id="${esc(g.id)}">進入即時廣場</button></div>
     </div>`).join('');
+    const featured=data.games[0],phase=featured.status||'setup';
+    if(square)square.dataset.activity=['ended','settle'].includes(phase)?'finished':phase==='setup'?'gathering':'live';
+    if(status)status.innerHTML=`<small>LIFE JOURNEY LIVE</small><b>${esc(featured.name)}</b><span>${featured.joinedCount}/${featured.teamCount} 隊已抵達 · ${esc(phaseNames[phase]||phase)}</span>`;
+    if(flags)flags.innerHTML=lifeFlagsHTML(featured.teams||[]);
+    if(primary){primary.disabled=false;primary.dataset.id=featured.id;primary.querySelector('small').textContent=phase==='setup'?'觀看隊伍集結':'立即進入戰況';}
     list.querySelectorAll('.watch').forEach(b=>b.onclick=()=>{const g=data.games.find(x=>x.id===b.dataset.id)||{id:b.dataset.id,name:'活動'};openGame(g,'viewer');});
+    if(primary)primary.onclick=()=>{const g=data.games.find(x=>x.id===primary.dataset.id)||featured;openGame(g,'viewer');};
   }catch(e){ list.innerHTML=`<div class="note warn">活動清單載入失敗：${esc(e.message)}</div>`; }
 }
 function renderHome(){
   if(App.entry==='admin') return renderAdminHome();
   if(App.entry==='team') return renderTeamHome();
   if(App.entry==='dev') return renderDevHome();
-  $('app').innerHTML=`<div class="hd"><div class="t1">人生大富翁</div><div class="t2">營隊大地遊戲 · 即時觀戰</div></div>
-  <div class="card"><div class="ch">★ 觀戰入口</div><div class="cb"><div id="lobbyList" class="lobby-list">載入中…</div><button class="btn sm gold" id="refreshLobby" style="margin-top:10px">重新整理</button></div></div>${campFooterHTML()}`;
+  const intro=!hasSeenLifeIntro()&&!reducedMotion;
+  document.body.classList.toggle('life-intro-active',intro);
+  $('app').innerHTML=`<main class="life-home ${intro?'intro-active':''}">
+    <section class="life-square" id="lifeSquare" data-activity="loading">
+      <div class="life-sky" aria-hidden="true"><i class="life-sun"></i><i class="life-cloud c1"></i><i class="life-cloud c2"></i><span class="life-birds">⌁⌁</span></div>
+      <div class="life-city" aria-hidden="true">${Array.from({length:11},(_,i)=>`<i class="life-building b${i+1}"><span></span><span></span><span></span></i>`).join('')}</div>
+      <div class="life-road" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <header class="life-title-banner"><small>2026 CAMP LIFE FESTIVAL</small><h1>人生大富翁</h1><p>每一次選擇，都讓人生走向不同方向</p></header>
+      <div class="life-flags" id="lifeFlags" aria-label="隊伍集結狀態"><i class="life-team-flag placeholder"><b>…</b><span>載入隊伍</span></i></div>
+      <aside class="life-status-scroll" id="lifeStatus" aria-live="polite"><small>FESTIVAL STATUS</small><b>正在查看人生廣場</b><span>即時活動資料載入中…</span></aside>
+      <nav class="life-gates" aria-label="活動入口">
+        <button type="button" class="life-gate arena" id="watchPrimary" disabled><i>▶</i><span><b>進入即時廣場</b><small>正在尋找活動</small></span></button>
+        <button type="button" class="life-gate team" data-home-route="/team"><i>⚑</i><span><b>隊伍報到</b><small>隊輔與小隊操作</small></span></button>
+        <button type="button" class="life-gate host" data-home-route="/admin"><i>◆</i><span><b>祭典總管</b><small>主持人控制台</small></span></button>
+      </nav>
+      ${intro?`<div class="life-intro" aria-label="人生旅途開場"><div class="life-intro-road"><i></i><i></i><i></i><i></i><i></i></div><div class="life-intro-copy"><small>THE ROAD IS CALLING</small><strong>人生旅途即將啟程</strong><span>每一次選擇，都讓人生走向不同方向</span></div><div class="life-intro-actions"><button type="button" id="igniteLifeSound">🔊 點燃旅途音效</button><button type="button" id="skipLifeIntro">跳過開場</button></div></div>`:''}
+    </section>
+    <section class="life-open-games"><div class="life-section-head"><span>即時人生廣場</span><button class="btn xs gold" id="refreshLobby">重新整理</button></div><div id="lobbyList" class="lobby-list">載入中…</div></section>
+    ${campFooterHTML()}
+  </main>`;
   $('refreshLobby').onclick=refreshLobby;
+  bindHomeRoutes();
+  if(intro){
+    $('skipLifeIntro').onclick=()=>finishLifeIntro(true);
+    $('igniteLifeSound').onclick=()=>{App.audioReady=SoundFX.unlockAudio();SoundFX.playFestivalIntro();$('igniteLifeSound').textContent='♪ 旅途已點亮';$('igniteLifeSound').disabled=true;};
+    App.homeIntroTimer=setTimeout(()=>finishLifeIntro(true),6500);
+  }
   clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
 }
 
@@ -1641,7 +1735,7 @@ function boardHTML(){
 function assignmentFxHTML(){
   const fx=App.fx.assignment;if(!fx)return '';
   const cards=fx.teams.map((team,i)=>`<div class="draft-result" style="--draft-delay:${1050+i*380}ms;--team:${team.color}"><div class="draft-result-inner"><span class="draft-team-no">TEAM ${team.id+1}</span><b>${esc(team.name)}</b><i>→</i><strong>第 ${team.baseIdx+1} 格基地</strong></div></div>`).join('');
-  return `<div class="assignment-overlay" style="--draft-duration:${fx.duration}ms;--draft-complete-delay:${1200+fx.teams.length*380}ms" aria-live="assertive"><div class="assignment-scan"></div><div class="assignment-stage"><div class="assignment-kicker">BASE LOTTERY // LIVE DRAW</div><h2>命運基地抽籤</h2><p>洗牌完成，依序公布各隊領地</p><div class="draft-machine"><i></i><i></i><i></i><b>抽籤中</b></div><div class="draft-results">${cards}</div><div class="draft-complete">★ 基地分配完成 ★</div></div></div>`;
+  return `<div class="assignment-overlay" style="--draft-duration:${fx.duration}ms;--draft-complete-delay:${1200+fx.teams.length*380}ms" aria-live="assertive"><div class="assignment-scan"></div><div class="assignment-stage"><div class="assignment-kicker">LIFE START // LIVE DRAW</div><h2>人生起點抽籤</h2><p>道路洗牌完成，依序公布各隊的人生基地</p><div class="draft-machine"><i></i><i></i><i></i><b>抽籤中</b></div><div class="draft-results">${cards}</div><div class="draft-complete">★ 人生起點分配完成 ★</div></div></div>`;
 }
 function fitBoard(){
   if(App.screen!=='game')return;
@@ -1715,12 +1809,21 @@ function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</
 function receiptRows(receipts){
   return receipts.map(r=>{const team=App.state.teams?.[r.teamId],cash=Number(r.cashDelta||0),pts=Number(r.ptsDelta||0),positive=cash>0||(!cash&&pts>0),kind=cash?'cash':'points';return `<div class="receipt-item ${positive?'credit':'debit'}"><div class="receipt-icon">${kind==='cash'?'💰':'✨'}</div><div class="receipt-stamp">${positive?'已入帳':'已扣款'}</div><div class="receipt-main"><b>${esc(team?.name||`第 ${Number(r.teamId)+1} 組`)}<em>#${String(r.id||0).padStart(4,'0')}</em></b><span>${esc(r.reason)}</span><small>ROUND ${r.round} · ${esc(phaseNames[r.phase]||r.phase||'')}</small></div><div class="receipt-amount">${cash?`<strong>${cash>0?'+':''}${G.money(cash)}</strong><small>交易後 ${G.money(r.afterCash)}</small>`:''}${pts?`<strong>${pts>0?'+':''}${pts} 點</strong><small>交易後 ${r.afterPts} 點</small>`:''}</div></div>`;}).join('');
 }
-function purchaseFxHTML(){const fx=App.fx.purchase;if(!fx)return '';const info=BUFF_INFO[fx.kind],unit=fx.kind==='physical'?'個':'張';return `<div class="purchase-overlay" aria-live="assertive"><div class="purchase-card" style="--purchase-color:${fx.color||'#f2c12e'}"><div class="purchase-kicker">PURCHASE COMPLETE</div><i>${info?.icon||(fx.kind==='physical'?'🎁':'🛍️')}</i><h2>已購買</h2><strong>${esc(fx.name)}</strong><p>${esc(fx.teamName)} · 消耗 ${Number(fx.cost||0)} 點 · 背包共有 ${Number(fx.count||1)} ${unit}</p></div></div>`;}
+function purchaseFxHTML(){const fx=App.fx.purchase;if(!fx)return '';const info=BUFF_INFO[fx.kind],unit=fx.kind==='physical'?'個':'張';return `<div class="purchase-overlay" aria-live="assertive"><div class="purchase-card" style="--purchase-color:${fx.color||'#f2c12e'}"><div class="purchase-kicker">LIFE SUPPLY ACQUIRED</div><div class="life-supply-box" aria-hidden="true"><i></i><b>${info?.icon||(fx.kind==='physical'?'🎁':'🛍️')}</b></div><h2>人生補給入袋</h2><strong>${esc(fx.name)}</strong><p>${esc(fx.teamName)} · 消耗 ${Number(fx.cost||0)} 點 · 背包共有 ${Number(fx.count||1)} ${unit}</p></div></div>`;}
+function teamMomentFxHTML(){
+  const fx=App.fx.teamMoment;if(!fx)return '';
+  const particles=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
+  return `<div class="team-moment team-moment-${fx.tone}" style="--team:${fx.color||'#f2c12e'}" aria-live="assertive"><div class="team-moment-rays" aria-hidden="true">${particles}</div><div class="team-moment-card"><small>${esc(fx.kicker)}</small><div class="team-moment-icon">${esc(fx.icon)}</div><h2>${esc(fx.title)}</h2>${fx.amount?`<strong>${esc(fx.amount)}</strong>`:''}<p>${esc(fx.teamName)} · ${esc(fx.detail)}</p></div></div>`;
+}
+function audioWakeHTML(){
+  if(!['viewer','team'].includes(App.role)||!App.sound||App.audioReady)return '';
+  return `<div class="audio-wake"><button type="button" id="bAudioWake"><i>♪</i><span><b>${App.role==='viewer'?'點燃祭典之聲':'喚醒小隊音效'}</b><small>點一下開啟像素短音效</small></span></button></div>`;
+}
 function receiptsHTML(compact=false){
   const S=App.state,all=Array.isArray(S.receipts)?S.receipts:[],canFilter=App.role==='team'&&App.teamId!==null,scope=canFilter?App.receiptScope:'all',rows=scope==='mine'?all.filter(r=>Number(r.teamId)===App.teamId):all,credit=rows.filter(r=>Number(r.cashDelta)>0).reduce((n,r)=>n+Number(r.cashDelta),0),debit=Math.abs(rows.filter(r=>Number(r.cashDelta)<0).reduce((n,r)=>n+Number(r.cashDelta),0));
   return `<div class="card receipts-card ${compact?'compact-ledger':''}"><div class="ch">🧾 電子收據 · ADVENTURER LEDGER</div><div class="cb"><div class="receipt-ledger-head"><div><small>TRANSACTION ARCHIVE</small><b>${scope==='mine'?'本隊金流帳本':'全場金流帳本'}</b><span>每筆現金與諂媚點數異動都會留下交易後餘額。</span></div>${canFilter?`<div class="receipt-filter" role="group" aria-label="收據顯示範圍"><button class="receipt-scope ${scope==='mine'?'on':''}" data-scope="mine">只看本隊</button><button class="receipt-scope ${scope==='all'?'on':''}" data-scope="all">全場款項</button></div>`:''}</div><div class="receipt-summary"><div><small>RECORDS</small><b>${rows.length}</b><span>筆交易</span></div><div class="gain"><small>CASH IN</small><b>+${G.money(credit)}</b><span>現金收入</span></div><div class="loss"><small>CASH OUT</small><b>−${G.money(debit)}</b><span>現金支出</span></div></div><div class="receipt-list">${receiptRows(rows.slice(0,100))||'<div class="receipt-empty"><i>🧾</i><b>尚無交易紀錄</b><span>發生款項或點數異動後會顯示在這裡。</span></div>'}</div></div></div>`;
 }
-function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIVE ARENA</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>房市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
+function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIFE JOURNEY LIVE</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>房市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
 function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.state.log?.[0]||'活動即將開始，請各隊做好準備';return `<div class="stage-ticker"><span>● LIVE</span><div><b>現場快報</b>${esc(message)}</div></div>`;}
 function viewerActivityHTML(){
   const S=App.state,logs=(S.log||[]).slice(0,4),receipts=(S.receipts||[]).slice(0,4);
@@ -1839,7 +1942,7 @@ function settleHTML(){
   let h = `<div class="settle-view">
     <div class="settle-hero">
       <div class="settle-kicker">★ VICTORY CEREMONY ★</div>
-      <h2 class="settle-title">🏆 最終結算 · 榮譽頒獎典禮 🏆</h2>
+      <h2 class="settle-title">🏆 人生里程碑 · 最終成果典禮 🏆</h2>
       <p class="settle-subtitle">《${esc(CAMP_NAME)}》・ 第 ${S.round} 回合總成績公布</p>
     </div>`;
 
@@ -1952,7 +2055,7 @@ function hostPanel(){
   h+=`<div class="host-workspace" data-section="${section}">`;
   if(section==='flow'){
     h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
-    if(fxStat)h+=`<div class="host-queue-alert">⏳ ${esc(fxStat.text)}</div>`;
+    if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
     if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>`<button class="btn sm allow-roll ${S.activeTeamId===i?'green':'outline'}" data-i="${i}" ${t.rolled||t.jail>0||t.jailedThisTurn||S.pendingBattle?'disabled':''}><span>${i+1}</span>${esc(t.name)}<small>${t.rolled?'已完成':S.activeTeamId===i?'操作中':'允許擲骰'}</small></button>`).join('')}</div></section>`;
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}
     h+=`<section class="host-work-card"><div class="host-work-title"><span>🏘️ 房市與關卡</span><small>現場常用控制</small></div><div class="row wrap mkrow">${S.settings.marketOrder.map(k=>`<button class="tg mk ${S.market===k?'on':''}" data-k="${k}">${S.settings.marketNames[k]}<span class="mx">×${S.settings.market[k]/100}</span></button>`).join('')}</div><div class="stage-unlock-grid">${G.STAGE_IDX.map(i=>`<button class="btn xs purple unl" data-i="${i}">${S.unlocked.includes(i)?'✓ 已解封':'解封'}第 ${i+1} 格</button>`).join('')}</div></section>`;
@@ -1994,7 +2097,7 @@ function renderGame(){
   if (tabs.length&&!tabs.some(x => x[0] === App.tab)) App.tab = App.role==='host'?'host':'main';
 
   const flow=[['market','房市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'||S.phase==='settle'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
-  const boardCard=`<div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div>`;
+  const boardCard=`<div class="game-primary"><div class="card board-card"><div class="ch">★ 人生道路 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div>`;
   let body='';
   if(App.role==='viewer'&&App.tab==='main'){
     body=`<div class="viewer-dashboard">${boardCard}<aside class="viewer-live-rail">${stagePanelHTML()}${activeTurnHTML()}${rankingHTML()}${viewerActivityHTML()}</aside></div>`;
@@ -2007,13 +2110,15 @@ function renderGame(){
   if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
-  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ WARNING // SPECIAL ATTACK DETECTED ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">SPECIAL ATTACK</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
+  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${App.role==='team'?(App.fx.attack.teamId===App.teamId?'本隊發動':'本隊遭遇'):'SPECIAL OPERATION'}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
   const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${App.fx.dice.values?.length||1} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();
+  const teamMomentFx=teamMomentFxHTML();
+  const audioWake=audioWakeHTML();
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${eventFx}${phaseFx}${diceFx}${purchaseFx}${assignmentFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${assignmentFx}${attackFx}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }
@@ -2069,7 +2174,8 @@ function bindGame(){
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{const tab=b.dataset.k;if(!switchTeamPanel(tab)){App.tab=tab;render(true);}});
   document.querySelectorAll('.receipt-scope').forEach(b=>b.onclick=()=>{App.receiptScope=b.dataset.scope==='all'?'all':'mine';if(!switchTeamPanel('receipts'))render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？'))requestLeaveGame();});
-  bind('bSound',()=>{App.sound=toggleSound();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
+  bind('bSound',()=>{App.sound=toggleSound();if(App.sound)App.audioReady=SoundFX.unlockAudio();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
+  bind('bAudioWake',()=>{App.audioReady=SoundFX.unlockAudio();if(App.audioReady)SoundFX.playFestivalIntro();render(true);toast(App.audioReady?'♪ 像素音效已啟動':'瀏覽器仍阻擋音效，請再點一次',!App.audioReady);});
 
   document.querySelectorAll('.tile').forEach(t=>{
     t.onclick=()=>{
@@ -2100,6 +2206,7 @@ function bindGame(){
     document.querySelectorAll('.host-section').forEach(b=>b.onclick=()=>{App.hostSection=b.dataset.section||'flow';render(true);});
     bind('bAssign',()=>ask('重新抽籤？','會重新分配所有隊伍的基地',()=>send('assignBases')));
     bind('bStart',()=>ask('開始遊戲？','開始後隊伍可以依流程進行操作',()=>send('startGame')));
+    bind('bSkipFx',skipPresentationFx);
     bind('bNext',()=>{
       const fx=activeFxStatus();
       if(fx){

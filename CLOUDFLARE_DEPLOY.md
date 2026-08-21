@@ -102,7 +102,7 @@ WebSocket 端點由前端自動使用同一個 Worker 網址的 `/ws/{活動識�
 
 部署內容包含 `public/manifest.webmanifest`、`public/icon.svg`、192／512 像素圖示、`public/sw.js` 與 `public/version.json`。iOS 使用 Safari 開啟正式網址，從分享選單選擇「加入主畫面」；Android 使用 Chrome 開啟正式網址，依瀏覽器顯示的「安裝應用程式」或「加到主畫面」提示操作。
 
-每次前端版本更新時，請同步提高 `BUILD_VERSION`，並更新 `public/version.json` 與 Service Worker 的 `CACHE_NAME`。目前版本為 `2026.08.22.37`。底部導覽使用棋盤墨黑、金色格線、紅色玩家標記與內嵌像素 SVG 圖示，不依賴外部圖片資產。Service Worker 對同源靜態檔採用 network-first；每次啟用新版本會刪除舊 cache，前端則在偵測到新版本時顯示更新提示。`/api/`、`/ws/` 與 `sw.js` 不會被 Service Worker 快取，因而避免遊戲狀態或認證流程被舊資料卡住。
+每次前端版本更新時，請同步提高 `BUILD_VERSION`，並更新 `public/version.json` 與 Service Worker 的 `CACHE_NAME`。目前版本為 `2026.08.22.38`。底部導覽使用棋盤墨黑、金色格線、紅色玩家標記與內嵌像素 SVG 圖示，不依賴外部圖片資產。Service Worker 對同源靜態檔採用 network-first；每次啟用新版本會刪除舊 cache，前端則在偵測到新版本時顯示更新提示。`/api/`、`/ws/` 與 `sw.js` 不會被 Service Worker 快取，因而避免遊戲狀態或認證流程被舊資料卡住。
 
 若使用者仍看到舊畫面，先重新整理一次；若是已安裝的 PWA，關閉後重新開啟並選擇畫面上的更新提示即可。一般情況不需要使用無痕模式。
 

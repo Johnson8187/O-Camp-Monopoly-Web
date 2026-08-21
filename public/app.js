@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.38';
-import { G } from './game-core.js?v=2026.08.22.38';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant } from './game-fx.js?v=2026.08.22.38';
+const BUILD_VERSION = '2026.08.22.39';
+import { G } from './game-core.js?v=2026.08.22.39';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.39';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -66,7 +66,7 @@ function clearAccess(role){ App.access[role]=''; try{ sessionStorage.removeItem(
 function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':App.entry==='dev'?'/dev':'/'; }
 function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
 function currentPresentationTier(){return presentationTier({role:App.role||'',width:window.innerWidth,reducedMotion:Boolean(reducedMotion),hardwareConcurrency:navigator.hardwareConcurrency||8,deviceMemory:navigator.deviceMemory||8});}
-function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase),lifeHome=App.screen==='home'&&App.entry==='home',tier=currentPresentationTier(); const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('life-home-mode',lifeHome);if(!lifeHome)document.body.classList.remove('life-intro-active'); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); ['cinematic','party','compact','lite','reduced'].forEach(level=>document.body.classList.toggle(`fx-${level}`,inGame&&tier===level)); updateNav(); syncUpdatePrompt(); }
+function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase),lifeHome=App.screen==='home'&&App.entry==='home',tier=currentPresentationTier(); const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev||lifeHome; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('life-home-mode',lifeHome);if(!lifeHome)document.body.classList.remove('life-intro-active'); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); ['cinematic','party','compact','lite','reduced'].forEach(level=>document.body.classList.toggle(`fx-${level}`,inGame&&tier===level)); updateNav(); syncUpdatePrompt(); }
 function syncUpdatePrompt(){ const el=$('pwaUpdate');if(!el)return;el.hidden=!App.updateReady||App.screen==='game'; }
 function showUpdatePrompt(){ App.updateReady=true;syncUpdatePrompt(); }
 async function applyPwaUpdate(){
@@ -627,6 +627,7 @@ function executeRollFx(task,done){
 
 function processGameFx(previous,next){
   if(!previous||!next)return;
+  const teamLifeMoments=[];
 
   // 1. Phase change or pause change
   if(previous.phase!==next.phase&&PHASE_FX[next.phase]){
@@ -675,12 +676,12 @@ function processGameFx(previous,next){
     const mine=next.teams?.[App.teamId],beforeMine=previous.teams?.[App.teamId];
     const previousReceipts=new Set((previous.receipts||[]).map(r=>`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`));
     const freshReceipts=(next.receipts||[]).filter(r=>Number(r.teamId)===App.teamId&&!previousReceipts.has(`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`)).slice(0,3).reverse();
-    freshReceipts.forEach(receipt=>enqueueFx({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
-    if(Number(beforeMine?.buffs?.shield||0)>Number(mine?.buffs?.shield||0))enqueueFx({type:'teamMoment',team:mine,moment:'shield'});
-    if(previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll')enqueueFx({type:'teamTurn',team:mine,moment:'turn'});
+    freshReceipts.filter(receipt=>!(purchaseChanged&&isPurchaseReceipt(receipt,next.lastPurchase))).forEach(receipt=>teamLifeMoments.push({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
+    if(Number(beforeMine?.buffs?.shield||0)>Number(mine?.buffs?.shield||0))teamLifeMoments.push({type:'teamMoment',team:mine,moment:'shield'});
+    if(previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll')teamLifeMoments.push({type:'teamTurn',team:mine,moment:'turn'});
     try{
       const previousRank=G.rankTeams(previous).findIndex(t=>t.originalIndex===App.teamId)+1,nextRank=G.rankTeams(next).findIndex(t=>t.originalIndex===App.teamId)+1;
-      if(previousRank>0&&nextRank>0&&nextRank<previousRank)enqueueFx({type:'rank',team:mine,moment:'rank',fromRank:previousRank,toRank:nextRank});
+      if(previousRank>0&&nextRank>0&&nextRank<previousRank)teamLifeMoments.push({type:'rank',team:mine,moment:'rank',fromRank:previousRank,toRank:nextRank});
     }catch{}
   }
 
@@ -711,6 +712,8 @@ function processGameFx(previous,next){
     }
   });
 
+  // Team-local receipts and reactions must wait until dice and movement finish.
+  teamLifeMoments.forEach(enqueueFx);
 
 
   // 6. Announcements & Event logs in FIFO order
@@ -899,9 +902,7 @@ function renderHome(){
   document.body.classList.toggle('life-intro-active',intro);
   $('app').innerHTML=`<main class="life-home ${intro?'intro-active':''}">
     <section class="life-square" id="lifeSquare" data-activity="loading">
-      <div class="life-sky" aria-hidden="true"><i class="life-sun"></i><i class="life-cloud c1"></i><i class="life-cloud c2"></i><span class="life-birds">⌁⌁</span></div>
-      <div class="life-city" aria-hidden="true">${Array.from({length:11},(_,i)=>`<i class="life-building b${i+1}"><span></span><span></span><span></span></i>`).join('')}</div>
-      <div class="life-road" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="life-art-bg" aria-hidden="true"></div>
       <header class="life-title-banner"><small>2026 CAMP LIFE FESTIVAL</small><h1>人生大富翁</h1><p>每一次選擇，都讓人生走向不同方向</p></header>
       <div class="life-flags" id="lifeFlags" aria-label="隊伍集結狀態"><i class="life-team-flag placeholder"><b>…</b><span>載入隊伍</span></i></div>
       <aside class="life-status-scroll" id="lifeStatus" aria-live="polite"><small>FESTIVAL STATUS</small><b>正在查看人生廣場</b><span>即時活動資料載入中…</span></aside>

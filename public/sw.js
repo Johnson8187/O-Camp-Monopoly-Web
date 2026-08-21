@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.22.38';
+const BUILD_VERSION = '2026.08.22.39';
 
 
 
@@ -29,6 +29,7 @@ const CORE = [
   './icon-192.png?v=' + BUILD_VERSION,
   './icon-512.png?v=' + BUILD_VERSION,
   './version.json?v=' + BUILD_VERSION,
+  './assets/life-festival-plaza-v1.png?v=' + BUILD_VERSION,
 ];
 
 

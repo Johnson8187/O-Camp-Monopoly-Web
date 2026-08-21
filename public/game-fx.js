@@ -64,6 +64,15 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   return true;
 }
 
+export function isPurchaseReceipt(receipt,purchase){
+  if(!receipt||!purchase)return false;
+  const action=String(receipt.action||'');
+  const cost=Math.max(0,Number(purchase.cost)||0);
+  return Number(receipt.teamId)===Number(purchase.team)
+    && ['gamble','buff'].includes(action)
+    && Number(receipt.ptsDelta||0)===-cost;
+}
+
 /* ===================================================================
    WEB AUDIO API 8-BIT RETRO SYNTHESIZER
    =================================================================== */

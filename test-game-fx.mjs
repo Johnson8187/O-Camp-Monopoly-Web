@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
@@ -39,6 +39,10 @@ assert.equal(isPresentationTaskRelevant({type:'roll',teamId:0},{role:'team',team
 assert.equal(isPresentationTaskRelevant({type:'roll',teamId:1},{role:'team',teamId:0,state:audienceState}),false);
 assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[5]}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[9]}},{role:'team',teamId:0,state:audienceState}),false);
+assert.equal(isPurchaseReceipt({teamId:0,action:'buff',ptsDelta:-5},{team:0,cost:5}),true);
+assert.equal(isPurchaseReceipt({teamId:0,action:'gamble',ptsDelta:-3},{team:0,cost:3}),true);
+assert.equal(isPurchaseReceipt({teamId:0,action:'roll',ptsDelta:-5},{team:0,cost:5}),false);
+assert.equal(isPurchaseReceipt({teamId:1,action:'buff',ptsDelta:-5},{team:0,cost:5}),false);
 assert.deepEqual(movementPath(42,4,2,44),[43,0,1,2]);
 assert.deepEqual(movementPath(5,2,20,44),[6,7,20]);
 assert.deepEqual(movementPath(5,0,5,44),[]);

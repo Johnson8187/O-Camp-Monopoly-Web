@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.27';
+const APP_BUILD_VERSION = '2026.08.21.28';
 
 
 
@@ -28,7 +28,25 @@ function statusOf(state){ return state.phase==='ended'?'ended':state.phase==='se
 
 function getRoom(env,id){ return env.GAME_ROOMS.get(env.GAME_ROOMS.idFromName(id)); }
 const DEFAULT_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
-function idleTimeoutMs(env){ const value=Number(env.IDLE_TIMEOUT_MS); return Number.isFinite(value)&&value>0?value:DEFAULT_IDLE_TIMEOUT_MS; }
+
+export async function getIdleTimeoutMs(env){
+  try{
+    await ensureSystemSettingsTable(env);
+    const row=await env.DB.prepare("SELECT value FROM system_settings WHERE key='idle_timeout_ms'").first();
+    if(row && Number(row.value)>0) return Number(row.value);
+  }catch{}
+  const value=Number(env?.IDLE_TIMEOUT_MS);
+  return Number.isFinite(value)&&value>0?value:DEFAULT_IDLE_TIMEOUT_MS;
+}
+
+export async function setIdleTimeoutMs(env, ms){
+  await ensureSystemSettingsTable(env);
+  const val=String(Math.max(60000, Number(ms)||DEFAULT_IDLE_TIMEOUT_MS));
+  const timestamp=now();
+  await env.DB.prepare("INSERT INTO system_settings (key, value, updated_at) VALUES ('idle_timeout_ms', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+    .bind(val, timestamp).run();
+  return Number(val);
+}
 
 const DEFAULT_DEV_PASSWORD_HASH = 'da5d26410ae112bfd2513b4d4eb0497ccf8eeb095cd613fee834e521705d8f20';
 
@@ -138,12 +156,28 @@ async function handleDevApi(url, request, env){
     return devOverview(request, env);
   }
   if(pathname==='/api/dev/settings'){
-    if(request.method==='GET') return json({ok:true, doEnabled: await isDoEnabled(env)});
+    if(request.method==='GET'){
+      const doEnabled = await isDoEnabled(env);
+      const idleTimeoutMs = await getIdleTimeoutMs(env);
+      return json({ok:true, doEnabled, idleTimeoutMs, idleTimeoutHours: Math.round(idleTimeoutMs / 3600000 * 100) / 100});
+    }
     if(request.method==='POST'){
       const body=await request.json().catch(()=>({}));
-      const enabled=Boolean(body.doEnabled);
-      await setDoEnabled(env, enabled);
-      return json({ok:true, doEnabled: enabled});
+      let doEnabled = undefined;
+      let idleTimeoutMs = undefined;
+      if('doEnabled' in body){
+        doEnabled = Boolean(body.doEnabled);
+        await setDoEnabled(env, doEnabled);
+      } else {
+        doEnabled = await isDoEnabled(env);
+      }
+      if('idleTimeoutHours' in body || 'idleTimeoutMs' in body){
+        const ms = body.idleTimeoutMs ? Number(body.idleTimeoutMs) : Number(body.idleTimeoutHours) * 3600000;
+        idleTimeoutMs = await setIdleTimeoutMs(env, ms);
+      } else {
+        idleTimeoutMs = await getIdleTimeoutMs(env);
+      }
+      return json({ok:true, doEnabled, idleTimeoutMs, idleTimeoutHours: Math.round(idleTimeoutMs / 3600000 * 100) / 100});
     }
   }
   if(pathname==='/api/dev/games' && request.method==='GET'){
@@ -205,11 +239,15 @@ async function devOverview(request, env){
   }
 
   const doEnabled = await isDoEnabled(env);
+  const idleTimeoutMs = await getIdleTimeoutMs(env);
+  const idleTimeoutHours = Math.round(idleTimeoutMs / 3600000 * 100) / 100;
 
   return json({
     ok: true,
     version: APP_BUILD_VERSION,
     doEnabled,
+    idleTimeoutMs,
+    idleTimeoutHours,
     stats: {
       totalGames: Number(totalGamesRes?.cnt || 0),
       activeGames: Number(activeGamesRes?.cnt || 0),
@@ -503,7 +541,8 @@ export class GameRoom {
   }
   async armIdleAlarm(){
     if(!this.lastActivityAt || this.state?.phase==='ended') return;
-    await this.ctx.storage.setAlarm(this.lastActivityAt + idleTimeoutMs(this.env));
+    const timeout = await getIdleTimeoutMs(this.env);
+    await this.ctx.storage.setAlarm(this.lastActivityAt + timeout);
   }
   async alarm(){
     await this.load();
@@ -511,11 +550,13 @@ export class GameRoom {
     const row=await this.env.DB.prepare('SELECT status,updated_at FROM games WHERE id=?').bind(this.meta.id).first();
     if(!row || row.status==='ended') return;
     const last=Date.parse(row.updated_at)||this.lastActivityAt||Date.now();
-    const timeout=idleTimeoutMs(this.env); const elapsed=Date.now()-last;
+    const timeout=await getIdleTimeoutMs(this.env); const elapsed=Date.now()-last;
     if(elapsed < timeout){
       this.lastActivityAt=last; await this.ctx.storage.put('lastActivityAt',last); await this.armIdleAlarm(); return;
     }
-    const next=G.clone(this.state); next.paused=false; next.phase='ended'; next.log.unshift('活動閒置超過 3 小時，系統自動關閉活動'); next.rev=(this.state.rev||0)+1;
+    const hours = Math.round(timeout / 3600000 * 10) / 10;
+    const timeoutLabel = hours >= 1 ? `${hours} 小時` : `${Math.round(timeout / 60000)} 分鐘`;
+    const next=G.clone(this.state); next.paused=false; next.phase='ended'; next.log.unshift(`活動閒置超過 ${timeoutLabel}，系統自動關閉活動`); next.rev=(this.state.rev||0)+1;
     await this.commit(next,{role:'system',teamId:null},'idleTimeout',{idleMs:elapsed,timeoutMs:timeout});
     for(const ws of this.ctx.getWebSockets()){ try{ ws.close(4004,'idle-timeout'); }catch{} }
   }

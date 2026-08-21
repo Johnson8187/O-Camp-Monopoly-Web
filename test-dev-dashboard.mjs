@@ -34,6 +34,10 @@ function createMockDb() {
           return {
             async first() {
               if (sql.includes('SELECT value FROM system_settings')) {
+                if (sql.includes("key='idle_timeout_ms'")) {
+                  const row = mockTables.system_settings.get('idle_timeout_ms');
+                  return row ? { value: row.value } : null;
+                }
                 const row = mockTables.system_settings.get('do_enabled');
                 return row ? { value: row.value } : null;
               }
@@ -99,7 +103,8 @@ function createMockDb() {
                 return { success: true };
               }
               if (sql.includes('INSERT INTO system_settings')) {
-                mockTables.system_settings.set('do_enabled', { key: 'do_enabled', value: String(params[0] ?? '1'), updated_at: new Date().toISOString() });
+                const key = sql.includes("'idle_timeout_ms'") ? 'idle_timeout_ms' : 'do_enabled';
+                mockTables.system_settings.set(key, { key, value: String(params[0] ?? '1'), updated_at: new Date().toISOString() });
                 return { success: true };
               }
               return { success: true };
@@ -193,6 +198,17 @@ const settingsGetRes = await worker.fetch(new Request('https://example.test/api/
 assert.equal(settingsGetRes.status, 200);
 const settingsData = await settingsGetRes.json();
 assert.equal(settingsData.doEnabled, true);
+assert.equal(settingsData.idleTimeoutHours, 3, '預設閒置時間應為 3 小時');
+
+// Test adjusting idleTimeoutHours via API
+const timeoutPostRes = await worker.fetch(new Request('https://example.test/api/dev/settings', {
+  method: 'POST',
+  headers: { authorization: 'Bearer 8187', 'content-type': 'application/json' },
+  body: JSON.stringify({ idleTimeoutHours: 5 })
+}), mockEnv);
+assert.equal(timeoutPostRes.status, 200);
+const timeoutPostData = await timeoutPostRes.json();
+assert.equal(timeoutPostData.idleTimeoutHours, 5, '應成功設定閒置時間為 5 小時');
 
 // Toggle DO off via API
 const settingsPostRes = await worker.fetch(new Request('https://example.test/api/dev/settings', {

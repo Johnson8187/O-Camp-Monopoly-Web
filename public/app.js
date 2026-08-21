@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.27';
-import { G } from './game-core.js?v=2026.08.21.27';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.27';
+const BUILD_VERSION = '2026.08.21.28';
+import { G } from './game-core.js?v=2026.08.21.28';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.28';
 
 
 
@@ -778,6 +778,32 @@ async function devApi(path, options={}){
   });
 }
 
+function formatTWTime(dateStr, includeSeconds = true) {
+  if (!dateStr) return '-';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr);
+    const parts = new Intl.DateTimeFormat('zh-TW', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: includeSeconds ? '2-digit' : undefined,
+      hour12: false
+    }).formatToParts(d);
+    const map = {};
+    parts.forEach(p => { map[p.type] = p.value; });
+    const timePart = includeSeconds ? `${map.hour}:${map.minute}:${map.second}` : `${map.hour}:${map.minute}`;
+    return `${map.year}-${map.month}-${map.day} ${timePart}`;
+  } catch (e) {
+    const d = new Date(dateStr);
+    const tw = new Date(d.getTime() + 8 * 3600 * 1000);
+    return tw.toISOString().replace('T', ' ').slice(0, 19);
+  }
+}
+
 function showJsonModal(title, data){
   $('modalTitle').textContent = title;
   $('modalBody').innerHTML = `<div class="dev-json-viewer">${esc(JSON.stringify(data, null, 2))}</div><div style="margin-top:10px;display:flex;gap:6px"><button class="btn sm gold" id="copyJsonBtn">複製 JSON</button></div>`;
@@ -852,6 +878,7 @@ async function renderDevOverview(container){
   container.innerHTML = '<div class="note">正在讀取 D1 與 DO 狀態…</div>';
   const data = await devApi('/api/dev/overview');
   const doEnabled = Boolean(data.doEnabled);
+  const idleHours = data.idleTimeoutHours || 3;
   const stats = data.stats || {};
   const active = data.activeGame;
 
@@ -902,6 +929,7 @@ async function renderDevOverview(container){
               階段：<b>${esc(phaseNames[active.phase]||active.phase)}</b> ｜ 回合：<b>${active.round}</b> ｜ 隊伍：<b>${active.joinedTeams}/${active.teamCount}</b>
             </div>
           </div>
+          <div style="font-size:12px;color:#8a8676;margin-bottom:8px">最後活躍時間：<code>${formatTWTime(active.updatedAt)}</code></div>
           <div class="row wrap" style="margin-top:10px">
             <button class="btn sm blue" id="devWatchActive" style="flex:1">進入觀戰</button>
             <button class="btn sm gold" id="devViewActiveEvents" style="flex:1">查看事件紀錄</button>
@@ -914,11 +942,11 @@ async function renderDevOverview(container){
     </div>
 
     <div class="card">
-      <div class="ch">★ 最新事件紀錄</div>
+      <div class="ch">★ 最新事件紀錄 (台灣時間 UTC+8)</div>
       <div class="cb">
         ${stats.latestEvent ? `
           <div style="font-size:13px;line-height:1.6">
-            時間：<code>${esc(stats.latestEvent.created_at)}</code><br>
+            時間：<code>${formatTWTime(stats.latestEvent.created_at)}</code><br>
             活動 ID：<code>${esc(stats.latestEvent.game_id)}</code><br>
             類型：<span class="dev-badge gold">${esc(stats.latestEvent.event_type)}</span><br>
             內容：<b>${esc(stats.latestEvent.message || '(無訊息)')}</b>
@@ -930,10 +958,11 @@ async function renderDevOverview(container){
     </div>
 
     <div class="card">
-      <div class="ch">★ Worker & D1 系統資訊</div>
+      <div class="ch">★ Worker & D1 系統設定資訊</div>
       <div class="cb">
         <div style="font-size:12.5px;line-height:1.8">
           版本：<code>${esc(data.version)}</code><br>
+          活動閒置自動關閉：<span class="dev-badge gold">超過 ${idleHours} 小時</span> <i>（可於「維護工具」隨時調整）</i><br>
           D1 資料庫 Binding：<span class="dev-badge ${data.envStatus?.hasDb ? 'green' : 'red'}">${data.envStatus?.hasDb ? '正常' : '未連接'}</span><br>
           Durable Objects Binding：<span class="dev-badge ${data.envStatus?.hasDo ? 'green' : 'red'}">${data.envStatus?.hasDo ? '正常' : '未連接'}</span><br>
           Secret 憑證驗證：<span class="dev-badge ${data.envStatus?.hasDevSecret ? 'green' : 'gold'}">${data.envStatus?.hasDevSecret ? 'Worker Secret' : '預設 Hash'}</span>
@@ -1016,8 +1045,8 @@ async function renderDevGames(container){
                 <th>活動名稱</th>
                 <th>狀態</th>
                 <th>隊數</th>
-                <th>建立時間</th>
-                <th>更新時間</th>
+                <th>建立時間 (UTC+8)</th>
+                <th>更新時間 (UTC+8)</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -1028,8 +1057,8 @@ async function renderDevGames(container){
                   <td><b>${esc(g.name)}</b></td>
                   <td><span class="dev-badge ${g.status==='ended'?'gray':g.status==='running'?'green':g.status==='paused'?'gold':'blue'}">${esc(phaseNames[g.status]||g.status)}</span></td>
                   <td>${g.team_count} 隊</td>
-                  <td><small>${esc(g.created_at?.slice(5, 19).replace('T', ' '))}</small></td>
-                  <td><small>${esc(g.updated_at?.slice(5, 19).replace('T', ' '))}</small></td>
+                  <td><small>${formatTWTime(g.created_at)}</small></td>
+                  <td><small>${formatTWTime(g.updated_at)}</small></td>
                   <td class="actions">
                     <button class="btn xs gold dev-view-game" data-id="${esc(g.id)}" title="檢視狀態">🔍 狀態</button>
                     <button class="btn xs blue dev-events-game" data-id="${esc(g.id)}" title="查看事件">📜 事件</button>
@@ -1163,7 +1192,7 @@ async function renderDevEvents(container){
             <thead>
               <tr>
                 <th>#</th>
-                <th>時間</th>
+                <th>時間 (UTC+8)</th>
                 <th>活動 ID</th>
                 <th>角色 / 隊伍</th>
                 <th>事件類型</th>
@@ -1176,7 +1205,7 @@ async function renderDevEvents(container){
               ${events.length ? events.map(e => `
                 <tr>
                   <td><code>${e.id}</code></td>
-                  <td><small>${esc(e.createdAt?.slice(5, 19).replace('T', ' '))}</small></td>
+                  <td><small>${formatTWTime(e.createdAt)}</small></td>
                   <td><code>${esc(e.gameId)}</code></td>
                   <td>
                     <span class="dev-badge ${e.actorRole==='host'?'gold':e.actorRole==='team'?'green':e.actorRole==='system'?'blue':'gray'}">${esc(e.actorRole)}</span>
@@ -1301,6 +1330,8 @@ async function renderDevTools(container){
   container.innerHTML = '<div class="note">正在載入系統設定…</div>';
   const data = await devApi('/api/dev/overview');
   const doEnabled = Boolean(data.doEnabled);
+  const idleHours = data.idleTimeoutHours || 3;
+  const isPreset = [0.5, 1, 2, 3, 4, 6, 8, 12, 24].includes(idleHours);
 
   container.innerHTML = `
     <div class="card">
@@ -1315,6 +1346,35 @@ async function renderDevTools(container){
         <button class="btn sm ${doEnabled ? 'dark' : 'green'}" id="toolsToggleDoBtn">
           ${doEnabled ? '🔴 立即關閉 DO 服務' : '🟢 立即開啟 DO 服務'}
         </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">★ 活動閒置自動關閉時間設定</div>
+      <div class="cb">
+        <p style="font-size:13px;line-height:1.6">
+          當活動無任何操作或隊伍離線達到設定時長後，系統將自動結束活動並儲存 D1 記錄，釋放伺服器資源。<br>
+          <b>目前設定：<span class="dev-badge gold">超過 ${idleHours} 小時</span></b>
+        </p>
+        <div class="row wrap" style="align-items:flex-end;margin-top:10px;gap:8px">
+          <label class="fl" style="margin:0;flex:1;min-width:200px">
+            <span>選擇時限（小時）</span>
+            <select id="idleTimeoutSelect" style="border:3px solid #14110f;padding:7px;width:100%">
+              <option value="0.5" ${idleHours===0.5?'selected':''}>0.5 小時（30 分鐘 - 測試用）</option>
+              <option value="1" ${idleHours===1?'selected':''}>1 小時</option>
+              <option value="2" ${idleHours===2?'selected':''}>2 小時</option>
+              <option value="3" ${idleHours===3?'selected':''}>3 小時（預設值）</option>
+              <option value="4" ${idleHours===4?'selected':''}>4 小時</option>
+              <option value="6" ${idleHours===6?'selected':''}>6 小時</option>
+              <option value="8" ${idleHours===8?'selected':''}>8 小時</option>
+              <option value="12" ${idleHours===12?'selected':''}>12 小時</option>
+              <option value="24" ${idleHours===24?'selected':''}>24 小時</option>
+              <option value="custom" ${!isPreset?'selected':''}>自訂小時數...</option>
+            </select>
+          </label>
+          <input type="number" id="customIdleHoursInput" min="0.1" max="168" step="0.5" placeholder="自訂小時" value="${idleHours}" style="width:110px;border:3px solid #14110f;padding:7px;${isPreset?'display:none;':''}">
+          <button class="btn sm gold" id="saveIdleTimeoutBtn" style="width:auto;margin:0">儲存時限設定</button>
+        </div>
       </div>
     </div>
 
@@ -1354,6 +1414,27 @@ async function renderDevTools(container){
         renderDevTools(container);
       }catch(e){ toast('操作失敗：' + e.message, true); }
     });
+  };
+
+  $('idleTimeoutSelect').onchange = () => {
+    const isCustom = $('idleTimeoutSelect').value === 'custom';
+    $('customIdleHoursInput').style.display = isCustom ? 'block' : 'none';
+  };
+
+  $('saveIdleTimeoutBtn').onclick = async () => {
+    const sel = $('idleTimeoutSelect').value;
+    const hours = sel === 'custom' ? Number($('customIdleHoursInput').value) : Number(sel);
+    if(!Number.isFinite(hours) || hours <= 0 || hours > 168){
+      toast('請輸入大於 0 且合理的小時數（0.1 到 168 小時）', true);
+      return;
+    }
+    try{
+      await devApi('/api/dev/settings', { method: 'POST', body: JSON.stringify({ idleTimeoutHours: hours }) });
+      toast(`已成功將閒置自動關閉時間設定為 ${hours} 小時`);
+      renderDevTools(container);
+    }catch(e){
+      toast('儲存失敗：' + e.message, true);
+    }
   };
 
   $('btnRunCleanup').onclick = () => {
@@ -1863,7 +1944,7 @@ function bindGame(){
   if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bZoom,#bSound'))b.disabled=true;});
 }
 async function loadHistory(){
-  try{const auth=App.token||App.access.host;const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${auth}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(e.createdAt)}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
+  try{const auth=App.token||App.access.host;const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${auth}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件（台灣時間 UTC+8）</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(formatTWTime(e.createdAt))}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
 }
 function render(force=false){ syncChrome(); if(App.screen==='home'){renderHome();return;}if(App.screen==='join')return;if(App.screen==='game')renderGame(); }
 

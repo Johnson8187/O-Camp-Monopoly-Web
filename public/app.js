@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.28';
-import { G } from './game-core.js?v=2026.08.21.28';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.28';
+const BUILD_VERSION = '2026.08.21.29';
+import { G } from './game-core.js?v=2026.08.21.29';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.29';
 
 
 
@@ -1382,17 +1382,19 @@ async function renderDevTools(container){
       <div class="ch">★ 歷史資料批次清理</div>
       <div class="cb">
         <p style="font-size:13px;line-height:1.6">
-          批次清理 D1 中已結束的舊活動與關聯事件記錄，釋放資料庫空間。進行中或準備中的活動不會被刪除。
+          批次清理 D1 中舊活動與關聯事件記錄，釋放資料庫空間。
         </p>
-        <label class="fl">
-          <span>保留期限</span>
-          <select id="cleanupRetainDays" style="width:180px;border:3px solid #14110f;padding:6px">
-            <option value="7">清理超過 7 天前活動</option>
-            <option value="30">清理超過 30 天前活動</option>
-            <option value="0">清理全部已結束活動</option>
+        <label class="fl" style="margin-bottom:10px">
+          <span>清理範圍</span>
+          <select id="cleanupRetainDays" style="width:100%;max-width:360px;border:3px solid #14110f;padding:7px">
+            <option value="0">🗑️ 清理全部「已結束」活動（清除所有已結束場次）</option>
+            <option value="1">⏱️ 清理超過 1 天前的已結束活動</option>
+            <option value="7">⏱️ 清理超過 7 天前的已結束活動</option>
+            <option value="30">⏱️ 清理超過 30 天前的已結束活動</option>
+            <option value="wipe_all">⚠️ 強制清空「全部」活動與事件（含未結束/卡住場次）</option>
           </select>
         </label>
-        <button class="btn sm dark" id="btnRunCleanup">執行歷史資料清理</button>
+        <button class="btn sm dark" id="btnRunCleanup">執行資料清理</button>
       </div>
     </div>
 
@@ -1438,11 +1440,20 @@ async function renderDevTools(container){
   };
 
   $('btnRunCleanup').onclick = () => {
-    const days = Number($('cleanupRetainDays').value);
-    ask('確定執行清理？', days === 0 ? '將永久刪除所有已結束活動的紀錄！' : `將刪除 ${days} 天前所有已結束活動的紀錄！`, async () => {
+    const val = $('cleanupRetainDays').value;
+    const isWipeAll = val === 'wipe_all';
+    const days = isWipeAll ? 0 : Number(val);
+    const title = isWipeAll ? '⚠️ 強制清空所有活動？' : '確定執行清理？';
+    const promptMsg = isWipeAll
+      ? '此操作將徹底清空 D1 資料庫中的所有活動（包含未結束、進行中與已結束）以及全部事件日誌！'
+      : (days === 0 ? '將永久刪除 D1 資料庫中所有「已結束」活動的紀錄與關聯事件！' : `將刪除 ${days} 天前所有已結束活動的紀錄！`);
+
+    ask(title, promptMsg, async () => {
       try{
-        const res = await devApi('/api/dev/cleanup', { method: 'POST', body: JSON.stringify({ retainDays: days }) });
-        toast(`清理完成，已刪除 ${res.deletedGamesCount || 0} 場已結束活動`);
+        const payload = isWipeAll ? { wipeAll: true } : { retainDays: days };
+        const res = await devApi('/api/dev/cleanup', { method: 'POST', body: JSON.stringify(payload) });
+        toast(`清理完成，已刪除 ${res.deletedGamesCount || 0} 場活動記錄`);
+        renderDevTools(container);
       }catch(e){ toast('清理失敗：' + e.message, true); }
     });
   };

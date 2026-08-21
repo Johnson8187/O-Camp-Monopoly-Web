@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.28';
+const APP_BUILD_VERSION = '2026.08.21.29';
 
 
 
@@ -420,21 +420,40 @@ async function devExecuteSql(request, env){
 
 async function devCleanup(request, env){
   const body = await request.json().catch(()=>({}));
-  const retainDays = Number(body.retainDays) || 7;
-  const cutoff = new Date(Date.now() - retainDays * 86400000).toISOString();
+  const rawRetain = body.retainDays;
+  const wipeAll = Boolean(body.wipeAll) || rawRetain === 'wipe_all' || rawRetain === -1;
+  const retainDays = rawRetain !== undefined && rawRetain !== null && rawRetain !== 'wipe_all' ? Number(rawRetain) : 0;
 
-  const oldGames = await env.DB.prepare("SELECT id FROM games WHERE status='ended' AND updated_at < ?").bind(cutoff).all().catch(()=>({results:[]}));
-  const ids = (oldGames.results || []).map(r => r.id);
+  let ids = [];
+  let cutoff = null;
 
-  if(ids.length > 0){
-    const placeholders = ids.map(()=>'?').join(',');
-    await env.DB.batch([
-      env.DB.prepare(`DELETE FROM game_events WHERE game_id IN (${placeholders})`).bind(...ids),
-      env.DB.prepare(`DELETE FROM games WHERE id IN (${placeholders})`).bind(...ids)
-    ]);
+  if (wipeAll) {
+    const allGames = await env.DB.prepare("SELECT id FROM games").all().catch(()=>({results:[]}));
+    ids = (allGames.results || []).map(r => r.id);
+  } else if (retainDays === 0 || isNaN(retainDays)) {
+    const endedGames = await env.DB.prepare("SELECT id FROM games WHERE status='ended'").all().catch(()=>({results:[]}));
+    ids = (endedGames.results || []).map(r => r.id);
+  } else {
+    cutoff = new Date(Date.now() - retainDays * 86400000).toISOString();
+    const oldGames = await env.DB.prepare("SELECT id FROM games WHERE status='ended' AND updated_at < ?").bind(cutoff).all().catch(()=>({results:[]}));
+    ids = (oldGames.results || []).map(r => r.id);
   }
 
-  return json({ok:true, deletedGamesCount: ids.length, cutoff});
+  if(ids.length > 0){
+    for(let i = 0; i < ids.length; i += 50){
+      const chunk = ids.slice(i, i + 50);
+      const placeholders = chunk.map(()=>'?').join(',');
+      await env.DB.batch([
+        env.DB.prepare(`DELETE FROM game_events WHERE game_id IN (${placeholders})`).bind(...chunk),
+        env.DB.prepare(`DELETE FROM games WHERE id IN (${placeholders})`).bind(...chunk)
+      ]);
+    }
+  }
+
+  // Also clean up any orphaned events whose game_id is no longer in games table
+  await env.DB.prepare("DELETE FROM game_events WHERE game_id NOT IN (SELECT id FROM games)").run().catch(()=>{});
+
+  return json({ok:true, deletedGamesCount: ids.length, cutoff, wipeAll});
 }
 
 async function devExportGame(id, request, env){

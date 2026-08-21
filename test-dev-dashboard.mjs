@@ -77,6 +77,12 @@ function createMockDb() {
               return null;
             },
             async all() {
+              if (sql.includes('SELECT id FROM games')) {
+                if (sql.includes("status='ended'")) {
+                  return { results: [...mockTables.games.values()].filter(g => g.status === 'ended').map(g => ({ id: g.id })) };
+                }
+                return { results: [...mockTables.games.values()].map(g => ({ id: g.id })) };
+              }
               if (sql.includes('SELECT id, name, status, team_count, created_at, updated_at, ended_at FROM games')) {
                 return { results: [...mockTables.games.values()] };
               }
@@ -105,6 +111,16 @@ function createMockDb() {
               if (sql.includes('INSERT INTO system_settings')) {
                 const key = sql.includes("'idle_timeout_ms'") ? 'idle_timeout_ms' : 'do_enabled';
                 mockTables.system_settings.set(key, { key, value: String(params[0] ?? '1'), updated_at: new Date().toISOString() });
+                return { success: true };
+              }
+              if (sql.includes('DELETE FROM games')) {
+                for (const id of params) {
+                  mockTables.games.delete(id);
+                }
+                return { success: true };
+              }
+              if (sql.includes('DELETE FROM game_events')) {
+                mockTables.game_events = mockTables.game_events.filter(e => !params.includes(e.game_id));
                 return { success: true };
               }
               return { success: true };
@@ -303,5 +319,31 @@ const unauthRes = await worker.fetch(new Request('https://example.test/api/dev/o
   headers: { authorization: 'Bearer wrong-token' }
 }), mockEnv);
 assert.equal(unauthRes.status, 401, '無效 Token 應被拒絕');
+
+// 14. Test /api/dev/cleanup with retainDays = 0 and wipeAll
+// Add an ended game to mockTables
+mockTables.games.set('GAME_ENDED', { id: 'GAME_ENDED', name: '已結束場次', status: 'ended', updated_at: new Date().toISOString() });
+mockTables.game_events.push({ id: 2, game_id: 'GAME_ENDED', event_type: 'endGame', message: '結束' });
+
+const cleanupEndedRes = await worker.fetch(new Request('https://example.test/api/dev/cleanup', {
+  method: 'POST',
+  headers: { authorization: 'Bearer 8187', 'content-type': 'application/json' },
+  body: JSON.stringify({ retainDays: 0 })
+}), mockEnv);
+assert.equal(cleanupEndedRes.status, 200);
+const cleanupEndedData = await cleanupEndedRes.json();
+assert.equal(cleanupEndedData.deletedGamesCount >= 1, true, 'retainDays: 0 應成功刪除已結束場次');
+assert.equal(mockTables.games.has('GAME_ENDED'), false, '已結束活動應已被刪除');
+
+// Test wipeAll
+const wipeRes = await worker.fetch(new Request('https://example.test/api/dev/cleanup', {
+  method: 'POST',
+  headers: { authorization: 'Bearer 8187', 'content-type': 'application/json' },
+  body: JSON.stringify({ wipeAll: true })
+}), mockEnv);
+assert.equal(wipeRes.status, 200);
+const wipeData = await wipeRes.json();
+assert.equal(wipeData.deletedGamesCount >= 1, true, 'wipeAll 應刪除所有活動');
+assert.equal(mockTables.games.size, 0, '所有活動應被清空');
 
 console.log('All dev dashboard API & DO toggle tests passed successfully!');

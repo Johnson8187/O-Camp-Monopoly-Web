@@ -1,6 +1,24 @@
-const BUILD_VERSION = '2026.08.21.29';
-import { G } from './game-core.js?v=2026.08.21.29';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.29';
+const BUILD_VERSION = '2026.08.21.30';
+import { G } from './game-core.js?v=2026.08.21.30';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.30';
+
+// Disable iOS / PWA pinch-zoom and gesture zooming
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+
+// Disable accidental double-tap to zoom on touch devices
+let _lastTouchTime = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - _lastTouchTime <= 300) {
+    if (e.target && !['INPUT', 'TEXTAREA', 'SELECT', 'OPTION'].includes(e.target.tagName)) {
+      e.preventDefault();
+      e.target.click?.();
+    }
+  }
+  _lastTouchTime = now;
+}, { passive: false });
 
 
 

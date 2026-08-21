@@ -82,7 +82,7 @@ function freshState(code, teamCount, names) {
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
-      buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false,
+      buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[],
     settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null,
@@ -309,8 +309,9 @@ function buyGamble(s, ti, gi) {
   const cost = costWithDiscount(s, t, g.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   t.pts -= cost; if (t.discount) t.discount = false;
-  s.lastPurchase={seq:(s.lastPurchase?.seq||0)+1,team:ti,name:g.name,kind:"gamble",cost,count:1};
-  s.log.unshift(`${t.name} 買了「${g.name}」（扣 ${cost} 點，獎項由關主現場發放）`);
+  const itemKey=`g${gi}`;t.items=t.items||{};t.items[itemKey]=(t.items[itemKey]||0)+1;
+  s.lastPurchase={seq:(s.lastPurchase?.seq||0)+1,team:ti,name:g.name,kind:"physical",itemKey,cost,count:t.items[itemKey]};
+  s.log.unshift(`${t.name} 買了實體物品「${g.name}」（扣 ${cost} 點，背包共有 ${t.items[itemKey]} 個）`);
   return {ok:true};
 }
 function buyBuff(s, ti, bk) {
@@ -337,7 +338,6 @@ function upgradeBase(s, ti) {
   s.log.unshift(`${t.name} 基地升級為「${s.settings.levels[t.level-1].name}」`);
   return {ok:true};
 }
-
 function sellBase(s, ti) {
   const t = s.teams[ti];
   if (t.sold || t.baseIdx === null) return {ok:false, msg:"沒有可賣的基地"};
@@ -376,7 +376,6 @@ function playAttack(s, ti, kind, rnd = Math.random) {
   t.pts -= cost; if (t.discount) t.discount = false;
   s.disasters += 1;
   let hit = [], msg = "", targetInfo = {}, shielded = [];
-
 
   const damage = (idx, amt) => {
     const o = ownerOf(s, idx);

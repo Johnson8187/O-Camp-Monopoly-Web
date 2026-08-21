@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.21.34';
+const APP_BUILD_VERSION = '2026.08.22.35';
 
 
 
@@ -519,7 +519,7 @@ async function closeGame(id,request,env){
   const headers=new Headers({'x-game-id':id,'x-control-action':'endGame'});
   return getRoom(env,id).fetch(new Request('https://do.internal/control',{method:'POST',headers,body:'{}'}));
 }
-function normalizeGameState(state){
+export function normalizeGameState(state){
   const s=state&&typeof state==='object'?state:{};
   s.receipts=Array.isArray(s.receipts)?s.receipts:[];
   s.receiptSeq=Number(s.receiptSeq)||0;
@@ -530,6 +530,15 @@ function normalizeGameState(state){
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
   (s.teams||[]).forEach(t=>{
     t.buffs={pass:0,reroll:0,shield:0,...(t.buffs||{})};
+    const hadInventory=t.items&&typeof t.items==='object';
+    t.items=hadInventory?t.items:{};
+    if(!hadInventory){
+      (s.settings.gambles||[]).forEach((item,index)=>{
+        const oldPurchase=`${t.name} 買了「${item.name}」`,newPurchase=`${t.name} 買了實體物品「${item.name}」`;
+        const count=(s.log||[]).filter(message=>String(message).startsWith(oldPurchase)||String(message).startsWith(newPurchase)).length;
+        if(count)t.items[`g${index}`]=count;
+      });
+    }
     if(!('lastDice' in t))t.lastDice=null;
   });
   return s;

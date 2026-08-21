@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.21.34';
-import { G } from './game-core.js?v=2026.08.21.34';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.21.34';
+const BUILD_VERSION = '2026.08.22.35';
+import { G } from './game-core.js?v=2026.08.22.35';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath } from './game-fx.js?v=2026.08.22.35';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -47,7 +47,7 @@ const App = {
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
   fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
-  hostDrafts:{}, leaving:false, leaveActionId:null, leaveTimer:null,
+  hostDrafts:{}, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -688,7 +688,7 @@ function processGameFx(previous,next){
       if(/發動「/.test(logMsg)&&attackChanged)return;
       if(/抽籤/.test(logMsg)&&assignmentChanged)return;
       if(/骰出/.test(logMsg))return;
-      if(/買了「|取得「/.test(logMsg)&&purchaseChanged)return;
+      if(/買了(?:實體物品)?「|取得「/.test(logMsg)&&purchaseChanged)return;
       enqueueFx({type:'event',message:logMsg});
     });
   }
@@ -1711,18 +1711,19 @@ function rankingHTML(){
 
 function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</div><div class="cb">${(App.state.log||[]).slice(0,80).map(x=>`<div class="lg">${esc(x)}</div>`).join('')||'<div class="note">尚無紀錄</div>'}</div></div>`; }
 function receiptRows(receipts){
-  return receipts.map(r=>{const team=App.state.teams?.[r.teamId],cash=Number(r.cashDelta||0),pts=Number(r.ptsDelta||0),positive=cash>0||(!cash&&pts>0);return `<div class="receipt-item ${positive?'credit':'debit'}"><div class="receipt-stamp">${positive?'已入帳':'已扣款'}</div><div class="receipt-main"><b>${esc(team?.name||`第 ${Number(r.teamId)+1} 組`)}</b><span>${esc(r.reason)}</span><small>第 ${r.round} 回合 · ${esc(phaseNames[r.phase]||r.phase||'')}</small></div><div class="receipt-amount">${cash?`<strong>${cash>0?'+':''}${G.money(cash)}</strong><small>餘額 ${G.money(r.afterCash)}</small>`:''}${pts?`<strong>${pts>0?'+':''}${pts} 點</strong><small>點數 ${r.afterPts}</small>`:''}</div></div>`;}).join('');
+  return receipts.map(r=>{const team=App.state.teams?.[r.teamId],cash=Number(r.cashDelta||0),pts=Number(r.ptsDelta||0),positive=cash>0||(!cash&&pts>0),kind=cash?'cash':'points';return `<div class="receipt-item ${positive?'credit':'debit'}"><div class="receipt-icon">${kind==='cash'?'💰':'✨'}</div><div class="receipt-stamp">${positive?'已入帳':'已扣款'}</div><div class="receipt-main"><b>${esc(team?.name||`第 ${Number(r.teamId)+1} 組`)}<em>#${String(r.id||0).padStart(4,'0')}</em></b><span>${esc(r.reason)}</span><small>ROUND ${r.round} · ${esc(phaseNames[r.phase]||r.phase||'')}</small></div><div class="receipt-amount">${cash?`<strong>${cash>0?'+':''}${G.money(cash)}</strong><small>交易後 ${G.money(r.afterCash)}</small>`:''}${pts?`<strong>${pts>0?'+':''}${pts} 點</strong><small>交易後 ${r.afterPts} 點</small>`:''}</div></div>`;}).join('');
 }
-function purchaseFxHTML(){const fx=App.fx.purchase;if(!fx)return '';const info=BUFF_INFO[fx.kind];return `<div class="purchase-overlay" aria-live="assertive"><div class="purchase-card" style="--purchase-color:${fx.color||'#f2c12e'}"><div class="purchase-kicker">PURCHASE COMPLETE</div><i>${info?.icon||'🛍️'}</i><h2>已購買</h2><strong>${esc(fx.name)}</strong><p>${esc(fx.teamName)} · 消耗 ${Number(fx.cost||0)} 點${fx.kind!=='gamble'?` · 背包共有 ${Number(fx.count||1)} 張`:''}</p></div></div>`;}
-function receiptsHTML(){
-  const S=App.state,all=Array.isArray(S.receipts)?S.receipts:[],mine=App.role==='team'&&App.teamId!==null?all.filter(r=>r.teamId===App.teamId):all;
-  return `<div class="card receipts-card"><div class="ch">★ 電子收據 · 金流確認</div><div class="cb"><div class="note">每筆現金與諂媚點數異動都會記錄交易後餘額。</div><div class="receipt-list">${receiptRows(mine.slice(0,100))||'<div class="note">目前尚無金流異動</div>'}</div></div></div>`;
+function purchaseFxHTML(){const fx=App.fx.purchase;if(!fx)return '';const info=BUFF_INFO[fx.kind],unit=fx.kind==='physical'?'個':'張';return `<div class="purchase-overlay" aria-live="assertive"><div class="purchase-card" style="--purchase-color:${fx.color||'#f2c12e'}"><div class="purchase-kicker">PURCHASE COMPLETE</div><i>${info?.icon||(fx.kind==='physical'?'🎁':'🛍️')}</i><h2>已購買</h2><strong>${esc(fx.name)}</strong><p>${esc(fx.teamName)} · 消耗 ${Number(fx.cost||0)} 點 · 背包共有 ${Number(fx.count||1)} ${unit}</p></div></div>`;}
+function receiptsHTML(compact=false){
+  const S=App.state,all=Array.isArray(S.receipts)?S.receipts:[],canFilter=App.role==='team'&&App.teamId!==null,scope=canFilter?App.receiptScope:'all',rows=scope==='mine'?all.filter(r=>Number(r.teamId)===App.teamId):all,credit=rows.filter(r=>Number(r.cashDelta)>0).reduce((n,r)=>n+Number(r.cashDelta),0),debit=Math.abs(rows.filter(r=>Number(r.cashDelta)<0).reduce((n,r)=>n+Number(r.cashDelta),0));
+  return `<div class="card receipts-card ${compact?'compact-ledger':''}"><div class="ch">🧾 電子收據 · ADVENTURER LEDGER</div><div class="cb"><div class="receipt-ledger-head"><div><small>TRANSACTION ARCHIVE</small><b>${scope==='mine'?'本隊金流帳本':'全場金流帳本'}</b><span>每筆現金與諂媚點數異動都會留下交易後餘額。</span></div>${canFilter?`<div class="receipt-filter" role="group" aria-label="收據顯示範圍"><button class="receipt-scope ${scope==='mine'?'on':''}" data-scope="mine">只看本隊</button><button class="receipt-scope ${scope==='all'?'on':''}" data-scope="all">全場款項</button></div>`:''}</div><div class="receipt-summary"><div><small>RECORDS</small><b>${rows.length}</b><span>筆交易</span></div><div class="gain"><small>CASH IN</small><b>+${G.money(credit)}</b><span>現金收入</span></div><div class="loss"><small>CASH OUT</small><b>−${G.money(debit)}</b><span>現金支出</span></div></div><div class="receipt-list">${receiptRows(rows.slice(0,100))||'<div class="receipt-empty"><i>🧾</i><b>尚無交易紀錄</b><span>發生款項或點數異動後會顯示在這裡。</span></div>'}</div></div></div>`;
 }
 function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIVE ARENA</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>房市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
 function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.state.log?.[0]||'活動即將開始，請各隊做好準備';return `<div class="stage-ticker"><span>● LIVE</span><div><b>現場快報</b>${esc(message)}</div></div>`;}
-const BUFF_INFO={pass:{icon:'🎫',title:'通行證',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
-function backpackHTML(me){return `<div class="card backpack-card"><div class="ch">🎒 ${esc(me.name)} 的背包</div><div class="cb"><div class="inventory-grid">${Object.entries(BUFF_INFO).map(([k,info])=>`<div class="inventory-item ${Number(me.buffs?.[k]||0)>0?'owned':''} ${k==='shield'&&Number(me.buffs?.shield||0)>0?'shield-active':''}"><i>${info.icon}</i><div><b>${info.title}<em>×${Number(me.buffs?.[k]||0)}</em></b><span>${info.desc}</span></div></div>`).join('')}<div class="inventory-item ${me.battles>0?'owned':''}"><i>⚔️</i><div><b>BATTLE<em>×${me.battles}</em></b><span>踩到他人基地時可挑戰；攻方勝免付，守方勝支付原過夜費。</span></div></div>${me.discount?'<div class="inventory-item owned"><i>🏴</i><div><b>黑市折扣<em>啟用中</em></b><span>下一次商店消費自動套用折扣。</span></div></div>':''}</div><div class="inventory-note">增益卡會跨回合保留，直到實際發動才扣除。</div></div></div>`;}
-function teamReceiptSummary(teamId){const rows=(App.state.receipts||[]).filter(r=>r.teamId===teamId).slice(0,3);return `<div class="card mini-receipts"><div class="ch">🧾 最近收據</div><div class="cb">${receiptRows(rows)||'<div class="note">目前沒有金流紀錄</div>'}</div></div>`;}
+const BUFF_INFO={pass:{icon:'🎫',title:'通行證',rarity:'RARE',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',rarity:'MAGIC',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',rarity:'EPIC',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
+const PHYSICAL_ITEM_INFO=[{icon:'🧧',rarity:'COMMON',desc:'實體紅包或獎項憑證，由關主現場交付。'},{icon:'🎯',rarity:'COMMON',desc:'實體戳戳樂遊戲券，請向關主兌換。'},{icon:'🎟️',rarity:'RARE',desc:'實體樂透券，保留至現場開獎或兌換。'},{icon:'💎',rarity:'EPIC',desc:'高風險實體獎項憑證，請妥善保管。'}];
+function rpgSlot({icon,name,count,desc,rarity='COMMON',active=false}){const owned=Number(count)>0||active;return `<div class="rpg-slot rarity-${rarity.toLowerCase()} ${owned?'owned':'empty'} ${active?'active':''}"><div class="slot-icon"><i>${icon}</i>${Number(count)>0?`<b>×${Number(count)}</b>`:''}</div><div class="slot-copy"><small>${rarity}</small><strong>${esc(name)}</strong><span>${esc(desc)}</span></div></div>`;}
+function backpackHTML(me){const S=App.state,physical=S.settings.gambles.map((g,i)=>{const info=PHYSICAL_ITEM_INFO[i]||{icon:'🎁',rarity:'COMMON',desc:'活動現場發放的實體物品。'};return rpgSlot({icon:info.icon,name:g.name,count:me.items?.[`g${i}`]||0,desc:info.desc,rarity:info.rarity});}).join(''),buffs=Object.entries(BUFF_INFO).map(([k,info])=>rpgSlot({icon:info.icon,name:info.title,count:me.buffs?.[k]||0,desc:info.desc,rarity:info.rarity,active:k==='shield'&&Number(me.buffs?.shield)>0})).join(''),usedSlots=Object.values(me.buffs||{}).filter(n=>Number(n)>0).length+Object.values(me.items||{}).filter(n=>Number(n)>0).length+(me.battles>0?1:0)+(me.discount?1:0);return `<div class="card backpack-card rpg-backpack"><div class="ch">🎒 PIXEL ADVENTURER INVENTORY</div><div class="cb"><div class="bag-hero" style="--team-color:${me.color}"><div class="bag-avatar">${me.id+1}</div><div><small>PARTY INVENTORY</small><b>${esc(me.name)}</b><span>LV${me.level} · 第 ${S.round} 回合</span></div><div class="bag-wallet"><span>💰 ${G.money(me.cash)}</span><span>✨ ${me.pts} 點</span><span>▦ ${usedSlots}/10 格</span></div></div><div class="bag-section"><div class="bag-section-title"><span>◆ 冒險道具</span><small>BUFF & SKILL</small></div><div class="rpg-grid">${buffs}${rpgSlot({icon:'⚔️',name:'BATTLE',count:me.battles,desc:'踩到他人基地時發動；攻方勝免付，守方勝支付原過夜費。',rarity:'LEGEND'})}${rpgSlot({icon:'🏴',name:'黑市折扣',count:0,active:Boolean(me.discount),desc:me.discount?'下一次商店消費會自動套用折扣。':'目前沒有啟用中的黑市折扣。',rarity:'RARE'})}</div></div><div class="bag-section physical"><div class="bag-section-title"><span>◆ 實體物品</span><small>PHYSICAL LOOT</small></div><div class="rpg-grid">${physical}</div></div><div class="inventory-note">所有購買紀錄會立即進背包；增益卡跨回合保留，實體物品請配合現場發放與兌換。</div></div></div>`;}
 function teamControls(){
   const S=App.state, me=App.teamId!==null?S.teams[App.teamId]:null; if(App.role==='viewer') return stagePanelHTML(); if(!me) return `<div class="viewer-note">目前沒有可操作的隊伍。</div>`;
   if(S.phase==='setup')return `<div class="viewer-note">隊伍已連線，請等待主持人抽籤並開始遊戲。</div>`;
@@ -1749,7 +1750,7 @@ function teamControls(){
     }
   }
 
-  if(S.phase==='shop'){ h+=`<div class="note">目前是商店階段；購買的增益卡會放進背包並跨回合保留。</div>${S.settings.gambles.map((g,i)=>`<div class="shop-item"><button class="btn sm purple gam" data-i="${i}">${g.name}　${G.costWithDiscount(S,me,g.cost)} 點</button><span>購買後由關主現場發放獎項。</span></div>`).join('')}${Object.entries(S.settings.buffs).map(([k,b])=>`<div class="shop-item"><button class="btn sm blue buf" data-k="${k}">${BUFF_INFO[k]?.icon||'🎒'} ${b.name}　${G.costWithDiscount(S,me,b.cost)} 點</button><span>${esc(BUFF_INFO[k]?.desc||'購買後放入背包。')}</span></div>`).join('')}`; }
+  if(S.phase==='shop'){ h+=`<div class="note">目前是商店階段；增益卡與實體物品購買後都會放入上方「背包」頁籤。</div>${S.settings.gambles.map((g,i)=>`<div class="shop-item"><button class="btn sm purple gam" data-i="${i}">${PHYSICAL_ITEM_INFO[i]?.icon||'🎁'} ${g.name}　${G.costWithDiscount(S,me,g.cost)} 點</button><span>${esc(PHYSICAL_ITEM_INFO[i]?.desc||'購買後放入背包，並由關主現場發放實體物品。')}</span></div>`).join('')}${Object.entries(S.settings.buffs).map(([k,b])=>`<div class="shop-item"><button class="btn sm blue buf" data-k="${k}">${BUFF_INFO[k]?.icon||'🎒'} ${b.name}　${G.costWithDiscount(S,me,b.cost)} 點</button><span>${esc(BUFF_INFO[k]?.desc||'購買後放入背包。')}</span></div>`).join('')}`; }
   if(S.phase==='roll'){ h+=`<div class="seg">特殊操作・每招每回合限一次</div><div class="attack-list">${Object.entries(S.settings.attacks).map(([k,a])=>{const used=Boolean(S.attackUsage?.[`${Number(S.round)}:${me.id}:${k}`])||Number(me.attackRounds?.[k])===Number(S.round),cost=G.costWithDiscount(S,me,a.cost),lack=me.pts<cost;return `<div class="attack-action"><button class="btn sm dark atk ${used?'used':lack?'lack':''}" data-k="${k}" ${used||lack?'disabled':''}><span>${a.name}</span><b>${used?'本回合已使用':lack?`還差 ${cost-me.pts} 點`:cost+' 點'}</b></button><div class="attack-help">${esc(attackDescription(S,k,a))}</div></div>`;}).join('')}</div>`; }
   if(S.phase==='sell'){
     const maxLevel = S.settings.levels.length;
@@ -1792,7 +1793,7 @@ function teamControls(){
   }
 
   if(S.phase==='roll'){h+=`<div class="seg">快捷道具</div><button class="btn sm outline" id="bReroll" ${me.buffs.reroll<=0||!me.rolled||S.pendingBattle?'disabled':''}>🎲 使用重骰卡（${me.buffs.reroll}）</button>`;}
-  h+='</div></div>';return h+backpackHTML(me)+teamReceiptSummary(me.id);
+  h+='</div></div>';return h;
 }
 function attackDescription(S,k,a){const m={quake:`隨機震央，7×7 範圍基地支付 ${G.money(a.repair)} 修繕費；震央為 1.5 倍。`,missile:`鎖定排行榜相鄰隊伍，使其支付 ${G.money(a.repair)} 修繕費。`,typhoon:`隨機 7×7 暴風圈；外圈支付 ${G.money(a.repair)}，颱風眼反而獲得 ${G.money(a.eyeBonus)}。`,wildfire:`隨機延燒 1–2 個橫排，範圍基地支付 ${G.money(a.repair)} 修繕費。`};return m[k]||'發動特殊操作。';}
 function attackSceneHTML(kind){
@@ -1972,7 +1973,7 @@ function renderGame(){
   captureHostDrafts();
   const S=App.state;if(!S){$('app').innerHTML='<div class="card"><div class="cb">正在建立即時連線…</div></div>';return;}
   const isSettled = S.phase === 'settle' || S.phase === 'ended';
-  const tabs = [['main', '遊戲'],['receipts','🧾 收據']];
+  const tabs = App.role==='team'?[['main','遊戲'],['backpack','背包'],['receipts','收據']]:[['main','遊戲'],['receipts','🧾 收據']];
   if (isSettled) {
     tabs.push(['settle', '🏆 結算頒獎']);
   }
@@ -1990,10 +1991,14 @@ function renderGame(){
   if (!tabs.some(x => x[0] === App.tab)) App.tab = 'main';
 
   const flow=[['market','房市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'||S.phase==='settle'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
-  let body=''; if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout"><div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div><aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
+  const boardCard=`<div class="game-primary"><div class="card board-card"><div class="ch">★ 棋盤 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div>`;
+  let body='';
+  if(App.role==='team'&&['main','backpack','receipts','log'].includes(App.tab)){
+    body=`<div class="game-layout team-persistent-layout">${boardCard}<aside class="game-sidebar team-tab-panel" data-team-tab="${App.tab}">${teamSideHTML(App.tab)}</aside></div>`;
+  }else if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout">${boardCard}<aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
   if(App.tab==='settle') body=settleHTML();
-  if(App.tab==='receipts') body=receiptsHTML();
-  if(App.tab==='log') body=logHTML();
+  if(App.tab==='receipts'&&App.role!=='team') body=receiptsHTML();
+  if(App.tab==='log'&&App.role!=='team') body=logHTML();
   if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
@@ -2035,9 +2040,24 @@ function bindDiceGesture(){
   pad.onpointermove=e=>{if(!active)return;e.preventDefault();const now=performance.now(),dy=lastY-e.clientY,dt=Math.max(8,now-lastAt);velocity=velocity*.6+(dy/dt)*.4;lastY=e.clientY;lastAt=now;pull=Math.max(0,Math.min(132,startY-e.clientY));tilt=Math.max(-12,Math.min(12,(e.clientX-startX)*.12));queuePaint();};
   pad.onpointerup=e=>{if(!active)return;pad.releasePointerCapture?.(e.pointerId);if(pull>=52||(pull>=32&&velocity>.55))launch();else reset();};pad.onpointercancel=reset;pad.onlostpointercapture=()=>{if(active)reset();};pad.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pull=82;paint();launch();}};
 }
+function teamSideHTML(tab){
+  const me=App.teamId!==null?App.state?.teams?.[App.teamId]:null;
+  if(tab==='backpack')return me?backpackHTML(me):'<div class="viewer-note">尚未選擇隊伍</div>';
+  if(tab==='receipts')return receiptsHTML(true);
+  if(tab==='log')return logHTML();
+  return `${teamControls()}${rankingHTML()}`;
+}
+function switchTeamPanel(tab){
+  if(App.role!=='team'||!['main','backpack','receipts','log'].includes(tab))return false;
+  const panel=document.querySelector('.team-tab-panel');if(!panel)return false;
+  App.tab=tab;panel.dataset.teamTab=tab;panel.innerHTML=teamSideHTML(tab);
+  document.querySelectorAll('.tb').forEach(b=>b.classList.toggle('on',b.dataset.k===tab));
+  bindGame();return true;
+}
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
-  document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{App.tab=b.dataset.k;render(true);});
+  document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{const tab=b.dataset.k;if(!switchTeamPanel(tab)){App.tab=tab;render(true);}});
+  document.querySelectorAll('.receipt-scope').forEach(b=>b.onclick=()=>{App.receiptScope=b.dataset.scope==='all'?'all':'mine';if(!switchTeamPanel('receipts'))render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？'))requestLeaveGame();});
   bind('bProjector',()=>{
     App.projector=!App.projector;

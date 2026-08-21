@@ -71,6 +71,11 @@ persistentBuff.phase = 'roll';
 G.nextPhase(persistentBuff);
 if (persistentBuff.teams[0].buffs.shield !== 2) throw new Error('未使用的增益卡應跨回合保留');
 
+const physicalInventory = G.freshState('physical-inventory-test', 2);
+physicalInventory.teams[0].pts = 20;
+if (!G.buyGamble(physicalInventory, 0, 1).ok || !G.buyGamble(physicalInventory, 0, 1).ok) throw new Error('實體物品購買失敗');
+if (physicalInventory.teams[0].items.g1 !== 2 || physicalInventory.lastPurchase.kind !== 'physical' || physicalInventory.lastPurchase.count !== 2) throw new Error('實體物品沒有正確放入背包並累加數量');
+
 const shieldFeedback = G.freshState('shield-feedback-test', 2);
 shieldFeedback.round = 2;
 shieldFeedback.teams[0].pts = 100;

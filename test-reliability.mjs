@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker, { GameRoom, teamActionError } from './src/worker.js';
+import worker, { GameRoom, normalizeGameState, teamActionError } from './src/worker.js';
 import { G } from './src/game-core.js';
 
 const state=(phase,paused=false)=>({phase,paused});
@@ -34,6 +34,13 @@ const pointsAfterAttack=configurable.teams[0].pts;
 assert.match(configRoom.applyAction(configurable,{role:'team',teamId:0},'attack',{kind:'quake'}).error,/本回合已使用過/);
 assert.equal(configurable.teams[0].pts,pointsAfterAttack);
 assert.equal(configurable.log.filter(message=>message.includes('發動「地震」')).length,1);
+
+const legacyInventory=G.freshState('LEGACY-INVENTORY',2);
+delete legacyInventory.teams[0].items;
+legacyInventory.log.unshift(`${legacyInventory.teams[0].name} 買了「${legacyInventory.settings.gambles[0].name}」（扣 5 點，獎項由關主現場發放）`);
+legacyInventory.log.unshift(`${legacyInventory.teams[0].name} 買了「${legacyInventory.settings.gambles[0].name}」（扣 5 點，獎項由關主現場發放）`);
+normalizeGameState(legacyInventory);
+assert.equal(legacyInventory.teams[0].items.g0,2);
 
 const settleState = G.freshState('SETTLE', 2);
 settleState.phase = 'roll';

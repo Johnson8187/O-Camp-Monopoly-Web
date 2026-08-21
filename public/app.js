@@ -582,10 +582,12 @@ function processGameFx(previous,next){
     const teamId = lastRollTeam, team = next.teams?.[teamId], before = previous.teams?.[teamId];
     if(team && before){
       const beforePos = next.lastRoll.from ?? before.pos;
-      const rollVal = Number(next.lastRoll.n) || 1;
+      const rollVal = next.lastRoll.n !== undefined && next.lastRoll.n !== null ? Number(next.lastRoll.n) : 1;
       const landPos = next.lastRoll.landPos ?? ((beforePos + rollVal) % G.N);
       const targetPos = next.lastRoll.targetPos ?? team.pos;
-      enqueueFx({type:'roll',teamId,team,beforePos,landPos,targetPos,rollVal});
+      if (rollVal > 0 || beforePos !== targetPos) {
+        enqueueFx({type:'roll',teamId,team,beforePos,landPos,targetPos,rollVal});
+      }
     }
   }
   (next.teams||[]).forEach((team,i)=>{
@@ -600,9 +602,18 @@ function processGameFx(previous,next){
 
   // 6. Announcements & Event logs in FIFO order
   if(next.log&&previous.log){
-    const prevFirst=previous.log[0];
-    const prevIdx=next.log.indexOf(prevFirst);
-    const newLogs=prevIdx>0?next.log.slice(0,prevIdx):(next.log[0]!==prevFirst?[next.log[0]]:[]);
+    let newCount = 0;
+    const maxCheck = Math.min(next.log.length, Math.max(1, (next.rev || 0) - (previous.rev || 0)));
+    for (let k = maxCheck; k >= 1; k--) {
+      let match = true;
+      const compareLen = Math.min(previous.log.length, next.log.length - k, 5);
+      for (let j = 0; j < compareLen; j++) {
+        if (next.log[k + j] !== previous.log[j]) { match = false; break; }
+      }
+      if (match && compareLen > 0) { newCount = k; break; }
+    }
+    if (newCount === 0 && next.log[0] !== previous.log[0]) newCount = 1;
+    const newLogs = next.log.slice(0, newCount);
     newLogs.reverse().forEach(logMsg=>{
       if(!logMsg)return;
       if(/發動「/.test(logMsg)&&attackChanged)return;
@@ -648,9 +659,11 @@ class LiveSocket {
         const previous=App.state;
         App.state=m.state;
         if(App.pendingAction){
-          if(App.role==='team' && App.teamId!==null){
+          if(m.resolvedActionId === App.pendingAction || m.resolvedActionId === App.pendingActionId){
+            clearPendingAction();
+          } else if(App.role==='team' && App.teamId!==null){
             const me=m.state.teams?.[App.teamId];
-            if(me?.rolled || (m.state.rev||0) > (previous?.rev||0)) clearPendingAction();
+            if(me?.rolled && (App.pendingActionType === 'roll' || App.pendingActionType === 'reroll')) clearPendingAction();
           } else if((m.state.rev||0) > (previous?.rev||0)){
             clearPendingAction();
           }
@@ -690,13 +703,15 @@ function boardAftermathHTML(kind){
   if(!kind)return '';
   if(kind==='quake')return `<div class="board-aftermath board-quake">${Array.from({length:5},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
   if(kind==='missile'){
-    const after = App.fx.aftershock;
+    const after = App.fx.aftershock || App.fx.attack;
     let targetPos = after?.targetPos;
     if (targetPos === null || targetPos === undefined) {
       if (after?.targetTeam !== undefined && App.state?.teams?.[after.targetTeam]?.pos !== undefined) {
         targetPos = App.state.teams[after.targetTeam].pos;
       } else if (after?.hit?.length) {
         targetPos = after.hit[0];
+      } else if (App.state?.lastAttack?.targetPos !== undefined) {
+        targetPos = App.state.lastAttack.targetPos;
       } else {
         const found = App.state?.teams?.find(t => (after?.message || '').includes(t.name));
         targetPos = found ? found.pos : 0;
@@ -1934,6 +1949,10 @@ function bindGame(){
     bind('bNext',()=>{
       const fx=activeFxStatus();
       if(fx){
+        if(fx.count >= 3){
+          ask('動畫佇列排隊中', `${fx.text}<br>目前已有 ${fx.count} 個特效積壓，是否強制推進至下一階段？`, () => send('nextPhase'));
+          return;
+        }
         toast(fx.text, true);
         return;
       }

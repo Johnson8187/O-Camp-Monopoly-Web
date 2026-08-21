@@ -50,9 +50,12 @@ export async function setIdleTimeoutMs(env, ms){
 
 const DEFAULT_DEV_PASSWORD_HASH = 'da5d26410ae112bfd2513b4d4eb0497ccf8eeb095cd613fee834e521705d8f20';
 
+let _settingsTableReady = false;
 async function ensureSystemSettingsTable(env){
+  if (_settingsTableReady) return;
   try{
     await env.DB.prepare("CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+    _settingsTableReady = true;
   }catch{}
 }
 
@@ -538,7 +541,11 @@ export function teamActionError(state,action){
 }
 
 export class GameRoom {
-  constructor(ctx,env){ this.ctx=ctx;this.env=env;this.loaded=false;this.state=null;this.meta=null;this.gameId=null;this.lastActivityAt=0;this.kickedTeams=new Set(); }
+  constructor(ctx,env){
+    this.ctx=ctx;this.env=env;this.loaded=false;this.state=null;this.meta=null;this.gameId=null;this.lastActivityAt=0;this.kickedTeams=new Set();
+    this.actionQueue = Promise.resolve();
+    this.processedActions = new Map();
+  }
   async load(){
     await this.ctx.blockConcurrencyWhile(async()=>{
       if(this.loaded)return;
@@ -561,7 +568,7 @@ export class GameRoom {
   async armIdleAlarm(){
     if(!this.lastActivityAt || this.state?.phase==='ended') return;
     const timeout = await getIdleTimeoutMs(this.env);
-    await this.ctx.storage.setAlarm(this.lastActivityAt + timeout);
+    if(this.ctx.storage?.setAlarm) await this.ctx.storage.setAlarm(this.lastActivityAt + timeout);
   }
   async alarm(){
     await this.load();
@@ -598,6 +605,12 @@ export class GameRoom {
     return new Response(null,{status:101,webSocket:client});
   }
   async webSocketMessage(ws,message){
+    this.actionQueue = this.actionQueue.then(() => this._handleMessageSafe(ws, message)).catch(err => {
+      console.error('GameRoom action error:', err);
+    });
+    return this.actionQueue;
+  }
+  async _handleMessageSafe(ws,message){
     await this.load();
     let m;try{m=JSON.parse(typeof message==='string'?message:new TextDecoder().decode(message));}catch{return ws.send(JSON.stringify({type:'error',error:'訊息格式錯誤'}));}
     let actor=ws.deserializeAttachment?.()||{role:'pending',teamId:null};
@@ -618,33 +631,101 @@ export class GameRoom {
     if(m.type!=='action') return;
     const actionId=text(m.actionId).slice(0,80);
     const fail=error=>ws.send(JSON.stringify({type:'error',error,actionId}));
+
+    if(actionId && this.processedActions.has(actionId)){
+      const cached = this.processedActions.get(actionId);
+      return ws.send(JSON.stringify({type:'action_ok',actionId,rev:cached.rev}));
+    }
+
     if(actor.role==='host'&&m.action==='kickTeam'){
       const teamId=Number(m.payload?.teamId);
       if(!Number.isInteger(teamId)||!this.state.teams[teamId]) return fail('隊伍編號錯誤');
       this.kickTeam(teamId);
       const next=G.clone(this.state); next.teams[teamId].joined=false; next.log.unshift(`${next.teams[teamId].name} 已被主持人踢出，即時連線已關閉`); next.rev=(this.state.rev||0)+1;
-      await this.commit(next,actor,'kickTeam',{teamId});ws.send(JSON.stringify({type:'action_ok',actionId,rev:next.rev}));return;
+      await this.commit(next,actor,'kickTeam',{teamId,actionId});
+      if(actionId){ this.processedActions.set(actionId, {rev:next.rev, time:Date.now()}); }
+      ws.send(JSON.stringify({type:'action_ok',actionId,rev:next.rev}));
+      return;
     }
     if((actor.role==='host'&&!HOST_ACTIONS.has(m.action))||(actor.role==='team'&&!TEAM_ACTIONS.has(m.action))||actor.role==='viewer')return fail('你的角色不能執行這個操作');
     if(actor.role==='team'){
       const phaseError=teamActionError(this.state,m.action);if(phaseError)return fail(phaseError);
     }
-    try{const next=G.clone(this.state);const result=this.applyAction(next,actor,m.action,m.payload||{});if(result?.error)return fail(result.error);next.rev=(this.state.rev||0)+1;await this.commit(next,actor,m.action,m.payload||{});ws.send(JSON.stringify({type:'action_ok',actionId,rev:next.rev}));}catch(e){fail(e?.message||'操作失敗');}
+    try{
+      const next=G.clone(this.state);
+      const result=this.applyAction(next,actor,m.action,m.payload||{});
+      if(result?.error)return fail(result.error);
+      next.rev=(this.state.rev||0)+1;
+      await this.commit(next,actor,m.action,{...(m.payload||{}),actionId});
+      if(actionId){
+        this.processedActions.set(actionId, {rev:next.rev, time:Date.now()});
+        if(this.processedActions.size > 500){
+          const firstKey = this.processedActions.keys().next().value;
+          this.processedActions.delete(firstKey);
+        }
+      }
+      ws.send(JSON.stringify({type:'action_ok',actionId,rev:next.rev}));
+    }catch(e){fail(e?.message||'操作失敗');}
   }
   applyAction(s,actor,action,p){
-    if(actor.role==='team'){const i=actor.teamId;if(i===null||!s.teams[i])return {error:'找不到隊伍'};if(action==='roll'){if(s.phase!=='roll'||s.teams[i].rolled||s.teams[i].jail>0)return {error:'在監獄中或目前不能擲骰'};G.applyMove(s,i,1+Math.floor(Math.random()*(s.settings.diceSides||6)));return;}if(action==='reroll'){const t=s.teams[i];if(t.buffs.reroll<=0||!t.rolled)return {error:'目前不能重骰'};t.buffs.reroll-=1;t.rolled=false;s.log.unshift(`${t.name} 使用重骰卡`);return;}if(action==='battle'){const t=s.teams[i];if(t.battles<=0)return {error:'BATTLE 次數已用完'};t.battles-=1;s.log.unshift(`${t.name} 使用 BATTLE（剩 ${t.battles} 次），由關主裁決`);return;}if(action==='attack'){const kind=String(p.kind||''),useKey=`${Number(s.round)}:${i}:${kind}`;if(s.attackUsage?.[useKey]||Number(s.teams[i].attackRounds?.[kind])===Number(s.round))return {error:`「${s.settings.attacks?.[kind]?.name||'特殊操作'}」本回合已使用過`};const r=G.playAttack(s,i,kind);if(!r.ok)return {error:r.msg};s.attackUsage={...(s.attackUsage||{}),[useKey]:true};return;}if(action==='gamble'){const r=G.buyGamble(s,i,Number(p.index));return r.ok?undefined:{error:r.msg};}if(action==='buff'){const r=G.buyBuff(s,i,p.kind);return r.ok?undefined:{error:r.msg};}if(action==='upgrade'){const r=G.upgradeBase(s,i);return r.ok?undefined:{error:r.msg};}if(action==='sell'){const r=G.sellBase(s,i);return r.ok?undefined:{error:r.msg};}if(action==='buyBack'){const r=G.buyBackBase(s,i);return r.ok?undefined:{error:r.msg};}}
-
-    if(action==='assignBases'){if(s.phase!=='setup')return {error:'遊戲開始後不能重新抽籤'};G.assignBases(s);return;}if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.log.unshift('遊戲開始，第 1 回合');return;}if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle')s.phase='roll';s.log.unshift('主持人恢復了活動');return;}if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};G.nextPhase(s);return;}if(action==='settleGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='settle';s.log.unshift('🏆 活動進行最終結算！公布榮譽排行榜');return;}if(action==='endGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='ended';s.log.unshift('活動結束，歷史紀錄已保存');return;}if(action==='setMarket'){const k=p.kind;if(!s.settings.marketOrder.includes(k))return {error:'股市狀態錯誤'};s.market=k;s.log.unshift(`股市公布：${s.settings.marketNames[k]}`);return;}if(action==='unlock'){const i=Number(p.index);if(!G.STAGE_IDX.includes(i))return {error:'關卡格錯誤'};if(!s.unlocked.includes(i))s.unlocked.push(i);s.log.unshift(`關卡格解封（第 ${i+1} 格）`);return;}if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash')s.teams[i].cash+=amount;else s.teams[i].pts=Math.max(0,s.teams[i].pts+amount);s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}if(action==='renameTeams'){if(!Array.isArray(p.names))return {error:'隊伍名稱格式錯誤'};s.teams.forEach((t,i)=>{const n=text(p.names[i],t.name).slice(0,30);if(n)t.name=n;});s.log.unshift('主持人更新了隊伍名稱');return;}if(action==='setConfig'){const path=String(p.path||''),error=updateConfig(s.settings,path,p.value);if(error)return {error};s.log.unshift(`主持人調整設定：${path}`);return;}if(action==='setConfigs'){if(!Array.isArray(p.entries)||p.entries.length<1||p.entries.length>50)return {error:'設定清單格式錯誤'};for(const entry of p.entries){const error=updateConfig(s.settings,String(entry?.path||''),entry?.value);if(error)return {error};}s.log.unshift(`主持人儲存遊戲設定（${p.entries.length} 項）`);return;}
-
+    if(actor.role==='team'){
+      const i=actor.teamId;if(i===null||!s.teams[i])return {error:'找不到隊伍'};
+      if(action==='roll'){if(s.phase!=='roll'||s.teams[i].rolled||s.teams[i].jail>0||s.teams[i].jailedThisTurn)return {error:'在監獄中或目前不能擲骰'};G.applyMove(s,i,1+Math.floor(Math.random()*(s.settings.diceSides||6)));return;}
+      if(action==='reroll'){const t=s.teams[i];if(t.buffs.reroll<=0||!t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能重骰'};t.buffs.reroll-=1;t.rolled=false;s.log.unshift(`${t.name} 使用重骰卡`);return;}
+      if(action==='battle'){const t=s.teams[i];if(t.battles<=0)return {error:'BATTLE 次數已用完'};t.battles-=1;s.log.unshift(`${t.name} 使用 BATTLE（剩 ${t.battles} 次），由關主裁決`);return;}
+      if(action==='attack'){const kind=String(p.kind||''),useKey=`${Number(s.round)}:${i}:${kind}`;if(s.attackUsage?.[useKey]||Number(s.teams[i].attackRounds?.[kind])===Number(s.round))return {error:`「${s.settings.attacks?.[kind]?.name||'特殊操作'}」本回合已使用過`};const r=G.playAttack(s,i,kind);if(!r.ok)return {error:r.msg};s.attackUsage={...(s.attackUsage||{}),[useKey]:true};return;}
+      if(action==='gamble'){const r=G.buyGamble(s,i,Number(p.index));return r.ok?undefined:{error:r.msg};}
+      if(action==='buff'){const r=G.buyBuff(s,i,p.kind);return r.ok?undefined:{error:r.msg};}
+      if(action==='upgrade'){const r=G.upgradeBase(s,i);return r.ok?undefined:{error:r.msg};}
+      if(action==='sell'){const r=G.sellBase(s,i);return r.ok?undefined:{error:r.msg};}
+      if(action==='buyBack'){const r=G.buyBackBase(s,i);return r.ok?undefined:{error:r.msg};}
+    }
+    if(action==='assignBases'){if(s.phase!=='setup')return {error:'遊戲開始後不能重新抽籤'};G.assignBases(s);return;}
+    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.log.unshift('遊戲開始，第 1 回合');return;}
+    if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}
+    if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle')s.phase='roll';s.log.unshift('主持人恢復了活動');return;}
+    if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};G.nextPhase(s);return;}
+    if(action==='settleGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='settle';s.log.unshift('🏆 活動進行最終結算！公布榮譽排行榜');return;}
+    if(action==='endGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='ended';s.log.unshift('活動結束，歷史紀錄已保存');return;}
+    if(action==='setMarket'){const k=p.kind;if(!s.settings.marketOrder.includes(k))return {error:'股市狀態錯誤'};s.market=k;s.log.unshift(`股市公布：${s.settings.marketNames[k]}`);return;}
+    if(action==='unlock'){const i=Number(p.index);if(!G.STAGE_IDX.includes(i))return {error:'關卡格錯誤'};if(!s.unlocked.includes(i))s.unlocked.push(i);s.log.unshift(`關卡格解封（第 ${i+1} 格）`);return;}
+    if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash')s.teams[i].cash+=amount;else s.teams[i].pts=Math.max(0,s.teams[i].pts+amount);s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}
+    if(action==='renameTeams'){if(!Array.isArray(p.names))return {error:'隊伍名稱格式錯誤'};s.teams.forEach((t,i)=>{const n=text(p.names[i],t.name).slice(0,30);if(n)t.name=n;});s.log.unshift('主持人更新了隊伍名稱');return;}
+    if(action==='setConfig'){const path=String(p.path||''),error=updateConfig(s.settings,path,p.value);if(error)return {error};s.log.unshift(`主持人調整設定：${path}`);return;}
+    if(action==='setConfigs'){if(!Array.isArray(p.entries)||p.entries.length<1||p.entries.length>50)return {error:'設定清單格式錯誤'};for(const entry of p.entries){const error=updateConfig(s.settings,String(entry?.path||''),entry?.value);if(error)return {error};}s.log.unshift(`主持人儲存遊戲設定（${p.entries.length} 項）`);return;}
     return {error:'未知操作'};
   }
   async commit(next,actor,eventType,payload){
     if(Array.isArray(next.log)&&next.log.length>120)next.log=next.log.slice(0,120);
-    this.state=next;await this.ctx.storage.put('state',next);const status=statusOf(next);const timestamp=now();const activityAt=Date.parse(timestamp);const message=String(next.log?.[0]||eventType);
-    await this.env.DB.batch([this.env.DB.prepare('UPDATE games SET status=?,state_json=?,updated_at=?,ended_at=? WHERE id=?').bind(status,JSON.stringify(next),timestamp,status==='ended'?timestamp:null,this.meta.id),this.env.DB.prepare('INSERT INTO game_events (game_id,event_type,actor_role,actor_team,message,payload_json,state_rev,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(this.meta.id,eventType,actor.role,actor.teamId,message,JSON.stringify(payload||{}),next.rev,timestamp)]);
-    this.lastActivityAt=activityAt; await this.ctx.storage.put('lastActivityAt',activityAt);
-    if(status==='ended') await this.ctx.storage.deleteAlarm(); else await this.armIdleAlarm();
-    this.meta.status=status;this.broadcast({type:'state',state:next,status});
+    const prevState=this.state;
+    const prevStatus=this.meta?.status;
+    const prevActivity=this.lastActivityAt;
+    const status=statusOf(next);
+    const timestamp=now();
+    const activityAt=Date.parse(timestamp)||Date.now();
+    const message=String(next.log?.[0]||eventType);
+
+    if(this.env.DB && typeof this.env.DB.batch === 'function'){
+      try{
+        await this.env.DB.batch([
+          this.env.DB.prepare('UPDATE games SET status=?,state_json=?,updated_at=?,ended_at=? WHERE id=?').bind(status,JSON.stringify(next),timestamp,status==='ended'?timestamp:null,this.meta.id),
+          this.env.DB.prepare('INSERT INTO game_events (game_id,event_type,actor_role,actor_team,message,payload_json,state_rev,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(this.meta.id,eventType,actor.role,actor.teamId,message,JSON.stringify(payload||{}),next.rev,timestamp)
+        ]);
+      }catch(err){
+        this.state=prevState;
+        if(this.meta)this.meta.status=prevStatus;
+        this.lastActivityAt=prevActivity;
+        throw err;
+      }
+    }
+    this.state=next;
+    if(this.ctx.storage?.put) await this.ctx.storage.put('state',next);
+    this.lastActivityAt=activityAt;
+    if(this.ctx.storage?.put) await this.ctx.storage.put('lastActivityAt',activityAt);
+    if(status==='ended'){ if(this.ctx.storage?.deleteAlarm) await this.ctx.storage.deleteAlarm(); }
+    else { await this.armIdleAlarm(); }
+    if(this.meta) this.meta.status=status;
+    this.broadcast({type:'state',state:next,status,resolvedActionId:payload?.actionId});
   }
   kickTeam(teamId){ this.kickedTeams.add(teamId); for(const ws of this.ctx.getWebSockets()){ const a=ws.deserializeAttachment?.(); if(a?.role==='team'&&a.teamId===teamId){ try{ws.send(JSON.stringify({type:'kicked',message:'主持人已將你踢出活動'}));ws.close(4003,'kicked');}catch{} } } }
   broadcast(message){const data=JSON.stringify(message);for(const ws of this.ctx.getWebSockets()){try{ws.send(data);}catch{}}}

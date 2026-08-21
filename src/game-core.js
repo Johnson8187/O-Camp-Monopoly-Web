@@ -81,7 +81,7 @@ function freshState(code, teamCount, names) {
     teams: Array.from({length:teamCount}, (_,i) => ({
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
-      jail:0, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
+      jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
       buffs:{pass:0,reroll:0,shield:0}, attackRounds:{}, discount:false, rolled:false, joined:false,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[],
@@ -114,9 +114,16 @@ function ownerOf(s, idx) {
 }
 function pay(s, from, to, amt) {
   if (amt <= 0) return 0;
-  s.teams[from].cash -= amt;
-  if (to === "bank") s.bank += amt; else s.teams[to].cash += amt;
-  return amt;
+  const debtor = s.teams[from];
+  if (!debtor) return 0;
+  const actualAmt = Math.max(0, Math.min(debtor.cash, amt));
+  debtor.cash -= actualAmt;
+  if (to === "bank") {
+    s.bank += actualAmt;
+  } else if (to !== null && s.teams[to]) {
+    s.teams[to].cash += actualAmt;
+  }
+  return actualAmt;
 }
 
 /* ---------- 抽籤 ---------- */
@@ -134,16 +141,15 @@ function assignBases(s, rnd = Math.random) {
 function applyMove(s, ti, steps, rnd = Math.random) {
   const t = s.teams[ti];
   const notes = [];
-  if (t.jail > 0) {
-    t.jail -= 1; t.rolled = true;
+  if (t.jail > 0 || t.jailedThisTurn) {
+    if (t.jail > 0) t.jail -= 1;
+    t.rolled = true;
+    t.jailedThisTurn = false;
     s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
     s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
     return s;
-
   }
   const from = t.pos;
-  let usedPass = false;
-  const hasPass = t.buffs.pass > 0;
 
   // 經過的格子（不含終點）
   for (let k = 1; k < steps; k++) {
@@ -153,19 +159,23 @@ function applyMove(s, ti, steps, rnd = Math.random) {
     if (own && own.id !== ti) {
       const amt = passFee(s, own);
       if (amt > 0) {
-        if (hasPass) { usedPass = true; }
-        else { pay(s, ti, own.id, amt); notes.push(`通行費 ${money(amt)} → ${own.name}`); }
+        if (t.buffs.pass > 0) {
+          t.buffs.pass -= 1;
+          notes.push(`通行證抵銷通行費 ${money(amt)}（剩餘 ${t.buffs.pass} 張）`);
+        } else {
+          pay(s, ti, own.id, amt);
+          notes.push(`通行費 ${money(amt)} → ${own.name}`);
+        }
       }
     }
   }
   // 終點
   const dest = (from + steps) % N;
-  if (dest === START_IDX) { t.cash += s.settings.lapBonus; notes.push(`停在起點 +${money(s.settings.lapBonus)}`); }
+  if (dest === START_IDX && steps > 0) { t.cash += s.settings.lapBonus; notes.push(`停在起點 +${money(s.settings.lapBonus)}`); }
   t.pos = dest;
 
-  landEffect(s, ti, notes, {hasPass, markPass:() => { usedPass = true; }}, rnd);
+  landEffect(s, ti, notes, rnd);
 
-  if (usedPass) { t.buffs.pass -= 1; notes.push("通行證生效，免付費用"); }
   t.rolled = true;
   s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:steps, from, landPos:dest, targetPos:t.pos, note:notes.join("；") || "平安無事"};
 
@@ -173,7 +183,7 @@ function applyMove(s, ti, steps, rnd = Math.random) {
   return s;
 }
 
-function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
+function landEffect(s, ti, notes = [], rnd = Math.random) {
   const t = s.teams[ti];
   const S = s.settings;
   const kind = TRACK[t.pos][0];
@@ -183,8 +193,13 @@ function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
     if (own && own.id !== ti) {
       const amt = stayFee(s, own);
       if (amt > 0) {
-        if (passCtl.hasPass) { passCtl.markPass(); notes.push("通行證抵銷過夜費"); }
-        else { pay(s, ti, own.id, amt); notes.push(`過夜費 ${money(amt)} → ${own.name}`); }
+        if (t.buffs.pass > 0) {
+          t.buffs.pass -= 1;
+          notes.push(`通行證抵銷過夜費 ${money(amt)}（剩餘 ${t.buffs.pass} 張）`);
+        } else {
+          pay(s, ti, own.id, amt);
+          notes.push(`過夜費 ${money(amt)} → ${own.name}`);
+        }
       }
     } else if (own) notes.push("回到自己的基地");
     else notes.push("無主空地");
@@ -194,7 +209,9 @@ function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
 
   } else if (kind === "fate") {
     const c = FATE_CARDS[Math.floor(rnd()*FATE_CARDS.length)];
-    t.cash += c.cash; t.pts = Math.max(0, t.pts + c.pts);
+    if (c.cash > 0) t.cash += c.cash;
+    else if (c.cash < 0) t.cash = Math.max(0, t.cash + c.cash);
+    t.pts = Math.max(0, t.pts + c.pts);
     notes.push(`命運「${c.t}」${c.cash ? ` ${c.cash>0?"+":""}${money(c.cash)}` : ""}${c.pts ? ` 點點${c.pts>0?"+":""}${c.pts}` : ""}`);
 
   } else if (kind === "black") {
@@ -202,12 +219,13 @@ function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
 
   } else if (kind === "casino") {
     // 賭資先進銀行池，獎金再從池中支付；池子不足則只能領到池中餘額
-    t.cash -= S.casinoCost;
-    s.bank += S.casinoCost;
+    const cost = Math.max(0, Math.min(t.cash, S.casinoCost));
+    t.cash -= cost;
+    s.bank += cost;
     const draw = S.casinoPayouts[Math.floor(rnd()*S.casinoPayouts.length)];
     const win = Math.min(draw, s.bank);
     s.bank -= win; t.cash += win;
-    notes.push(`賭場：押 ${money(S.casinoCost)}，${win ? `拿回 ${money(win)}` : "全數落空"}${win < draw ? "（銀行餘額不足）" : ""}`);
+    notes.push(`賭場：押 ${money(cost)}，${win ? `拿回 ${money(win)}` : "全數落空"}${win < draw ? "（銀行餘額不足）" : ""}`);
 
   } else if (kind === "bank") {
     const take = Math.max(0, Math.round(s.bank * S.bankShare/100));
@@ -216,7 +234,16 @@ function landEffect(s, ti, notes, passCtl, rnd = Math.random) {
 
   } else if (kind === "worm") {
     const other = WORM_IDX.find(i => i !== t.pos);
-    t.pos = other; notes.push("蟲洞傳送");
+    if (other !== undefined) {
+      if ((t.pos < START_IDX && other >= START_IDX) || (t.pos > other && (START_IDX > t.pos || START_IDX <= other))) {
+        t.cash += S.lapBonus;
+        notes.push(`蟲洞躍遷經過起點 +${money(S.lapBonus)}`);
+      }
+      t.pos = other;
+      notes.push("蟲洞傳送");
+    } else {
+      notes.push("蟲洞共振中（無其他對應蟲洞）");
+    }
 
   } else if (kind === "jail") {
     t.jail = 1; notes.push("滾進監獄，下回合停留");
@@ -235,7 +262,10 @@ function costWithDiscount(s, t, base) {
   return t.discount ? Math.max(1, Math.ceil(base * s.settings.blackDiscount/100)) : base;
 }
 function buyGamble(s, ti, gi) {
-  const t = s.teams[ti], g = s.settings.gambles[gi];
+  const t = s.teams[ti];
+  if (!t) return {ok:false, msg:"隊伍不存在"};
+  const g = s.settings.gambles?.[gi];
+  if (!g) return {ok:false, msg:"找不到此抽獎項目"};
   const cost = costWithDiscount(s, t, g.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   t.pts -= cost; if (t.discount) t.discount = false;
@@ -243,15 +273,20 @@ function buyGamble(s, ti, gi) {
   return {ok:true};
 }
 function buyBuff(s, ti, bk) {
-  const t = s.teams[ti], b = s.settings.buffs[bk];
+  const t = s.teams[ti];
+  if (!t) return {ok:false, msg:"隊伍不存在"};
+  const b = s.settings.buffs?.[bk];
+  if (!b) return {ok:false, msg:"找不到此道具卡"};
   const cost = costWithDiscount(s, t, b.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
-  t.pts -= cost; t.buffs[bk] += 1; if (t.discount) t.discount = false;
+  t.pts -= cost; t.buffs[bk] = (t.buffs[bk] || 0) + 1; if (t.discount) t.discount = false;
   s.log.unshift(`${t.name} 取得「${b.name}」`);
   return {ok:true};
 }
 function upgradeBase(s, ti) {
   const t = s.teams[ti];
+  if (!t) return {ok:false, msg:"隊伍不存在"};
+  if (t.baseIdx === null) return {ok:false, msg:"尚未分配基地"};
   if (t.sold) return {ok:false, msg:"基地已賣出"};
   if (t.level >= s.settings.levels.length) return {ok:false, msg:"已達最高等級"};
   const need = s.settings.levels[t.level].up;
@@ -260,6 +295,7 @@ function upgradeBase(s, ti) {
   s.log.unshift(`${t.name} 基地升級為「${s.settings.levels[t.level-1].name}」`);
   return {ok:true};
 }
+
 function sellBase(s, ti) {
   const t = s.teams[ti];
   if (t.sold || t.baseIdx === null) return {ok:false, msg:"沒有可賣的基地"};
@@ -333,7 +369,9 @@ function playAttack(s, ti, kind, rnd = Math.random) {
   } else if (kind === "missile") {
     const rank = [...s.teams].sort((a,b) => netWorth(s,b) - netWorth(s,a));
     const mine = rank.findIndex(x => x.id === ti);
-    const target = rank[mine-1] || rank[mine+1];
+    let target = null;
+    if (mine > 0) target = rank[mine - 1];
+    else if (rank.length > 1) target = rank[1];
     if (!target) { t.pts += cost; s.disasters -= 1; return {ok:false, msg:"沒有可攻擊的對手"}; }
     msg = `鎖定 ${target.name}`;
     if (s.teams[target.id].buffs.shield > 0) s.teams[target.id].buffs.shield -= 1;
@@ -348,8 +386,6 @@ function playAttack(s, ti, kind, rnd = Math.random) {
   return {ok:true, hit};
 }
 
-
-
 /* ---------- 回合流程 ---------- */
 const PHASES = ["market","sell","shop","roll"];
 function nextPhase(s) {
@@ -362,7 +398,10 @@ function nextPhase(s) {
         if (t.jail > 0) {
           t.jail -= 1;
           t.rolled = true;
+          t.jailedThisTurn = true;
           s.log.unshift(`${t.name} 在監獄中，跳過本回合行動`);
+        } else {
+          t.jailedThisTurn = false;
         }
       });
     }
@@ -371,7 +410,7 @@ function nextPhase(s) {
   const d = s.disasters, th = s.settings.inflateThreshold;
   s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
   s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
-  s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; });
+  s.teams.forEach(t => { t.rolled = false; t.attackRounds = {}; t.jailedThisTurn = false; });
   s.log.unshift(`── 第 ${s.round} 回合開始（股市：${s.settings.marketNames[s.market]}）──`);
   return s;
 }

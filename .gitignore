@@ -2,3 +2,5 @@
 .dev.vars
 .env
 .DS_Store
+.agents/
+

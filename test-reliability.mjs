@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import worker, { GameRoom, normalizeGameState, teamActionError } from './src/worker.js';
 import { G } from './src/game-core.js';
+
+const appSource=await readFile(new URL('./public/app.js',import.meta.url),'utf8');
+assert.match(appSource,/viewer-dashboard/);
+assert.match(appSource,/team-command-hud/);
+assert.match(appSource,/host-console-nav/);
+assert.doesNotMatch(appSource,/bProjector/);
 
 const state=(phase,paused=false)=>({phase,paused});
 

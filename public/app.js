@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.39';
-import { G } from './game-core.js?v=2026.08.22.39';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.39';
+const BUILD_VERSION = '2026.08.22.40';
+import { G } from './game-core.js?v=2026.08.22.40';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.40';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -46,14 +46,16 @@ const App = {
   sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
-  hostDrafts:{}, hostSection:'flow', receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null,
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  hostDrafts:{}, hostSection:'flow', editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
 };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫」把';
 function campFooterHTML(){ return `<footer class="camp-footer">© 2026 ${esc(CAMP_NAME)} 版權所有</footer>`; }
+function entryBackHomeHTML(){return `<button type="button" class="entry-back-home" data-entry-home><span>←</span><b>回首頁</b></button>`;}
+function bindEntryBackHome(){document.querySelectorAll('[data-entry-home]').forEach(button=>button.onclick=()=>go('/'));}
 const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布房市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', settle:'最終結算', ended:'已結束', paused:'已暫停'};
 
 const roleNames = {host:'主持人', team:'隊輔', viewer:'觀眾', dev:'開發者'};
@@ -63,10 +65,8 @@ function loadAccess(){ try{ App.access.host=sessionStorage.getItem(accessKey('ho
 function saveAccess(role,password){ App.access[role]=password; try{ sessionStorage.setItem(accessKey(role),password); }catch{} }
 function clearAccess(role){ App.access[role]=''; try{ sessionStorage.removeItem(accessKey(role)); }catch{} }
 
-function navRolePath(){ return App.entry==='admin'?'/admin':App.entry==='team'?'/team':App.entry==='dev'?'/dev':'/'; }
-function updateNav(){ document.querySelectorAll('#bottomNav [data-route]').forEach(b=>{const active=b.dataset.route===navRolePath();b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}); }
 function currentPresentationTier(){return presentationTier({role:App.role||'',width:window.innerWidth,reducedMotion:Boolean(reducedMotion),hardwareConcurrency:navigator.hardwareConcurrency||8,deviceMemory:navigator.deviceMemory||8});}
-function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase),lifeHome=App.screen==='home'&&App.entry==='home',tier=currentPresentationTier(); const nav=$('bottomNav'); if(nav)nav.hidden=inGame||isDev||lifeHome; document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('life-home-mode',lifeHome);if(!lifeHome)document.body.classList.remove('life-intro-active'); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); ['cinematic','party','compact','lite','reduced'].forEach(level=>document.body.classList.toggle(`fx-${level}`,inGame&&tier===level)); updateNav(); syncUpdatePrompt(); }
+function syncChrome(){ const inGame=App.screen==='game'; const isDev=App.entry==='dev'; const viewerLive=inGame&&App.role==='viewer'&&App.state&&!['settle','ended'].includes(App.state.phase),lifeHome=App.screen==='home'&&App.entry==='home',tier=currentPresentationTier(); document.body.classList.toggle('in-game',inGame); document.body.classList.toggle('in-dev',isDev); document.body.classList.toggle('life-home-mode',lifeHome);if(!lifeHome)document.body.classList.remove('life-intro-active'); document.body.classList.toggle('viewer-live-mode',viewerLive); ['host','team','viewer','dev'].forEach(role=>document.body.classList.toggle(`role-${role}`,inGame&&App.role===role)); ['cinematic','party','compact','lite','reduced'].forEach(level=>document.body.classList.toggle(`fx-${level}`,inGame&&tier===level)); syncUpdatePrompt(); }
 function syncUpdatePrompt(){ const el=$('pwaUpdate');if(!el)return;el.hidden=!App.updateReady||App.screen==='game'; }
 function showUpdatePrompt(){ App.updateReady=true;syncUpdatePrompt(); }
 async function applyPwaUpdate(){
@@ -194,7 +194,8 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.battlePromptDone=null;
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
   const wrap=$('bwrap');
@@ -210,6 +211,7 @@ function activeFxStatus(){
   else if(App.fx.sell) currentDesc = `【${App.fx.sell.teamName || '隊伍'}】變賣基地`;
   else if(App.fx.purchase) currentDesc = `【${App.fx.purchase.teamName || '隊伍'}】購買道具`;
   else if(App.fx.teamMoment) currentDesc = `【${App.fx.teamMoment.teamName || '隊伍'}】${App.fx.teamMoment.title || '小隊事件'}`;
+  else if(App.fx.battlePrompt) currentDesc = '等待隊伍選擇付款或 BATTLE';
   else if(App.fx.attack) currentDesc = `【${App.fx.attack.teamName || '隊伍'}】${App.fx.attack.title || '特殊操作'}`;
   else if(App.fx.aftershock) currentDesc = '特殊操作棋盤餘波';
   else if(App.fx.assignment) currentDesc = '人生起點抽籤';
@@ -217,7 +219,7 @@ function activeFxStatus(){
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -257,7 +259,7 @@ function runNextFx(){
     clearTimeout(watchdog);
     runNextFx();
   };
-  watchdog=setTimeout(done,14000);
+  watchdog=task.type==='battlePrompt'?null:setTimeout(done,14000);
 
   try{
     switch(task.type){
@@ -280,6 +282,9 @@ function runNextFx(){
       case 'rank':
       case 'teamTurn':
         executeTeamMomentFx(task,done);
+        break;
+      case 'battlePrompt':
+        executeBattlePromptFx(task,done);
         break;
       case 'attack':
         executeAttackFx(task.attack,task.message,task.next,done);
@@ -378,6 +383,24 @@ function executeTeamMomentFx(task,done){
   if(App.role==='team')navigator.vibrate?.(moment==='shield'?[35,30,70]:moment==='turn'?[25,35,25]:[25]);
   renderFx();
   fxTimeout('teamMoment',()=>{App.fx.teamMoment=null;renderFx();done();},reducedMotion?800:1900);
+}
+
+function executeBattlePromptFx(task,done){
+  const battle=task.battle,teams=task.next?.teams||App.state?.teams||[];
+  if(!battle||Number(battle.attackerId)!==Number(App.teamId)||battle.status!=='awaiting_choice'){done();return;}
+  App.battlePromptDone=done;
+  App.fx.battlePrompt={battle:{...battle},attacker:teams[battle.attackerId],defender:teams[battle.defenderId]};
+  SoundFX.playAttackAlert('battle');
+  navigator.vibrate?.([35,45,70]);
+  renderFx();
+}
+
+function finishBattlePromptFx(){
+  if(!App.fx.battlePrompt&&!App.battlePromptDone)return;
+  App.fx.battlePrompt=null;
+  const done=App.battlePromptDone;App.battlePromptDone=null;
+  renderFx();
+  done?.();
 }
 
 function executeAssignmentFx(next,done){
@@ -628,6 +651,7 @@ function executeRollFx(task,done){
 function processGameFx(previous,next){
   if(!previous||!next)return;
   const teamLifeMoments=[];
+  if(App.fx.battlePrompt&&next.pendingBattle?.status!=='awaiting_choice')finishBattlePromptFx();
 
   // 1. Phase change or pause change
   if(previous.phase!==next.phase&&PHASE_FX[next.phase]){
@@ -711,6 +735,16 @@ function processGameFx(previous,next){
       enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,landPos:team.pos,targetPos:team.pos,rollVal});
     }
   });
+
+  const battleOpened=next.pendingBattle?.status==='awaiting_choice'&&(
+    !previous.pendingBattle||
+    previous.pendingBattle.attackerId!==next.pendingBattle.attackerId||
+    previous.pendingBattle.tileIndex!==next.pendingBattle.tileIndex||
+    previous.pendingBattle.round!==next.pendingBattle.round
+  );
+  if(battleOpened&&App.role==='team'&&Number(next.pendingBattle.attackerId)===Number(App.teamId)){
+    enqueueFx({type:'battlePrompt',battle:next.pendingBattle,next});
+  }
 
   // Team-local receipts and reactions must wait until dice and movement finish.
   teamLifeMoments.forEach(enqueueFx);
@@ -853,6 +887,7 @@ function entryURL(path){ return `${location.origin}${path}`; }
 function openGame(game, role, token='', teamId=null, accessToken=''){
   clearInterval(App.lobbyTimer);clearPendingAction();resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId; App.access[role]=accessToken||App.access[role]||''; App.screen='game'; App.tab=role==='host'?'host':'main'; App.state=null; App.connected=false;
   if(role==='team'||role==='viewer')App.audioReady=SoundFX.unlockAudio();else App.audioReady=SoundFX.isAudioReady();
+  preloadAttackArt();
   App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId,App.access[role]); App.socket.connect(); render(true);
 }
 
@@ -923,7 +958,7 @@ function renderHome(){
     $('igniteLifeSound').onclick=()=>{App.audioReady=SoundFX.unlockAudio();SoundFX.playFestivalIntro();$('igniteLifeSound').textContent='♪ 旅途已點亮';$('igniteLifeSound').disabled=true;};
     App.homeIntroTimer=setTimeout(()=>finishLifeIntro(true),6500);
   }
-  clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby(); updateNav();
+  clearInterval(App.lobbyTimer); App.lobbyTimer=setInterval(refreshLobby,8000); refreshLobby();
 }
 
 function renderGate(role){
@@ -933,7 +968,8 @@ function renderGate(role){
   const subtitle = dev ? '系統監控、D1 資料庫記錄與 DO 服務管理' : host ? '請輸入控制台密碼' : '輸入共用密碼後直接選隊';
   const cardTitle = dev ? '★ 開發者登入' : host ? '★ 主持人登入' : '★ 隊輔登入';
   const note = dev ? '驗證成功後可檢視 D1 資料庫、管理活動、查詢事件日誌與切換 DO 伺服器開關。' : host ? '這台裝置會保留活動連線，方便斷線或重新整理後恢復。密碼不會寫入網址。' : '驗證成功後會直接顯示目前隊伍，不需要房號或 PIN。密碼不會寫入網址。';
-  $('app').innerHTML=`<div class="hd"><div class="t1">${esc(title)}</div><div class="t2">${esc(subtitle)}</div></div><div class="card"><div class="ch">${esc(cardTitle)}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn ${dev?'gold':'green'}" id="accessLogin">登入</button><div class="note">${esc(note)}</div></div></div>${campFooterHTML()}`;
+  $('app').innerHTML=`${dev?'':entryBackHomeHTML()}<div class="hd"><div class="t1">${esc(title)}</div><div class="t2">${esc(subtitle)}</div></div><div class="card"><div class="ch">${esc(cardTitle)}</div><div class="cb"><input id="accessPassword" type="password" autocomplete="current-password" placeholder="密碼"><button class="btn ${dev?'gold':'green'}" id="accessLogin">登入</button><div class="note">${esc(note)}</div></div></div>${campFooterHTML()}`;
+  bindEntryBackHome();
   $('accessLogin').onclick=async()=>{
     const p=$('accessPassword').value||''; if(!p){toast('請輸入密碼',true);return;}
     try{
@@ -950,7 +986,7 @@ function renderGate(role){
       }
     }catch(e){toast('登入失敗：'+e.message,true);}
   };
-  $('accessPassword').onkeydown=e=>{if(e.key==='Enter')$('accessLogin').click();}; updateNav();
+  $('accessPassword').onkeydown=e=>{if(e.key==='Enter')$('accessLogin').click();};
 }
 
 async function devApi(path, options={}){
@@ -1659,7 +1695,8 @@ async function renderDevTools(container){
 }
 async function renderTeamHome(){
   if(!App.access.team) return renderGate('team');
-  $('app').innerHTML=`<div class="hd"><div class="t1">隊輔入口</div><div class="t2">正在取得目前活動與隊伍狀態</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div>${campFooterHTML()}`;
+  $('app').innerHTML=`${entryBackHomeHTML()}<div class="hd"><div class="t1">隊輔入口</div><div class="t2">正在取得目前活動與隊伍狀態</div></div><div class="card"><div class="cb" id="teamEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div>${campFooterHTML()}`;
+  bindEntryBackHome();
   $('teamLogout').onclick=()=>{clearSession();clearAccess('team');go('/');};
   try{
     const data=await api('/api/lobby'); const g=data.games?.[0]; const box=$('teamEntryBox');
@@ -1670,7 +1707,8 @@ async function renderTeamHome(){
 }
 async function renderAdminHome(){
   if(!App.access.host) return renderGate('host');
-  $('app').innerHTML=`<div class="hd"><div class="t1">主持人主控台</div><div class="t2">單一活動的建立、開始、暫停、結束與隊伍管理</div></div><div class="card"><div class="cb" id="adminEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="adminLogout">主持人登出</button></div></div>${campFooterHTML()}`;
+  $('app').innerHTML=`${entryBackHomeHTML()}<div class="hd"><div class="t1">主持人主控台</div><div class="t2">單一活動的建立、開始、暫停、結束與隊伍管理</div></div><div class="card"><div class="cb" id="adminEntryBox">正在檢查活動狀態…</div></div><div class="card"><div class="cb"><button class="btn sm ink" id="adminLogout">主持人登出</button></div></div>${campFooterHTML()}`;
+  bindEntryBackHome();
   $('adminLogout').onclick=()=>{clearAccess('host');go('/');};
   try{
     const data=await api('/api/lobby'); const g=data.games?.[0]; const box=$('adminEntryBox'); const sess=loadSession();
@@ -1695,7 +1733,8 @@ async function closeActivity(id){
 function showTeamJoin(game){
   App.screen='join'; App.gameMeta=game; App.gameId=game.id;
   const teams=game.teams?.length?game.teams:Array.from({length:Math.max(2,game.teamCount||G.BASE_IDX.length)},(_,i)=>({id:i,name:`第 ${i+1} 組`,color:'#8a8676',joined:false}));
-  $('app').innerHTML=`<div class="hd team-pick-head"><div class="t1">選擇你的隊伍</div><div class="t2">${esc(game.name||'目前活動')} · ${esc(phaseNames[game.status]||game.status)}</div></div><div class="card"><div class="ch">★ 點一下直接加入</div><div class="cb"><div class="note team-pick-note">共用密碼已通過。請確認隊名與顏色；標示「已有裝置」的隊伍仍可加入，但會先再次確認。</div><div class="team-pick-grid">${teams.map((t,i)=>`<button type="button" class="team-pick ${t.joined?'occupied':''}" data-i="${i}"><span class="team-pick-color" style="background:${esc(t.color)};color:${G.LIGHT_FG.includes(i)?'#14110f':'#fff'}">${i+1}</span><span class="team-pick-main"><b>${esc(t.name)}</b><small>第 ${i+1} 組</small></span><span class="team-pick-status ${t.joined?'online':''}">${t.joined?'已有裝置':'可以加入'}</span></button>`).join('')}</div><div class="team-pick-actions"><button class="btn sm outline" id="refreshTeams">更新隊伍狀態</button><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div></div>${campFooterHTML()}`;
+  $('app').innerHTML=`${entryBackHomeHTML()}<div class="hd team-pick-head"><div class="t1">選擇你的隊伍</div><div class="t2">${esc(game.name||'目前活動')} · ${esc(phaseNames[game.status]||game.status)}</div></div><div class="card"><div class="ch">★ 點一下直接加入</div><div class="cb"><div class="note team-pick-note">共用密碼已通過。請確認隊名與顏色；標示「已有裝置」的隊伍仍可加入，但會先再次確認。</div><div class="team-pick-grid">${teams.map((t,i)=>`<button type="button" class="team-pick ${t.joined?'occupied':''}" data-i="${i}"><span class="team-pick-color" style="background:${esc(t.color)};color:${G.LIGHT_FG.includes(i)?'#14110f':'#fff'}">${i+1}</span><span class="team-pick-main"><b>${esc(t.name)}</b><small>第 ${i+1} 組</small></span><span class="team-pick-status ${t.joined?'online':''}">${t.joined?'已有裝置':'可以加入'}</span></button>`).join('')}</div><div class="team-pick-actions"><button class="btn sm outline" id="refreshTeams">更新隊伍狀態</button><button class="btn sm ink" id="teamLogout">隊輔登出</button></div></div></div>${campFooterHTML()}`;
+  bindEntryBackHome();
 
   document.querySelectorAll('.team-pick').forEach(button=>button.onclick=()=>{
     const team=teams[Number(button.dataset.i)];if(!team)return;
@@ -1816,6 +1855,14 @@ function teamMomentFxHTML(){
   const particles=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
   return `<div class="team-moment team-moment-${fx.tone}" style="--team:${fx.color||'#f2c12e'}" aria-live="assertive"><div class="team-moment-rays" aria-hidden="true">${particles}</div><div class="team-moment-card"><small>${esc(fx.kicker)}</small><div class="team-moment-icon">${esc(fx.icon)}</div><h2>${esc(fx.title)}</h2>${fx.amount?`<strong>${esc(fx.amount)}</strong>`:''}<p>${esc(fx.teamName)} · ${esc(fx.detail)}</p></div></div>`;
 }
+function battleEncounterHTML(){
+  if(App.role!=='team'||App.teamId===null)return '';
+  const S=App.state,pending=App.fx.battlePrompt?.battle||S?.pendingBattle;
+  if(!pending||pending.status!=='awaiting_choice'||Number(pending.attackerId)!==Number(App.teamId))return '';
+  if(!App.fx.battlePrompt&&App.isFxRunning)return '';
+  const attacker=S.teams?.[pending.attackerId],defender=S.teams?.[pending.defenderId],battles=Number(attacker?.battles||0);
+  return `<div class="battle-encounter-overlay" aria-live="assertive" style="--attacker:${attacker?.color||'#e23b3b'};--defender:${defender?.color||'#3f86e0'}"><div class="battle-encounter-rays" aria-hidden="true">${Array.from({length:12},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><div class="battle-encounter-card"><small>BASE ENCOUNTER // DECISION REQUIRED</small><div class="battle-versus"><div style="--team:${attacker?.color||'#e23b3b'}"><i>${Number(pending.attackerId)+1}</i><b>${esc(attacker?.name||'本隊')}</b><span>挑戰者</span></div><em>VS</em><div style="--team:${defender?.color||'#3f86e0'}"><i>${Number(pending.defenderId)+1}</i><b>${esc(defender?.name||'基地持有者')}</b><span>基地持有者</span></div></div><h2>抵達對手基地！</h2><p>過夜費 <strong>${G.money(pending.amount)}</strong> 目前仍未扣款。選擇直接付款，或消耗一次 BATTLE 等待主持人裁決。</p><div class="battle-encounter-actions"><button type="button" class="btn gold" id="battlePayNow" ${App.busy?'disabled':''}><span>💰</span><b>直接付款</b><small>支付 ${G.money(pending.amount)}</small></button><button type="button" class="btn dark" id="battleFightNow" ${battles<=0||App.busy?'disabled':''}><span>⚔️</span><b>發動 BATTLE</b><small>${battles>0?`剩餘 ${battles} 次`:'次數已用完'}</small></button></div></div></div>`;
+}
 function audioWakeHTML(){
   if(!['viewer','team'].includes(App.role)||!App.sound||App.audioReady)return '';
   return `<div class="audio-wake"><button type="button" id="bAudioWake"><i>♪</i><span><b>${App.role==='viewer'?'點燃祭典之聲':'喚醒小隊音效'}</b><small>點一下開啟像素短音效</small></span></button></div>`;
@@ -1840,6 +1887,8 @@ function teamStatusHTML(){
 }
 const BUFF_INFO={pass:{icon:'🎫',title:'通行證',rarity:'RARE',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',rarity:'MAGIC',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',rarity:'EPIC',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
 const PHYSICAL_ITEM_INFO=[{icon:'🧧',rarity:'COMMON',desc:'實體紅包或獎項憑證，由關主現場交付。'},{icon:'🎯',rarity:'COMMON',desc:'實體戳戳樂遊戲券，請向關主兌換。'},{icon:'🎟️',rarity:'RARE',desc:'實體樂透券，保留至現場開獎或兌換。'},{icon:'💎',rarity:'EPIC',desc:'高風險實體獎項憑證，請妥善保管。'}];
+const ATTACK_ART={quake:'./assets/fx-quake-v1.png',missile:'./assets/fx-missile-v1.png',typhoon:'./assets/fx-typhoon-v1.png',wildfire:'./assets/fx-wildfire-v1.png'};
+function preloadAttackArt(){if(navigator.connection?.saveData)return;const load=()=>Object.values(ATTACK_ART).forEach(src=>{const image=new Image();image.decoding='async';image.src=src;});if('requestIdleCallback'in window)requestIdleCallback(load,{timeout:4500});else setTimeout(load,1800);}
 function rpgSlot({icon,name,count,desc,rarity='COMMON',active=false}){const owned=Number(count)>0||active;return `<div class="rpg-slot rarity-${rarity.toLowerCase()} ${owned?'owned':'empty'} ${active?'active':''}"><div class="slot-icon"><i>${icon}</i>${Number(count)>0?`<b>×${Number(count)}</b>`:''}</div><div class="slot-copy"><small>${rarity}</small><strong>${esc(name)}</strong><span>${esc(desc)}</span></div></div>`;}
 function backpackHTML(me){const S=App.state,physical=S.settings.gambles.map((g,i)=>{const info=PHYSICAL_ITEM_INFO[i]||{icon:'🎁',rarity:'COMMON',desc:'活動現場發放的實體物品。'};return rpgSlot({icon:info.icon,name:g.name,count:me.items?.[`g${i}`]||0,desc:info.desc,rarity:info.rarity});}).join(''),buffs=Object.entries(BUFF_INFO).map(([k,info])=>rpgSlot({icon:info.icon,name:info.title,count:me.buffs?.[k]||0,desc:info.desc,rarity:info.rarity,active:k==='shield'&&Number(me.buffs?.shield)>0})).join(''),usedSlots=Object.values(me.buffs||{}).filter(n=>Number(n)>0).length+Object.values(me.items||{}).filter(n=>Number(n)>0).length+(me.battles>0?1:0)+(me.discount?1:0);return `<div class="card backpack-card rpg-backpack"><div class="ch">🎒 PIXEL ADVENTURER INVENTORY</div><div class="cb"><div class="bag-hero" style="--team-color:${me.color}"><div class="bag-avatar">${me.id+1}</div><div><small>PARTY INVENTORY</small><b>${esc(me.name)}</b><span>LV${me.level} · 第 ${S.round} 回合</span></div><div class="bag-wallet"><span>💰 ${G.money(me.cash)}</span><span>✨ ${me.pts} 點</span><span>▦ ${usedSlots}/10 格</span></div></div><div class="bag-section"><div class="bag-section-title"><span>◆ 冒險道具</span><small>BUFF & SKILL</small></div><div class="rpg-grid">${buffs}${rpgSlot({icon:'⚔️',name:'BATTLE',count:me.battles,desc:'踩到他人基地時發動；攻方勝免付，守方勝支付原過夜費。',rarity:'LEGEND'})}${rpgSlot({icon:'🏴',name:'黑市折扣',count:0,active:Boolean(me.discount),desc:me.discount?'下一次商店消費會自動套用折扣。':'目前沒有啟用中的黑市折扣。',rarity:'RARE'})}</div></div><div class="bag-section physical"><div class="bag-section-title"><span>◆ 實體物品</span><small>PHYSICAL LOOT</small></div><div class="rpg-grid">${physical}</div></div><div class="inventory-note">所有購買紀錄會立即進背包；增益卡跨回合保留，實體物品請配合現場發放與兌換。</div></div></div>`;}
 function teamControls(){
@@ -1855,7 +1904,7 @@ function teamControls(){
     const pending=S.pendingBattle,myPending=pending&&Number(pending.attackerId)===me.id;
     if(myPending&&pending.status==='awaiting_choice'){
       const defender=S.teams[pending.defenderId];
-      h+=`<div class="battle-choice"><div class="battle-kicker">BASE ENCOUNTER</div><h3>抵達 ${esc(defender?.name||'對手')} 的基地</h3><p>過夜費 <b>${G.money(pending.amount)}</b> 尚未扣款。請選擇直接付款，或消耗一次 BATTLE 挑戰。</p><div class="battle-actions"><button class="btn sm gold" id="bPayLanding">直接付款</button><button class="btn sm dark" id="bStartBattle" ${me.battles<=0?'disabled':''}>⚔️ 發動 BATTLE（剩 ${me.battles}）</button></div></div>`;
+      h+=`<div class="battle-choice"><div class="battle-kicker">BASE ENCOUNTER</div><h3>抵達 ${esc(defender?.name||'對手')} 的基地</h3><p>過夜費 <b>${G.money(pending.amount)}</b> 尚未扣款；移動演出完成後會出現付款或 BATTLE 選擇視窗。</p></div>`;
     }else if(myPending&&pending.status==='awaiting_host'){
       h+=`<div class="battle-choice waiting"><div class="battle-kicker">BATTLE IN PROGRESS</div><h3>⚔️ 等待主持人裁決</h3><p>過夜費 ${G.money(pending.amount)} 仍未扣款；攻方勝免付，守方勝才會正式付款。</p></div>`;
     }else if(me.jail>0){
@@ -1915,10 +1964,10 @@ function teamControls(){
 }
 function attackDescription(S,k,a){const m={quake:`隨機震央，7×7 範圍基地支付 ${G.money(a.repair)} 修繕費；震央為 1.5 倍。`,missile:`鎖定排行榜相鄰隊伍，使其支付 ${G.money(a.repair)} 修繕費。`,typhoon:`隨機 7×7 暴風圈；外圈支付 ${G.money(a.repair)}，颱風眼反而獲得 ${G.money(a.eyeBonus)}。`,wildfire:`隨機延燒 1–2 個橫排，範圍基地支付 ${G.money(a.repair)} 修繕費。`};return m[k]||'發動特殊操作。';}
 function attackSceneHTML(kind){
-  if(kind==='quake')return `<div class="attack-scene quake-scene"><svg viewBox="0 0 1000 700" aria-hidden="true"><path d="M510 0L455 132l78 72-118 110 75 74-156 142 72 170"/><path d="M475 165L320 108l38 104-190 62"/><path d="M456 360L630 275l-16 116 210 95"/><path d="M402 520L238 485l-90 112"/></svg>${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
-  if(kind==='missile')return `<div class="attack-scene missile-scene"><div class="target-reticle"><i></i><i></i><i></i></div><div class="missile-projectile"><b>➤</b><i></i></div><div class="impact-core"></div>${Array.from({length:12},(_,i)=>`<i class="blast" style="--i:${i}"></i>`).join('')}</div>`;
-  if(kind==='typhoon')return `<div class="attack-scene typhoon-scene"><div class="vortex">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b>颱</b></div>${Array.from({length:18},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div>`;
-  return `<div class="attack-scene wildfire-scene"><div class="fire-wall">${Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>${Array.from({length:20},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div>`;
+  if(kind==='quake')return `<div class="attack-scene quake-scene"><img class="attack-art quake-art" src="${ATTACK_ART.quake}" alt="" aria-hidden="true"><svg viewBox="0 0 1000 700" aria-hidden="true"><path d="M510 0L455 132l78 72-118 110 75 74-156 142 72 170"/><path d="M475 165L320 108l38 104-190 62"/><path d="M456 360L630 275l-16 116 210 95"/><path d="M402 520L238 485l-90 112"/></svg>${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<div class="seismic-ring"></div></div>`;
+  if(kind==='missile')return `<div class="attack-scene missile-scene"><div class="target-reticle"><i></i><i></i><i></i></div><div class="missile-projectile"><i></i><img class="attack-art missile-art" src="${ATTACK_ART.missile}" alt="" aria-hidden="true"></div><div class="impact-core"></div>${Array.from({length:12},(_,i)=>`<i class="blast" style="--i:${i}"></i>`).join('')}</div>`;
+  if(kind==='typhoon')return `<div class="attack-scene typhoon-scene"><img class="attack-art typhoon-art" src="${ATTACK_ART.typhoon}" alt="" aria-hidden="true"><div class="vortex">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}<b></b></div>${Array.from({length:18},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div>`;
+  return `<div class="attack-scene wildfire-scene"><img class="attack-art wildfire-art" src="${ATTACK_ART.wildfire}" alt="" aria-hidden="true"><div class="fire-wall">${Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>${Array.from({length:20},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div>`;
 }
 function cfgHTML(){
   const S=App.state,f=(label,path,val,suf='')=>`<label class="fl"><span>${label}</span><input class="cfg" data-p="${path}" type="number" min="0" value="${val}"><span class="u">${suf}</span></label>`;
@@ -2063,7 +2112,7 @@ function hostPanel(){
     if(S.phase!=='ended')h+=`<section class="host-work-card finish"><div class="host-work-title"><span>🏆 結算控制</span><small>活動尾聲才使用</small></div><div class="host-finish-actions">${S.phase==='settle'?'<button class="btn sm purple" id="bResume">↩ 返回遊戲</button>':'<button class="btn sm gold" id="bSettle">進行最終結算</button>'}<button class="btn sm dark" id="bEnd">結束並封存活動</button></div></section>`;
   }
   if(section==='teams'){
-    h+=`<div class="host-section-intro"><b>隊伍與裝置</b><span>調整名稱、連線狀態、現金與諂媚點數。</span></div><div class="host-team-columns"><section class="host-work-card"><div class="host-work-title"><span>隊伍名稱</span><small>一行一隊</small></div><textarea id="teamNames">${esc(S.teams.map(t=>t.name).join('\n'))}</textarea><button class="btn sm green" id="saveNames">儲存名稱</button><div class="host-work-title"><span>隊輔連線</span><small>${S.teams.filter(t=>t.joined).length} 台在線</small></div><div class="team-connection-list">${S.teams.map((t,i)=>`<div class="team-connection"><span class="sw" style="background:${t.color}">${i+1}</span><span>${esc(t.name)}<small>${t.joined?'已連線':'未連線'}</small></span>${t.joined?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div>`).join('')}</div></section><section class="host-work-card"><div class="host-work-title"><span>快速調整</span><small>輸入正數增加、負數扣除</small></div>${S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">${G.money(t.cash)}／${t.pts} 點</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" inputmode="numeric" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">套用</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" inputmode="numeric" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">套用</button></div></div>`).join('')}</section></div>`;
+    h+=`<div class="host-section-intro"><b>隊伍與裝置</b><span>在隊輔連線列表直接修改隊名、查看裝置狀態並調整資源。</span></div><div class="host-team-columns"><section class="host-work-card"><div class="host-work-title"><span>隊輔連線</span><small>${S.teams.filter(t=>t.joined).length} 台在線</small></div><div class="team-connection-list">${S.teams.map((t,i)=>{const editing=App.editingTeamName===i,draft=App.hostDrafts[`name:${i}`]??t.name;return `<div class="team-connection ${editing?'editing':''}"><span class="sw" style="background:${t.color}">${i+1}</span><div class="team-connection-copy">${editing?`<input class="team-name-edit" data-i="${i}" value="${esc(draft)}" maxlength="30" aria-label="修改第 ${i+1} 組隊名">`:`<b>${esc(t.name)}</b><small>${t.joined?'● 已連線':'○ 未連線'}</small>`}</div><div class="team-connection-actions">${editing?`<button type="button" class="team-name-save" data-i="${i}" title="儲存隊名" aria-label="儲存隊名">✓</button><button type="button" class="team-name-cancel" data-i="${i}" title="取消修改" aria-label="取消修改">×</button>`:`<button type="button" class="team-name-edit-button" data-i="${i}" title="修改 ${esc(t.name)}" aria-label="修改 ${esc(t.name)}">✎</button>`}${t.joined&&!editing?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div></div>`;}).join('')}</div></section><section class="host-work-card"><div class="host-work-title"><span>快速調整</span><small>輸入正數增加、負數扣除</small></div>${S.teams.map((t,i)=>`<div class="adj2"><div class="sw" style="background:${t.color}">${i+1}</div><div class="an2">${esc(t.name)}<span class="dim">${G.money(t.cash)}／${t.pts} 點</span></div><div class="ain"><input class="cash" data-i="${i}" type="number" inputmode="numeric" placeholder="現金"><button class="btn xs gold csgo" data-i="${i}">套用</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" inputmode="numeric" placeholder="點數"><button class="btn xs blue ptgo" data-i="${i}">套用</button></div></div>`).join('')}</section></div>`;
   }
   if(section==='rules')h+=`<div class="host-section-intro"><b>遊戲規則與數值</b><span>所有設定會在按下儲存後一次驗證套用。</span></div><div class="host-rules-panel">${cfgHTML()}</div>`;
   if(section==='history')h+=`<div class="host-section-intro"><b>歷史與稽核紀錄</b><span>查閱 Durable Object / D1 保存的操作事件。</span></div><section class="host-work-card"><button class="btn sm outline" id="showHistory">載入 D1 歷史紀錄</button><div id="historyBox"></div></section>`;
@@ -2071,11 +2120,11 @@ function hostPanel(){
 }
 function captureHostDrafts(){
   if(App.role!=='host')return;
-  document.querySelectorAll('.cash[data-i],.pts[data-i],.cfg[data-p],#teamNames').forEach(el=>{let key=el.id==='teamNames'?'teamNames':el.classList.contains('cash')?`cash:${el.dataset.i}`:el.classList.contains('pts')?`pts:${el.dataset.i}`:`cfg:${el.dataset.p}`;if(el.value!=='')App.hostDrafts[key]=el.value;});
+  document.querySelectorAll('.cash[data-i],.pts[data-i],.cfg[data-p],.team-name-edit[data-i]').forEach(el=>{let key=el.classList.contains('team-name-edit')?`name:${el.dataset.i}`:el.classList.contains('cash')?`cash:${el.dataset.i}`:el.classList.contains('pts')?`pts:${el.dataset.i}`:`cfg:${el.dataset.p}`;if(el.value!=='')App.hostDrafts[key]=el.value;});
 }
 function restoreHostDrafts(){
   if(App.role!=='host')return;
-  document.querySelectorAll('.cash[data-i],.pts[data-i],.cfg[data-p],#teamNames').forEach(el=>{const key=el.id==='teamNames'?'teamNames':el.classList.contains('cash')?`cash:${el.dataset.i}`:el.classList.contains('pts')?`pts:${el.dataset.i}`:`cfg:${el.dataset.p}`;if(Object.prototype.hasOwnProperty.call(App.hostDrafts,key))el.value=App.hostDrafts[key];});
+  document.querySelectorAll('.cash[data-i],.pts[data-i],.cfg[data-p],.team-name-edit[data-i]').forEach(el=>{const key=el.classList.contains('team-name-edit')?`name:${el.dataset.i}`:el.classList.contains('cash')?`cash:${el.dataset.i}`:el.classList.contains('pts')?`pts:${el.dataset.i}`:`cfg:${el.dataset.p}`;if(Object.prototype.hasOwnProperty.call(App.hostDrafts,key))el.value=App.hostDrafts[key];});
 }
 function renderGame(){
   captureHostDrafts();
@@ -2116,10 +2165,11 @@ function renderGame(){
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();
   const teamMomentFx=teamMomentFxHTML();
+  const battleEncounter=battleEncounterHTML();
   const audioWake=audioWakeHTML();
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${assignmentFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${battleEncounter}${assignmentFx}${attackFx}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }
@@ -2200,7 +2250,7 @@ function bindGame(){
     };
   });
   if(App.role==='team'&&App.teamId!==null){
-    const me=S.teams[App.teamId];bindDiceGesture();bind('bReroll',()=>ask('使用重骰卡？','會消耗一張重骰卡，並立即重新取得本組擲骰權限。',()=>send('reroll')));bind('bPayLanding',()=>ask('直接支付過夜費？',`將正式支付 ${G.money(S.pendingBattle?.amount||0)} 給基地持有隊伍。`,()=>send('resolveLanding',{choice:'pay'})));bind('bStartBattle',()=>ask('發動 BATTLE？','將消耗一次 BATTLE，過夜費暫不扣款，等待主持人裁決。',()=>send('resolveLanding',{choice:'battle'})));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
+    const me=S.teams[App.teamId];bindDiceGesture();bind('bReroll',()=>ask('使用重骰卡？','會消耗一張重骰卡，並立即重新取得本組擲骰權限。',()=>send('reroll')));bind('battlePayNow',()=>send('resolveLanding',{choice:'pay'},{preserveView:true}));bind('battleFightNow',()=>send('resolveLanding',{choice:'battle'},{preserveView:true}));bind('bUp',()=>send('upgrade'));bind('bSell',()=>send('sell'));bind('bBuyBack',()=>send('buyBack'));
     document.querySelectorAll('.atk').forEach(b=>b.onclick=()=>{const kind=b.dataset.k,a=S.settings.attacks[kind],cost=G.costWithDiscount(S,me,a.cost);ask(`發動「${a.name}」？`,`${esc(attackDescription(S,kind,a))}<br>將消耗 ${cost} 點諂媚點數，本回合不能再次發動同一招。`,()=>send('attack',{kind}));});document.querySelectorAll('.gam').forEach(b=>b.onclick=()=>send('gamble',{index:Number(b.dataset.i)}));document.querySelectorAll('.buf').forEach(b=>b.onclick=()=>send('buff',{kind:b.dataset.k}));
   }
   if(App.role==='host'){
@@ -2229,7 +2279,11 @@ function bindGame(){
     document.querySelectorAll('.battle-result').forEach(b=>b.onclick=()=>{const outcome=b.dataset.outcome,label=outcome==='attacker'?'攻方獲勝並免付過夜費':'守方獲勝並收取原過夜費';ask('確認 BATTLE 裁決？',label,()=>send('resolveBattle',{outcome}));});
 
     document.querySelectorAll('.kick').forEach(b=>b.onclick=()=>ask('踢出隊輔？','會關閉該隊目前的 WebSocket 連線，隊伍狀態回到未連線。',()=>send('kickTeam',{teamId:Number(b.dataset.i)})));
-    bind('saveNames',()=>{const names=$('teamNames').value.split(/\r?\n/).map(x=>x.trim());delete App.hostDrafts.teamNames;send('renameTeams',{names});});bind('showHistory',loadHistory);
+    document.querySelectorAll('.team-name-edit-button').forEach(button=>button.onclick=()=>{const i=Number(button.dataset.i),team=S.teams[i];if(!team)return;App.editingTeamName=i;App.hostDrafts[`name:${i}`]=team.name;render(true);const input=document.querySelector(`.team-name-edit[data-i="${i}"]`);input?.focus();input?.select();});
+    document.querySelectorAll('.team-name-edit').forEach(input=>{input.oninput=()=>{App.hostDrafts[`name:${input.dataset.i}`]=input.value;};input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();document.querySelector(`.team-name-save[data-i="${input.dataset.i}"]`)?.click();}else if(event.key==='Escape'){event.preventDefault();document.querySelector(`.team-name-cancel[data-i="${input.dataset.i}"]`)?.click();}};});
+    document.querySelectorAll('.team-name-save').forEach(button=>button.onclick=()=>{const i=Number(button.dataset.i),input=document.querySelector(`.team-name-edit[data-i="${i}"]`),name=String(input?.value||'').trim();if(!name){toast('隊伍名稱不能留白',true);input?.focus();return;}const names=S.teams.map((team,index)=>index===i?name:team.name);delete App.hostDrafts[`name:${i}`];App.editingTeamName=null;send('renameTeams',{names},{preserveView:true});});
+    document.querySelectorAll('.team-name-cancel').forEach(button=>button.onclick=()=>{const i=Number(button.dataset.i);delete App.hostDrafts[`name:${i}`];App.editingTeamName=null;render(true);});
+    bind('showHistory',loadHistory);
     document.querySelectorAll('.mk').forEach(b=>b.onclick=()=>send('setMarket',{kind:b.dataset.k}));document.querySelectorAll('.unl').forEach(b=>b.onclick=()=>send('unlock',{index:Number(b.dataset.i)}));
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const input=document.querySelector(`.cash[data-i="${b.dataset.i}"]`),v=Number(input.value);if(Number.isFinite(v)){delete App.hostDrafts[`cash:${b.dataset.i}`];input.value='';send('adjustCash',{teamId:Number(b.dataset.i),amount:v},{preserveView:true});}});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const input=document.querySelector(`.pts[data-i="${b.dataset.i}"]`),v=Number(input.value);if(Number.isFinite(v)){delete App.hostDrafts[`pts:${b.dataset.i}`];input.value='';send('adjustPts',{teamId:Number(b.dataset.i),amount:v},{preserveView:true});}});
     bind('bSaveCfg',()=>{const entries=[...document.querySelectorAll('.cfg')].map(inp=>({path:inp.dataset.p,value:Number(inp.value)}));Object.keys(App.hostDrafts).filter(k=>k.startsWith('cfg:')).forEach(k=>delete App.hostDrafts[k]);send('setConfigs',{entries});});
@@ -2245,7 +2299,6 @@ function bootApp(){
   try{
     loadAccess(); App.entry=routeEntry();
     $('modalClose').onclick=()=>{$('modal').style.display='none';}; $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none';};
-    document.querySelectorAll('#bottomNav [data-route]').forEach(b=>b.onclick=()=>go(b.dataset.route));
     $('applyUpdate')?.addEventListener('click',applyPwaUpdate); enableInstallPrompt(); registerPWA();
     const sess=loadSession(); if(sess?.accessToken&&!App.access[sess.role]) App.access[sess.role]=sess.accessToken;
     const canResume=(App.entry==='admin'&&sess?.role==='host'&&App.access.host)||(App.entry==='team'&&sess?.role==='team'&&App.access.team);

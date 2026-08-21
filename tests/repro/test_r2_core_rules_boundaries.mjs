@@ -26,6 +26,10 @@ function testInsolventNegativeCash() {
   s.teams[1].pos = 2;
   G.landEffect(s, 1, [], () => 0);
 
+  assert.ok(s.pendingBattle, 'Landing fee must remain pending until the team chooses pay or BATTLE');
+  assert.equal(s.teams[1].cash, 100, 'Cash must remain frozen while the BATTLE decision is pending');
+  assert.equal(G.resolvePendingBattle(s, 1, 'pay').ok, true, 'Direct payment should resolve the pending landing fee');
+
   console.log(`  Debtor initial cash: $100 | Stay fee owed: $800`);
   console.log(`  Debtor final cash: $${s.teams[1].cash}`);
   console.log(`  Payee final cash: $${s.teams[0].cash} (+$${s.teams[0].cash - 2000})`);
@@ -127,11 +131,13 @@ function testPassCardMultiTollWaiver() {
   s.teams[2].baseIdx = 6; s.teams[2].level = 2; // passing toll = $60
   s.teams[3].baseIdx = 10; s.teams[3].level = 3; // stay fee = $800
 
-  // Moves 9 steps: passes Base 2 (1 pass card consumed), passes Base 6 ($60 cash paid), lands on Base 10 ($800 cash paid)
+  // Moves 9 steps: passes Base 2 (1 pass card consumed), passes Base 6 ($60 cash paid), lands on Base 10 (fee frozen pending choice)
   G.applyMove(s, 0, 9, () => 0);
 
   console.log(`  Team 0 final cash: $${s.teams[0].cash} | Remaining passes: ${s.teams[0].buffs.pass}`);
   assert.equal(s.teams[0].buffs.pass, 0, 'Pass card was consumed for first toll');
+  assert.equal(s.teams[0].cash, 940, 'Only the passed-base toll is charged before the landing choice');
+  assert.equal(G.resolvePendingBattle(s, 0, 'pay').ok, true, 'Direct payment should settle the landing fee');
   assert.equal(s.teams[0].cash, 140, 'Remaining fees paid from cash: $1000 - $60 - $800 = $140');
   console.log('  ✔ VULN-CORE-05 Successfully Patched: Pass card deducted per fee event.');
 }

@@ -969,7 +969,7 @@
             </div>
 
             <div class="form-row" style="margin-top: 12px;">
-              <label>股市檔位：</label>
+              <label>房市檔位：</label>
               <select id="market-select" class="form-select">
                 <option value="bubble">泡沫 (Bubble ×2.5)</option>
                 <option value="hot">熱絡 (Hot ×1.5)</option>
@@ -1280,7 +1280,7 @@
       casino:{n:"賭場",bg:"#9450d8",fg:"#ffffff",desc:"押 $150 進行隨機抽獎。"},
       stage:{n:"關卡",bg:"#ffffff",fg:"#1f7a2e",desc:"關主解封後觸發特殊關卡技能。"},
       worm:{n:"蟲洞",bg:"#2a0a0a",fg:"#f0908a",desc:"穿梭傳送到對應的另一個蟲洞格！"},
-      exch:{n:"交易所",bg:"#57a3a3",fg:"#0d2e2e",desc:"查看命運牌庫或市場資訊。"},
+      exch:{n:"房市中心",bg:"#57a3a3",fg:"#0d2e2e",desc:"查看本回合房產市場資訊。"},
       jail:{n:"監獄",bg:"#5f5f5f",fg:"#ffffff",desc:"下一回合在此停留。"},
       bank:{n:"銀行",bg:"#2bb0b0",fg:"#0a3838",desc:"銀行密道：幹走銀行池 50% 資金！"},
       start:{n:"起點",bg:"#141414",fg:"#ffe14d",desc:"起點：經過或停留獲得繞圈獎勵 +$300。"},
@@ -1342,7 +1342,7 @@
       market: 'flat',
       marketRates: { bubble: 2.5, hot: 1.5, flat: 1.0, slump: 0.7, crash: 0.4 },
       marketNames: { bubble: '泡沫', hot: '熱絡', flat: '平穩', slump: '低迷', crash: '崩盤' },
-      phaseNames: { market: '股市公布', sell: '基地買賣', shop: '商店道具', roll: '擲骰移動' },
+      phaseNames: { market: '房市公布', sell: '基地買賣', shop: '商店道具', roll: '擲骰移動' },
       teams: [
         { id: 0, name: '第 1 組 (紅)', color: TEAM_COLORS[0], pos: START_IDX, cash: 2000, pts: 0, baseIdx: BASE_IDX[0], level: 1, sold: false, jail: 0 },
         { id: 1, name: '第 2 組 (藍)', color: TEAM_COLORS[1], pos: START_IDX, cash: 2000, pts: 0, baseIdx: BASE_IDX[1], level: 2, sold: false, jail: 0 },
@@ -1492,7 +1492,7 @@
           </div>
           <div class="hud-phase">${phaseName}</div>
           <div class="hud-market">
-            <span>股市 ${marketName}</span>
+            <span>房市 ${marketName}</span>
             <b>×${marketRate}</b>
           </div>
           <div class="hud-roll">
@@ -2042,7 +2042,7 @@
 
       document.getElementById('market-select').addEventListener('change', (e) => {
         State.market = e.target.value;
-        addLog(`📈 股市調整為【${State.marketNames[State.market]}】(倍率 ×${State.marketRates[State.market]})`);
+        addLog(`🏠 房市調整為【${State.marketNames[State.market]}】(倍率 ×${State.marketRates[State.market]})`);
         renderBoard();
       });
 

@@ -22,6 +22,10 @@ assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setC
 assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfigs',{entries:[{path:'attacks.quake.cost',value:7},{path:'attacks.missile.cost',value:6}]}),undefined);
 assert.equal(configurable.settings.attacks.quake.cost,7);
 assert.equal(configurable.settings.attacks.missile.cost,6);
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfigs',{entries:[{path:'diceCount',value:3},{path:'attacks.quake.repair',value:888},{path:'buffs.shield.cost',value:12}]}),undefined);
+assert.equal(configurable.settings.diceCount,3);
+assert.equal(configurable.settings.attacks.quake.repair,888);
+assert.equal(configurable.settings.buffs.shield.cost,12);
 configurable.phase='roll';
 configurable.round=1;
 configurable.teams[0].pts=100;
@@ -42,6 +46,20 @@ const ranked = G.rankTeams(settleState);
 assert.equal(ranked[0].id, 1);
 assert.equal(settleRoom.applyAction(settleState, {role:'host', teamId:null}, 'resumeGame'), undefined);
 assert.equal(settleState.phase, 'roll');
+
+const rollPermissionState = G.freshState('ROLL-PERMISSION', 2);
+rollPermissionState.phase = 'roll';
+rollPermissionState.settings.diceCount = 3;
+assert.match(configRoom.applyAction(rollPermissionState,{role:'team',teamId:0},'roll',{}).error,/主持人允許/);
+assert.equal(configRoom.applyAction(rollPermissionState,{role:'host',teamId:null},'allowRoll',{teamId:0}),undefined);
+assert.equal(rollPermissionState.activeTeamId,0);
+assert.equal(configRoom.applyAction(rollPermissionState,{role:'team',teamId:0},'roll',{}),undefined);
+assert.equal(rollPermissionState.teams[0].lastDice.length,3);
+assert.equal(rollPermissionState.teams[0].lastDice.reduce((sum,n)=>sum+n,0),rollPermissionState.teams[0].lastRoll);
+assert.equal(rollPermissionState.activeTeamId,null);
+rollPermissionState.teams[0].joined=true;
+assert.equal(configRoom.applyAction(rollPermissionState,{role:'team',teamId:0},'leaveTeam',{}),undefined);
+assert.equal(rollPermissionState.teams[0].joined,false);
 
 
 let proxiedRequest;
@@ -95,5 +113,18 @@ room.commit=async (next)=>{ room.state=next; };
 await room.webSocketMessage(hostSocket,JSON.stringify({type:'action',action:'settleGame',actionId:'test-settle-1'}));
 assert.equal(hostSocket.sent.find(m=>m.type==='action_ok')?.actionId,'test-settle-1');
 assert.equal(room.state.phase,'settle');
+
+const receiptRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});
+receiptRoom.loaded=true;
+receiptRoom.lastActivityAt=Date.now();
+receiptRoom.meta={id:'RECEIPT',name:'收據測試',teamCount:2,hostTokenHash:'unused'};
+receiptRoom.state=G.freshState('RECEIPT',2);
+receiptRoom.commit=async next=>{receiptRoom.state=next;};
+const receiptSocket=pendingSocket();
+receiptSocket.serializeAttachment({role:'host',teamId:null});
+await receiptRoom.webSocketMessage(receiptSocket,JSON.stringify({type:'action',action:'adjustCash',payload:{teamId:0,amount:250},actionId:'receipt-1'}));
+assert.equal(receiptRoom.state.receipts.length,1);
+assert.equal(receiptRoom.state.receipts[0].cashDelta,250);
+assert.equal(receiptRoom.state.receipts[0].afterCash,receiptRoom.state.teams[0].cash);
 
 console.log('reliability phase-guard, team-picker and control-header tests passed');

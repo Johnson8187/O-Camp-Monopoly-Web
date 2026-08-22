@@ -140,12 +140,55 @@ input.code{font-family:'Press Start 2P',monospace;font-size:19px;letter-spacing:
 .pins i.moving{animation:tokenHop3D .44s cubic-bezier(.2,.8,.25,1) infinite both;z-index:25!important}
 .pins i.more{background:#14110f;color:#f2c12e;border-color:#f2c12e;font-size:6px}
 
-.moving-token{position:absolute;z-index:35;left:0;top:0;width:23px;height:23px;pointer-events:none;transform:translate3d(var(--token-x),var(--token-y),46px);transition:transform .58s cubic-bezier(.2,.72,.18,1);will-change:transform;transform-style:preserve-3d}
-.moving-token.no-transition{transition:none!important}
-.moving-token span{width:23px;height:23px;display:grid;place-items:center;border:3px solid #14110f;border-radius:5px;background:var(--token-color);color:var(--token-fg);box-shadow:0 7px 0 #1a2340,0 13px 12px rgba(20,17,15,.32);font:10px/1 'Press Start 2P',monospace;animation:movingTokenStride .42s cubic-bezier(.36,.05,.24,1) infinite;will-change:transform}
+/* ===================================================================
+   2.5D PIXEL PAWN SPRITE SYSTEM & SMART GARRISON STACKING (R1, R2, R3)
+   =================================================================== */
+.pixel-pawn-wrapper{position:relative;width:24px;height:28px;display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-end;pointer-events:none;user-select:none;transform-style:preserve-3d;filter:drop-shadow(0 2px 3px rgba(20,17,15,.45))}
+.pawn-body-container{position:relative;width:24px;height:28px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;animation:pawnIdleBounce 1.8s ease-in-out infinite;animation-delay:var(--pawn-delay,0s);transform-origin:50% 100%;will-change:transform}
+.pawn-shadow{position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);width:18px;height:5px;border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(20,17,15,.65) 0%,rgba(20,17,15,.2) 60%,transparent 80%);pointer-events:none;z-index:-1}
+.pawn-badge{position:absolute;top:-9px;left:50%;transform:translateX(-50%);min-width:12px;height:10px;padding:0 2px;border-radius:2px;border:1px solid #14110f;box-shadow:0 1px 2px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-family:'Press Start 2P',monospace;font-size:6.5px;line-height:1;z-index:4;white-space:nowrap}
+.pawn-sprite-pixel{position:relative;width:24px;height:27px;display:flex;align-items:center;justify-content:center;image-rendering:pixelated}
+.pawn-sprite-pixel svg{display:block;width:24px;height:27px}
 
-.moving-token.warp-out span{animation:wormholeWarpOut .38s cubic-bezier(.55,.055,.675,.19) forwards!important}
-.moving-token.warp-in span{animation:wormholeWarpIn .42s cubic-bezier(.175,.885,.32,1.275) forwards!important}
+.pixel-pawn-wrapper.is-me .pawn-badge{border-color:#ffd700!important;box-shadow:0 0 8px #ffd700,0 1px 2px rgba(0,0,0,.8)!important}
+.pixel-pawn-wrapper.is-me::before{content:'▼';position:absolute;top:-17px;left:50%;transform:translateX(-50%);color:#ffd700;font-size:7px;line-height:1;text-shadow:0 0 2px #14110f,0 0 6px #ffd700;animation:pinMeArrow .7s ease-in-out infinite alternate;z-index:10}
+.pixel-pawn-wrapper.is-me.is-leader::before{top:-26px}
+
+/* Status Accessories: Crown, Jail, Shield */
+.pawn-accessory.pawn-crown{position:absolute;top:-18px;left:50%;transform:translateX(-50%);z-index:6;animation:crownGlowFloat 1.6s ease-in-out infinite alternate}
+.pawn-crown .crown-sparkle{position:absolute;top:-2px;right:-3px;width:4px;height:4px;background:#fff;box-shadow:0 0 6px #ffd700;border-radius:50%;animation:crownSparkle .9s ease-in-out infinite alternate}
+.pawn-accessory.pawn-jail-overlay{position:absolute;inset:-1px;z-index:5;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));animation:jailClink 2.4s ease-in-out infinite alternate}
+.pawn-accessory.pawn-shield-orbit{position:absolute;inset:-6px;pointer-events:none;z-index:7;animation:shieldOrbit 2.8s linear infinite;transform-style:preserve-3d}
+.pawn-shield-orbit .shield-ring{position:absolute;inset:0;border:2px solid rgba(0,240,255,.75);border-radius:50%;box-shadow:0 0 10px rgba(0,240,255,.6),inset 0 0 6px rgba(0,240,255,.3);transform:rotateX(65deg)}
+.pawn-shield-orbit .shield-orb{position:absolute;top:-4px;left:50%;transform:translateX(-50%);font-size:10px;line-height:1;filter:drop-shadow(0 0 6px #00f0ff)}
+
+/* Tile Garrison Stacking Layout */
+.tile-garrison{position:absolute;bottom:2px;left:0;right:0;height:30px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;z-index:5}
+.tile-garrison.garrison-single{justify-content:center}
+.tile-garrison.garrison-stair{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center}
+.tile-garrison.garrison-2 .pixel-pawn-wrapper.stair-step-1-of-2{position:absolute;left:6px;bottom:5px;transform:scale(.88);z-index:1;filter:brightness(.88)}
+.tile-garrison.garrison-2 .pixel-pawn-wrapper.stair-step-2-of-2{position:absolute;right:6px;bottom:1px;transform:scale(1);z-index:2}
+.tile-garrison.garrison-3 .pixel-pawn-wrapper.stair-step-1-of-3{position:absolute;left:1px;bottom:6px;transform:scale(.82);z-index:1;filter:brightness(.85)}
+.tile-garrison.garrison-3 .pixel-pawn-wrapper.stair-step-2-of-3{position:absolute;right:1px;bottom:6px;transform:scale(.82);z-index:2;filter:brightness(.85)}
+.tile-garrison.garrison-3 .pixel-pawn-wrapper.stair-step-3-of-3{position:absolute;left:50%;transform:translateX(-50%) scale(.96);bottom:0;z-index:3}
+.tile-garrison.garrison-cluster{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center}
+.tile-garrison.garrison-cluster .cluster-lead{position:absolute;left:4px;bottom:1px;z-index:2}
+.pawn-cluster-pill{position:absolute;right:2px;bottom:2px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:2px 4px;border-radius:4px;border:1.5px solid #f2c12e;background:rgba(20,17,15,.92);box-shadow:0 2px 4px rgba(0,0,0,.6);z-index:4}
+.pawn-cluster-pill .cluster-count{font-family:'Press Start 2P',monospace;font-size:7px;color:#f2c12e;line-height:1;font-weight:bold}
+.cluster-dots{display:flex;gap:1.5px;align-items:center}
+.cluster-dot{width:4px;height:4px;border-radius:50%;border:.5px solid #fff;display:inline-block}
+
+/* Moving 2.5D Pawn */
+.moving-token{position:absolute;z-index:35;left:0;top:0;width:24px;height:28px;margin-left:-12px;margin-top:-14px;pointer-events:none;transform:translate3d(var(--token-x),var(--token-y),46px);transition:transform .48s cubic-bezier(.2,.75,.25,1);will-change:transform;transform-style:preserve-3d}
+.moving-token.no-transition{transition:none!important}
+.moving-token .pixel-pawn-wrapper{animation:none}
+.moving-token.pawn-hopping .pawn-body-container{animation:pawnHopParabolic .48s cubic-bezier(.22,.85,.25,1) both}
+.moving-token.pawn-hopping .pawn-shadow{animation:pawnShadowHop .48s cubic-bezier(.22,.85,.25,1) both}
+.moving-token.pawn-landing .pawn-body-container{animation:pawnLandingSquash .18s cubic-bezier(.16,.9,.2,1) both}
+.moving-token span{display:none}
+
+.moving-token.warp-out .pawn-body-container{animation:wormholeWarpOut .38s cubic-bezier(.55,.055,.675,.19) forwards!important}
+.moving-token.warp-in .pawn-body-container{animation:wormholeWarpIn .42s cubic-bezier(.175,.885,.32,1.275) forwards!important}
 @keyframes wormholeWarpOut{0%{transform:scale(1) rotateZ(0deg);opacity:1;filter:drop-shadow(0 0 0 #c084fc)}60%{transform:scale(1.35) rotateZ(180deg);opacity:.9;filter:drop-shadow(0 0 16px #ff007f)}100%{transform:scale(0) rotateZ(540deg);opacity:0;filter:drop-shadow(0 0 30px #c084fc)}}
 @keyframes wormholeWarpIn{0%{transform:scale(0) rotateZ(-360deg);opacity:0;filter:drop-shadow(0 0 30px #00f0ff)}60%{transform:scale(1.35) rotateZ(20deg);opacity:1;filter:drop-shadow(0 0 20px #00f0ff)}100%{transform:scale(1) rotateZ(0deg);opacity:1;filter:none}}
 
@@ -244,6 +287,14 @@ input.code{font-family:'Press Start 2P',monospace;font-size:19px;letter-spacing:
 @keyframes pinHop{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes tokenHop3D{0%{transform:translateZ(8px) translateY(0) scale(1);box-shadow:0 2px 4px rgba(20,17,15,.4)}45%{transform:translateZ(36px) translateY(-16px) scale(1.3) rotateX(14deg);box-shadow:0 16px 18px rgba(20,17,15,.6)}100%{transform:translateZ(10px) translateY(0) scale(1.04);box-shadow:0 2px 4px rgba(20,17,15,.4)}}
 @keyframes movingTokenStride{0%,100%{transform:translate3d(0,0,0) scale(1)}44%{transform:translate3d(0,-11px,0) scale(1.08)}72%{transform:translate3d(0,-2px,0) scale(.96)}}
+@keyframes pawnHopParabolic{0%{transform:translate3d(0,0,0) scale(1,1)}15%{transform:translate3d(0,-6px,6px) scale(.92,1.16)}45%{transform:translate3d(0,-22px,26px) scale(1.02,1.04)}80%{transform:translate3d(0,-2px,4px) scale(.96,1.08)}92%{transform:translate3d(0,2px,0) scale(1.22,.82)}100%{transform:translate3d(0,0,0) scale(1,1)}}
+@keyframes pawnShadowHop{0%,100%{transform:translateX(-50%) scale(1);opacity:.55}45%{transform:translateX(-50%) scale(.5);opacity:.2}92%{transform:translateX(-50%) scale(1.35);opacity:.75}}
+@keyframes pawnLandingSquash{0%{transform:scale(1.24,.8)}50%{transform:scale(.96,1.04)}100%{transform:scale(1,1)}}
+@keyframes pawnIdleBounce{0%,100%{transform:translateY(0) scale(1,1)}38%{transform:translateY(-3px) scale(.98,1.04)}70%{transform:translateY(.5px) scale(1.02,.98)}}
+@keyframes crownGlowFloat{0%{transform:translateX(-50%) translateY(0);filter:drop-shadow(0 0 2px #ffd700)}100%{transform:translateX(-50%) translateY(-3px);filter:drop-shadow(0 0 8px #ffd700)}}
+@keyframes crownSparkle{0%{transform:scale(.4) rotate(0deg);opacity:.2}100%{transform:scale(1.2) rotate(45deg);opacity:1}}
+@keyframes jailClink{0%{transform:rotate(-2deg) scale(1)}50%{transform:rotate(2deg) scale(1.02)}100%{transform:rotate(-2deg) scale(1)}}
+@keyframes shieldOrbit{0%{transform:rotateZ(0deg) rotateX(65deg)}100%{transform:rotateZ(360deg) rotateX(65deg)}}
 @keyframes garrisonBreath{0%,100%{opacity:.28;transform:scale(.96)}50%{opacity:.62;transform:scale(1.04)}}
 @keyframes throwArrow{0%,100%{transform:translateY(5px);opacity:.45}50%{transform:translateY(-8px);opacity:1}}
 

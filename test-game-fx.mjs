@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
@@ -49,4 +49,80 @@ assert.deepEqual(movementPath(42,4,2,44),[43,0,1,2]);
 assert.deepEqual(movementPath(5,2,20,44),[6,7,20]);
 assert.deepEqual(movementPath(5,0,5,44),[]);
 
-console.log('game atmosphere helper and SoundFX tests passed');
+// 2.5D Pixel Pawn Archetypes & SVG Sprites Verification (R1, R2, R3)
+assert.equal(PAWN_ARCHETYPES.length, 10);
+assert.equal(PAWN_ARCHETYPES[0].name, 'Warrior');
+assert.equal(PAWN_ARCHETYPES[1].name, 'Mage');
+assert.equal(PAWN_ARCHETYPES[2].name, 'Ranger');
+assert.equal(PAWN_ARCHETYPES[3].name, 'Bard');
+assert.equal(PAWN_ARCHETYPES[4].name, 'Warlock');
+assert.equal(PAWN_ARCHETYPES[5].name, 'Engineer');
+assert.equal(PAWN_ARCHETYPES[6].name, 'Ninja');
+assert.equal(PAWN_ARCHETYPES[7].name, 'Priestess');
+assert.equal(PAWN_ARCHETYPES[8].name, 'Paladin');
+assert.equal(PAWN_ARCHETYPES[9].name, 'Explorer');
+
+// Pure vector SVGs without external image files
+for (let tid = 0; tid < 10; tid++) {
+  const svg = pawnSpriteSVG(tid);
+  assert.ok(svg.includes('<svg'), `Team ${tid} sprite must be valid inline SVG`);
+  assert.ok(svg.includes('shape-rendering="crispEdges"'), `Team ${tid} sprite must use crispEdges pixel rendering`);
+  assert.ok(!svg.includes('<image'), `Team ${tid} sprite must not use external raster image tags`);
+}
+
+// Status accessories rendering
+const normalPawn = renderPawnSprite(0, {});
+assert.ok(normalPawn.includes('pixel-pawn-wrapper team-0'));
+assert.ok(normalPawn.includes('pawn-badge'));
+assert.ok(!normalPawn.includes('pawn-crown'));
+assert.ok(!normalPawn.includes('pawn-jail-overlay'));
+assert.ok(!normalPawn.includes('pawn-shield-orbit'));
+
+const leaderJailedShieldedPawn = renderPawnSprite(3, { isMe: true, isLeader: true, isJailed: true, isShielded: true });
+assert.ok(leaderJailedShieldedPawn.includes('is-me'));
+assert.ok(leaderJailedShieldedPawn.includes('is-leader'));
+assert.ok(leaderJailedShieldedPawn.includes('pawn-crown'));
+assert.ok(leaderJailedShieldedPawn.includes('pawn-jail-overlay'));
+assert.ok(leaderJailedShieldedPawn.includes('pawn-shield-orbit'));
+
+// Garrison Stacking Verification (1 team, 2-3 teams, 4+ teams)
+const emptyGarrison = renderTileGarrison([]);
+assert.equal(emptyGarrison, '');
+
+const singleGarrison = renderTileGarrison([{ id: 0, pos: 5, color: '#e23b3b' }], { meId: 0 });
+assert.ok(singleGarrison.includes('garrison-single'));
+assert.ok(singleGarrison.includes('hero-pawn'));
+
+const trioGarrison = renderTileGarrison([
+  { id: 0, pos: 5, color: '#e23b3b' },
+  { id: 1, pos: 5, color: '#3f86e0' },
+  { id: 2, pos: 5, color: '#3fbf5a' }
+], { meId: 1 });
+assert.ok(trioGarrison.includes('garrison-stair garrison-3'));
+assert.ok(trioGarrison.includes('stair-step-3-of-3'));
+
+const crowdedGarrison = renderTileGarrison([
+  { id: 0, pos: 31, color: '#e23b3b' },
+  { id: 1, pos: 31, color: '#3f86e0' },
+  { id: 2, pos: 31, color: '#3fbf5a' },
+  { id: 3, pos: 31, color: '#f2c12e' },
+  { id: 4, pos: 31, color: '#9450d8' }
+], { meId: 3 });
+assert.ok(crowdedGarrison.includes('garrison-cluster'));
+assert.ok(crowdedGarrison.includes('pawn-cluster-pill'));
+assert.ok(crowdedGarrison.includes('+4'));
+// Null/undefined guard unit tests (Spectator / Host perspective)
+const spectatorSingleT0 = renderTileGarrison([{ id: 0, pos: 5, color: '#e23b3b' }], { meId: null, leaderId: null });
+assert.ok(!spectatorSingleT0.includes('is-me'), 'Spectator single garrison team 0 must not have is-me');
+assert.ok(!spectatorSingleT0.includes('is-leader') && !spectatorSingleT0.includes('pawn-crown'), 'Spectator single garrison team 0 must not have is-leader or crown');
+
+const spectatorCluster = renderTileGarrison([
+  { id: 0, pos: 31, color: '#e23b3b' },
+  { id: 1, pos: 31, color: '#3f86e0' },
+  { id: 2, pos: 31, color: '#3fbf5a' },
+  { id: 3, pos: 31, color: '#f2c12e' }
+], { meId: null, activeTeamId: 3, leaderId: null });
+assert.ok(spectatorCluster.includes('cluster-lead'), 'Spectator cluster must have a cluster-lead');
+assert.ok(spectatorCluster.includes('data-team="3"'), 'Spectator cluster must prioritize active team 3 as cluster lead');
+
+console.log('game atmosphere helper, SoundFX, and 2.5D pixel pawn sprite tests passed');

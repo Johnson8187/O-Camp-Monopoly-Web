@@ -424,3 +424,199 @@ export const SoundFX = {
     } catch {}
   }
 };
+
+/* ===================================================================
+   2.5D PIXEL PAWN SPRITE SYSTEM & ADVENTURER ARCHETYPES (10 TEAMS)
+   =================================================================== */
+
+export const PAWN_ARCHETYPES = [
+  { id: 0, name: 'Warrior', roleTitle: '狂戰士', color: '#e23b3b', dark: '#9e1b1b', lightFg: false },
+  { id: 1, name: 'Mage', roleTitle: '大魔導', color: '#3f86e0', dark: '#1c529e', lightFg: false },
+  { id: 2, name: 'Ranger', roleTitle: '神射手', color: '#3fbf5a', dark: '#1e7834', lightFg: false },
+  { id: 3, name: 'Bard', roleTitle: '吟遊詩人', color: '#f2c12e', dark: '#b88a10', lightFg: true },
+  { id: 4, name: 'Warlock', roleTitle: '鍊金術士', color: '#9450d8', dark: '#5a2096', lightFg: false },
+  { id: 5, name: 'Engineer', roleTitle: '工程大師', color: '#e6832a', dark: '#9e4d0a', lightFg: false },
+  { id: 6, name: 'Ninja', roleTitle: '疾風忍者', color: '#17a2a2', dark: '#0d5e5e', lightFg: false },
+  { id: 7, name: 'Priestess', roleTitle: '聖巫女', color: '#d13f8c', dark: '#8a1854', lightFg: false },
+  { id: 8, name: 'Paladin', roleTitle: '聖騎士', color: '#6b7fd0', dark: '#3b4d96', lightFg: false },
+  { id: 9, name: 'Explorer', roleTitle: '冒險探家', color: '#8a6a2a', dark: '#523b12', lightFg: false }
+];
+
+export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27 } = {}) {
+  const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
+  const svgOpen = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 18" width="${width}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">`;
+  const svgClose = `</svg>`;
+
+  switch (tid) {
+    case 0: // Warrior / Knight (Helmet visor, red plume, heavy steel armor)
+      return `${svgOpen}<path d="M7 0h2v3H7zM6 1h1v2H6z" fill="#e23b3b"/><path d="M7 1h1v1H7z" fill="#ff7a7a"/><path d="M4 3h8v5H4z" fill="#9ca8b8"/><path d="M5 3h6v2H5z" fill="#dce6f2"/><path d="M3 5h1v3H3zm12 0h1v3h-1z" fill="#687484"/><path d="M5 6h6v2H5z" fill="#1e2430"/><path d="M6 7h1v1H6zm3 0h1v1H9z" fill="#00ffff"/><path d="M5 8h6v1H5z" fill="#687484"/><path d="M3 9h10v6H3z" fill="#e23b3b"/><path d="M5 10h6v4H5z" fill="#9e1b1b"/><path d="M2 9h2v4H2zm12 0h2v4h-2z" fill="#9ca8b8"/><path d="M7 10h2v3H7z" fill="#f2c12e"/><path d="M4 14h8v1H4z" fill="#4a2a18"/><path d="M7 14h2v1H7z" fill="#f2c12e"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#687484"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#384050"/>${svgClose}`;
+
+    case 1: // Mage / Wizard (Pointed hat with star, glowing robe, mystic beard)
+      return `${svgOpen}<path d="M9 0h2v2H9z" fill="#3f86e0"/><path d="M10 0h1v1h-1z" fill="#ffd700"/><path d="M8 2h3v2H8z" fill="#3f86e0"/><path d="M6 4h5v2H6z" fill="#3f86e0"/><path d="M3 6h10v2H3z" fill="#1c529e"/><path d="M7 6h2v2H7z" fill="#ffd700"/><path d="M5 8h6v2H5z" fill="#ffdfb8"/><path d="M6 8h1v1H6zm3 0h1v1H9z" fill="#14110f"/><path d="M5 10h6v3H5zM6 13h4v1H6z" fill="#ffffff"/><path d="M3 10h2v5H3zm11 0h2v5h-2z" fill="#1c529e"/><path d="M3 11h10v4H3z" fill="#3f86e0"/><path d="M7 11h2v4H7z" fill="#ffd700"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#1c2840"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#0f1624"/>${svgClose}`;
+
+    case 2: // Ranger / Rogue (Archer hood, yellow quill feather, leather vest)
+      return `${svgOpen}<path d="M11 0h2v3h-2z" fill="#f2c12e"/><path d="M12 0h1v2h-1z" fill="#ffffff"/><path d="M4 2h8v5H4z" fill="#3fbf5a"/><path d="M5 2h6v2H5z" fill="#6be685"/><path d="M3 4h2v4H3zm10 0h2v4h-2z" fill="#1e7834"/><path d="M5 6h6v3H5z" fill="#ffdfb8"/><path d="M6 7h1v1H6zm3 0h1v1H9z" fill="#14110f"/><path d="M4 9h8v2H4z" fill="#1e7834"/><path d="M3 11h10v4H3z" fill="#3fbf5a"/><path d="M5 11h6v4H5z" fill="#7d4e24"/><path d="M7 11h2v4H7z" fill="#543214"/><path d="M4 14h8v1H4z" fill="#2c1a0c"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#5c3818"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#3a200a"/>${svgClose}`;
+
+    case 3: // Bard / Merchant (Jaunty feather beret, golden doublet, crimson capelet)
+      return `${svgOpen}<path d="M4 0h2v4H4z" fill="#ffffff"/><path d="M5 1h1v2H5z" fill="#e0e8f0"/><path d="M3 2h10v4H3z" fill="#f2c12e"/><path d="M4 2h8v2H4z" fill="#fff080"/><path d="M2 4h3v2H2zm10 0h3v2h-3z" fill="#b88a10"/><path d="M5 6h6v3H5z" fill="#ffdfb8"/><path d="M4 6h1v3H4zm11 0h1v3h-1z" fill="#8a4b18"/><path d="M6 7h1v1H6zm3 0h1v1H9z" fill="#14110f"/><path d="M4 9h8v2H4z" fill="#e23b3b"/><path d="M3 11h10v4H3z" fill="#f2c12e"/><path d="M6 11h4v4H6z" fill="#fff5a0"/><path d="M7 12h2v3H7z" fill="#b88a10"/><path d="M4 14h8v1H4z" fill="#4a2a18"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#4a2a18"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#2c1408"/>${svgClose}`;
+
+    case 4: // Warlock / Alchemist (Occult witch hat, glowing cyan eyes, violet alchemist robe)
+      return `${svgOpen}<path d="M10 0h2v2h-2z" fill="#9450d8"/><path d="M8 2h3v2H8z" fill="#9450d8"/><path d="M6 4h5v2H6z" fill="#9450d8"/><path d="M3 6h10v2H3z" fill="#5a2096"/><path d="M7 6h2v2H7z" fill="#00f0ff"/><path d="M4 8h8v2H4z" fill="#2d1248"/><path d="M6 8h1v1H6zm3 0h1v1H9z" fill="#00ffff"/><path d="M5 10h6v1H5z" fill="#ffdfb8"/><path d="M3 11h10v4H3z" fill="#9450d8"/><path d="M5 11h6v4H5z" fill="#5a2096"/><path d="M7 12h2v2H7z" fill="#00f0ff"/><path d="M4 14h8v1H4z" fill="#1c0830"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#321050"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#1c0830"/>${svgClose}`;
+
+    case 5: // Engineer / Builder (Safety cap, steampunk goggles, wrench & overalls)
+      return `${svgOpen}<path d="M4 1h8v4H4z" fill="#e6832a"/><path d="M5 1h6v2H5z" fill="#ffa64d"/><path d="M3 4h10v1H3z" fill="#9e4d0a"/><path d="M4 5h8v2H4z" fill="#4a3018"/><path d="M5 5h2v2H5zm4 0h2v2H9z" fill="#ffd700"/><path d="M6 6h1v1H6zm4 0h1v1h-1z" fill="#ffffff"/><path d="M4 7h8v3H4z" fill="#ffdfb8"/><path d="M5 8h1v1H5zm5 0h1v1h-1z" fill="#14110f"/><path d="M8 9h1v1H8z" fill="#9e4d0a"/><path d="M3 10h10v5H3z" fill="#e6832a"/><path d="M5 10h6v4H5z" fill="#2d4875"/><path d="M12 9h2v4h-2z" fill="#a0aab8"/><path d="M4 14h8v1H4z" fill="#3a2010"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#4a2810"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#281408"/>${svgClose}`;
+
+    case 6: // Shinobi / Ninja (Teal hood, metal forehead protector, shinobi mask & red scarf)
+      return `${svgOpen}<path d="M12 1h3v2h-3zm1 3h2v2h-2z" fill="#e23b3b"/><path d="M4 2h8v4H4z" fill="#17a2a2"/><path d="M3 4h10v2H3z" fill="#107070"/><path d="M6 4h4v2H6z" fill="#d0e8e8"/><path d="M4 6h8v2H4z" fill="#ffdfb8"/><path d="M5 6h2v1H5zm4 0h2v1H9z" fill="#14110f"/><path d="M4 8h8v3H4z" fill="#17a2a2"/><path d="M3 11h10v4H3z" fill="#17a2a2"/><path d="M5 11h6v4H5z" fill="#0d5e5e"/><path d="M7 11h2v3H7z" fill="#e23b3b"/><path d="M4 14h8v1H4z" fill="#0a3c3c"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#102828"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#081414"/>${svgClose}`;
+
+    case 7: // Priestess / Shrine Maiden (Gold tiara, shrine ribbons, pink ceremonial robe)
+      return `${svgOpen}<path d="M7 0h2v2H7z" fill="#ffd700"/><path d="M2 1h3v2H2zm9 0h3v2h-3z" fill="#ffffff"/><path d="M4 2h8v4H4z" fill="#2c1420"/><path d="M5 2h6v2H5z" fill="#d13f8c"/><path d="M4 6h8v3H4z" fill="#ffdfb8"/><path d="M5 7h1v1H5zm5 0h1v1h-1z" fill="#8a1854"/><path d="M7 6h2v1H7z" fill="#ffd700"/><path d="M3 9h10v2H3z" fill="#ffffff"/><path d="M2 11h12v4H2z" fill="#d13f8c"/><path d="M5 11h6v4H5z" fill="#ffffff"/><path d="M7 11h2v3H7z" fill="#ffd700"/><path d="M4 14h8v1H4z" fill="#8a1854"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#601838"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#38081c"/>${svgClose}`;
+
+    case 8: // Paladin / Guardian (Templar greathelm with golden crest, holy tabard & sabatons)
+      return `${svgOpen}<path d="M7 0h2v3H7z" fill="#ffd700"/><path d="M6 1h4v1H6z" fill="#fff080"/><path d="M4 3h8v6H4z" fill="#6b7fd0"/><path d="M5 3h6v2H5z" fill="#a4b3f0"/><path d="M3 5h2v4H3zm8 0h2v4h-2z" fill="#3b4d96"/><path d="M5 6h6v2H5z" fill="#1c2448"/><path d="M7 5h2v4H7z" fill="#ffd700"/><path d="M6 7h1v1H6zm3 0h1v1H9z" fill="#00f0ff"/><path d="M3 9h10v6H3z" fill="#6b7fd0"/><path d="M5 10h6v4H5z" fill="#3b4d96"/><path d="M2 9h2v4H2zm12 0h2v4h-2z" fill="#a4b3f0"/><path d="M7 10h2v3H7z" fill="#ffd700"/><path d="M4 14h8v1H4z" fill="#202c58"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#4a5890"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#242e54"/>${svgClose}`;
+
+    case 9: // Explorer / Adventurer (Pith fedora, trail jacket, leather utility straps)
+      return `${svgOpen}<path d="M5 1h6v3H5z" fill="#d8c898"/><path d="M6 1h4v1H6z" fill="#f0e4b8"/><path d="M4 3h8v1H4z" fill="#523b12"/><path d="M2 4h12v2H2z" fill="#8a6a2a"/><path d="M4 6h8v3H4z" fill="#ffdfb8"/><path d="M5 7h1v1H5zm5 0h1v1h-1z" fill="#14110f"/><path d="M7 8h2v1H7z" fill="#7a4218"/><path d="M3 9h10v5H3z" fill="#8a6a2a"/><path d="M5 9h6v5H5z" fill="#d8c898"/><path d="M5 9h1v5H5zm5 0h1v5h-1z" fill="#523b12"/><path d="M7 11h2v2H7z" fill="#e23b3b"/><path d="M4 14h8v1H4z" fill="#3d2808"/><path d="M4 15h3v3H4zm5 0h3v3H9z" fill="#523b12"/><path d="M3 17h4v1H3zm6 0h4v1H9z" fill="#322008"/>${svgClose}`;
+
+    default:
+      return `${svgOpen}<rect width="16" height="18" fill="#e23b3b"/>${svgClose}`;
+  }
+}
+
+export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = '', isMoving = false, scale = 1.0 } = {}) {
+  const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
+  const arch = PAWN_ARCHETYPES[tid] || PAWN_ARCHETYPES[0];
+  const { isMe = false, isLeader = false, isJailed = false, isShielded = false, isHopping = false } = statusFlags;
+
+  const fgColor = arch.lightFg ? '#14110f' : '#ffffff';
+  const delay = ((tid * 0.16) % 1.2).toFixed(2);
+
+  const crownHTML = isLeader ? `
+    <div class="pawn-accessory pawn-crown" aria-hidden="true" title="目前榜首王者">
+      <svg class="pixel-crown-svg" viewBox="0 0 16 10" width="16" height="10" shape-rendering="crispEdges">
+        <path d="M1 9h14v1H1z" fill="#b8860b"/>
+        <path d="M2 3h2v6H2zm5 1h2v5H7zm5-1h2v6h-2z" fill="#ffd700"/>
+        <path d="M0 2h3v1H0zm6 1h4v1H6zm8-1h3v1h-3z" fill="#fff799"/>
+        <circle cx="8" cy="6.5" r="1.2" fill="#e23b3b"/>
+      </svg>
+      <i class="crown-sparkle"></i>
+    </div>` : '';
+
+  const jailHTML = isJailed ? `
+    <div class="pawn-accessory pawn-jail-overlay" aria-hidden="true" title="監獄服刑中">
+      <svg class="pixel-jail-svg" viewBox="0 0 20 20" width="20" height="20" shape-rendering="crispEdges">
+        <path d="M2 1h16v2H2zm0 16h16v2H2z" fill="#3a3a3a"/>
+        <path d="M4 3h2v14H4zm5 0h2v14H9zm5 0h2v14h-2z" fill="#6a6a6a"/>
+        <path d="M5 3h1v14H5zm5 0h1v14h-1zm5 0h1v14h-1z" fill="#b0b0b0"/>
+        <path d="M7 10h6v5H7z" fill="#e23b3b"/>
+        <circle cx="10" cy="12.5" r="1" fill="#ffffff"/>
+      </svg>
+    </div>` : '';
+
+  const shieldHTML = isShielded ? `
+    <div class="pawn-accessory pawn-shield-orbit" aria-hidden="true" title="防災護盾生效中">
+      <div class="shield-ring"></div>
+      <div class="shield-orb">🛡️</div>
+    </div>` : '';
+
+  const classes = [
+    'pixel-pawn-wrapper',
+    `team-${tid}`,
+    isMe ? 'is-me' : '',
+    isLeader ? 'is-leader' : '',
+    isJailed ? 'is-jailed' : '',
+    isShielded ? 'is-shielded' : '',
+    isMoving ? 'is-moving' : '',
+    isHopping ? 'pawn-hopping' : '',
+    extraClass
+  ].filter(Boolean).join(' ');
+
+  return `<div class="${classes}" data-team="${tid}" style="--team-color:${arch.color};--team-dark:${arch.dark};--pawn-delay:${delay}s;--pawn-scale:${scale}">
+    <div class="pawn-shadow"></div>
+    <div class="pawn-body-container">
+      ${crownHTML}
+      <div class="pawn-badge" style="background:${arch.color};color:${fgColor};">
+        <span>${tid + 1}</span>
+      </div>
+      <div class="pawn-sprite-pixel" title="${arch.roleTitle} (${arch.name})">
+        ${pawnSpriteSVG(tid, { width: 24, height: 27 })}
+      </div>
+      ${jailHTML}
+      ${shieldHTML}
+    </div>
+  </div>`;
+}
+
+export function renderTileGarrison(teamsOnTile = [], { meId = null, activeTeamId = null, leaderId = null, tilePos = null } = {}) {
+  if (!Array.isArray(teamsOnTile) || !teamsOnTile.length) return '';
+
+  const count = teamsOnTile.length;
+  const hasMe = meId !== null && meId !== undefined && meId !== '';
+  const hasActive = activeTeamId !== null && activeTeamId !== undefined && activeTeamId !== '';
+  const hasLeader = leaderId !== null && leaderId !== undefined && leaderId !== '';
+
+  // Mode A: Single Team Hero
+  if (count === 1) {
+    const t = teamsOnTile[0];
+    const isJailed = Number(t.jail || 0) > 0 || tilePos === 42;
+    const isShielded = Number(t.buffs?.shield || 0) > 0;
+    const isLeader = hasLeader && Number(leaderId) === Number(t.id);
+    const isMe = hasMe && Number(meId) === Number(t.id);
+
+    return `<div class="tile-garrison garrison-single" data-count="1">
+      ${renderPawnSprite(t.id, { isMe, isLeader, isJailed, isShielded }, { extraClass: 'hero-pawn' })}
+    </div>`;
+  }
+
+  // Mode B: 2~3 Teams (Stair-step 2.5D staggered layer)
+  if (count <= 3) {
+    // Sort so that viewer's team or active team is at the front
+    const sorted = [...teamsOnTile].sort((a, b) => {
+      if (hasMe && Number(a.id) === Number(meId)) return 1;
+      if (hasMe && Number(b.id) === Number(meId)) return -1;
+      if (hasActive && Number(a.id) === Number(activeTeamId)) return 1;
+      if (hasActive && Number(b.id) === Number(activeTeamId)) return -1;
+      return 0;
+    });
+
+    const pawnsHTML = sorted.map((t, idx) => {
+      const isJailed = Number(t.jail || 0) > 0 || tilePos === 42;
+      const isShielded = Number(t.buffs?.shield || 0) > 0;
+      const isLeader = hasLeader && Number(leaderId) === Number(t.id);
+      const isMe = hasMe && Number(meId) === Number(t.id);
+      const stairClass = `stair-step-${idx + 1}-of-${count}`;
+
+      return renderPawnSprite(t.id, { isMe, isLeader, isJailed, isShielded }, { extraClass: stairClass });
+    }).join('');
+
+    return `<div class="tile-garrison garrison-stair garrison-${count}" data-count="${count}">
+      ${pawnsHTML}
+    </div>`;
+  }
+
+  // Mode C: 4+ Teams (Cluster Aggregation)
+  // Find primary representative pawn
+  let primaryTeam = (hasMe ? teamsOnTile.find(t => Number(t.id) === Number(meId)) : null)
+    || (hasActive ? teamsOnTile.find(t => Number(t.id) === Number(activeTeamId)) : null)
+    || (hasLeader ? teamsOnTile.find(t => Number(t.id) === Number(leaderId)) : null)
+    || teamsOnTile[0];
+
+  const others = teamsOnTile.filter(t => t.id !== primaryTeam.id);
+  const isJailed = Number(primaryTeam.jail || 0) > 0 || tilePos === 42;
+  const isShielded = Number(primaryTeam.buffs?.shield || 0) > 0;
+  const isLeader = hasLeader && Number(leaderId) === Number(primaryTeam.id);
+  const isMe = hasMe && Number(meId) === Number(primaryTeam.id);
+
+  const dotsHTML = others.slice(0, 5).map(o => {
+    const col = o.color || PAWN_ARCHETYPES[o.id % 10]?.color || '#ffd700';
+    return `<span class="cluster-dot" style="background:${col};" title="第 ${o.id + 1} 組"></span>`;
+  }).join('');
+
+  return `<div class="tile-garrison garrison-cluster" data-count="${count}">
+    ${renderPawnSprite(primaryTeam.id, { isMe, isLeader, isJailed, isShielded }, { extraClass: 'cluster-lead' })}
+    <div class="pawn-cluster-pill" title="此格共有 ${count} 隊停留">
+      <span class="cluster-count">+${count - 1}</span>
+      <div class="cluster-dots">${dotsHTML}</div>
+    </div>
+  </div>`;
+}

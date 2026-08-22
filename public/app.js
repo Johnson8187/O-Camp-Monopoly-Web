@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.47';
-import { G } from './game-core.js?v=2026.08.22.47';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.47';
+const BUILD_VERSION = '2026.08.22.48';
+import { G } from './game-core.js?v=2026.08.22.48';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES } from './game-fx.js?v=2026.08.22.48';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -489,7 +489,14 @@ function removeRollFx(){document.querySelector('.dice-flight')?.remove();}
 function movementPoint(pos){const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+26,y:tile[2]*50+26};}
 function updateMovementDom(teamId,pos){
   const token=document.querySelector(`[data-moving-team="${teamId}"]`),point=movementPoint(pos);
-  if(token){token.style.setProperty('--token-x',`${point.x}px`);token.style.setProperty('--token-y',`${point.y}px`);}
+  if(token){
+    token.style.setProperty('--token-x',`${point.x}px`);
+    token.style.setProperty('--token-y',`${point.y}px`);
+    token.classList.remove('pawn-landing');
+    token.classList.remove('pawn-hopping');
+    void token.offsetWidth;
+    token.classList.add('pawn-hopping');
+  }
   document.querySelectorAll('.tile.camera-focus,.tile.fx-step,.tile.landing-goal').forEach(tile=>tile.classList.remove('camera-focus','fx-step','landing-goal'));
   const tile=document.querySelector(`.tile[data-i="${pos}"]`);if(tile)tile.classList.add('camera-focus','fx-step');
   const badge=document.querySelector('.step-progress-badge');if(badge)badge.textContent=App.fx.stepText;
@@ -498,6 +505,10 @@ function updateMovementDom(teamId,pos){
 function activateMovementCamera(){const wrap=$('bwrap');if(!wrap)return;wrap.classList.add('camera-active');fitBoard();}
 function finishMovementDom(pos){
   const tile=document.querySelector(`.tile[data-i="${pos}"]`);if(tile){tile.classList.remove('fx-step');tile.classList.add('landing-goal');}
+  document.querySelectorAll('.moving-token').forEach(token=>{
+    token.classList.remove('pawn-hopping');
+    token.classList.add('pawn-landing');
+  });
   const badge=document.querySelector('.step-progress-badge');if(badge)badge.textContent='★ 抵達！';
   SoundFX.playLanding();
 }
@@ -505,15 +516,24 @@ function finishMovementDom(pos){
 function ensureMovingToken(teamId,pos,team){
   let token=document.querySelector(`[data-moving-team="${teamId}"]`);
   const point=movementPoint(pos);
+  const S=App.state;
+  const ranked=S?G.rankTeams(S):[];
+  const leaderId=ranked?.[0]?.id;
+  const targetTeam=team||S?.teams?.[teamId];
+  const isShielded=Number(targetTeam?.buffs?.shield||0)>0;
+  const isJailed=Number(targetTeam?.jail||0)>0||pos===42;
+  const isLeader=leaderId!==null&&leaderId!==undefined&&leaderId!==''&&Number(leaderId)===Number(teamId);
+  const isMe=App.teamId!==null&&App.teamId!==undefined&&App.teamId!==''&&Number(App.teamId)===Number(teamId);
+
   if(!token){
     const bd=$('board');
     if(bd){
       token=document.createElement('div');
-      token.className='moving-token';
+      token.className=`moving-token ${isShielded?'shielded':''}`;
       token.dataset.movingTeam=teamId;
-      token.style.setProperty('--token-color',team?.color||'#f2c12e');
+      token.style.setProperty('--token-color',targetTeam?.color||'#f2c12e');
       token.style.setProperty('--token-fg',G.LIGHT_FG.includes(teamId)?'#14110f':'#fff');
-      token.innerHTML=`<span>${teamId+1}</span>`;
+      token.innerHTML=renderPawnSprite(teamId,{isMe,isLeader,isJailed,isShielded},{isMoving:true});
       bd.appendChild(token);
     }
   }
@@ -1768,13 +1788,22 @@ function activeTurnHTML(){
 }
 function boardHTML(){
   const S=App.state,cell=46,gap=4,W=11*(cell+gap),H=10*(cell+gap),attackKind=App.fx.attack?.kind||App.fx.aftershock?.kind||'',attackHit=App.fx.aftershock?.hit||[],cameraPos=App.fx.camera?.pos,upgradeIdx=App.fx.upgrade?.tileIndex,sellIdx=App.fx.sell?.tileIndex;
+  const ranked=S?G.rankTeams(S):[];
+  const leaderId=ranked?.[0]?.id;
   let out=`<div class="bwrap fit ${App.fx.camera?'camera-active':''}" id="bwrap"><div class="board ${attackKind?`fx-attack fx-${attackKind}`:''}" id="board" style="width:${W}px;height:${H}px">`;
   G.TRACK.forEach((t,i)=>{
     const [kind,c,r]=t,T=G.TILE[kind],own=G.ownerOf(S,i),here=S.teams.filter(x=>App.fx.positions[x.id]===undefined&&x.pos===i),shieldHere=here.some(x=>Number(x.buffs?.shield||0)>0),attackHot=attackHit.includes(i),stepHot=App.highlight.includes(i),radarHot=App.radarFocus===i,upgradeHot=upgradeIdx===i,sellHot=sellIdx===i,hot=attackHot||stepHot||radarHot||upgradeHot||sellHot,locked=kind==='stage'&&!S.unlocked.includes(i),garrison=here[0];
-    out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''} ${radarHot?'radar-beacon':''} ${upgradeHot?'fx-upgrade':''} ${sellHot?'fx-sell':''} ${here.length?'has-garrison':''} ${shieldHere?'has-shield':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'};--garrison:${garrison?.color||'#f2c12e'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">🚩${own.id+1}</div>`:''}${here.length?`<div class="garrison-aura" aria-hidden="true"></div>${shieldHere?'<div class="shield-aura" aria-label="防災卡護盾">🛡️</div>':''}<div class="pins">${here.slice(0,3).map(h=>`<i class="${App.teamId===h.id?'is-me':''} ${Number(h.buffs?.shield||0)>0?'shielded':''}" style="background:${h.color};color:${G.LIGHT_FG.includes(h.id)?'#14110f':'#fff'}">${h.id+1}</i>`).join('')}${here.length>3?`<i class="more">+${here.length-3}</i>`:''}</div>`:''}${upgradeHot?`<div class="upgrade-frame-3d"></div><div class="upgrade-badge">▲ 基地升級 LV${App.fx.upgrade.level} ▲</div>`:''}${sellHot?`<div class="sell-frame-3d"></div><div class="sell-badge">💰 變賣基地 💰</div>`:''}</div>`;
+    out+=`<div class="tile ${attackHot?`fx-hit fx-hit-${attackKind}`:stepHot?'fx-step':''} ${cameraPos===i?'camera-focus':''} ${radarHot?'radar-beacon':''} ${upgradeHot?'fx-upgrade':''} ${sellHot?'fx-sell':''} ${here.length?'has-garrison':''} ${shieldHere?'has-shield':''}" data-i="${i}" style="left:${c*(cell+gap)}px;top:${r*(cell+gap)}px;background:${hot?'#ffdcdc':T.bg};border-color:${hot?'#e23b3b':'#14110f'};--garrison:${garrison?.color||'#f2c12e'}">${kind==='base'&&own?baseBuildingHTML(own):sprite(kind,22)}<div class="tl" style="color:${T.fg}">${kind==='base'&&own?esc(S.settings.levels[own.level-1]?.name||T.n):T.n}</div>${locked?'<div class="lock"></div>':''}${own?`<div class="ow" style="background:${own.color};color:${G.LIGHT_FG.includes(own.id)?'#14110f':'#fff'}">🚩${own.id+1}</div>`:''}${here.length?`<div class="garrison-aura" aria-hidden="true"></div>${shieldHere?'<div class="shield-aura" aria-label="防災卡護盾">🛡️</div>':''}${renderTileGarrison(here,{meId:App.teamId,activeTeamId:S.activeTeamId,leaderId,tilePos:i})}`:''}${upgradeHot?`<div class="upgrade-frame-3d"></div><div class="upgrade-badge">▲ 基地升級 LV${App.fx.upgrade.level} ▲</div>`:''}${sellHot?`<div class="sell-frame-3d"></div><div class="sell-badge">💰 變賣基地 💰</div>`:''}</div>`;
 
   });
-  S.teams.filter(team=>App.fx.positions[team.id]!==undefined).forEach(team=>{const point=movementPoint(App.fx.positions[team.id]);out+=`<div class="moving-token ${Number(team.buffs?.shield||0)>0?'shielded':''}" data-moving-team="${team.id}" style="--token-x:${point.x}px;--token-y:${point.y}px;--token-color:${team.color};--token-fg:${G.LIGHT_FG.includes(team.id)?'#14110f':'#fff'}"><span>${team.id+1}</span></div>`;});
+  S.teams.filter(team=>App.fx.positions[team.id]!==undefined).forEach(team=>{
+    const point=movementPoint(App.fx.positions[team.id]);
+    const isShielded=Number(team.buffs?.shield||0)>0;
+    const isJailed=Number(team.jail||0)>0||team.pos===42;
+    const isLeader=leaderId!==null&&leaderId!==undefined&&leaderId!==''&&Number(leaderId)===Number(team.id);
+    const isMe=App.teamId!==null&&App.teamId!==undefined&&App.teamId!==''&&Number(App.teamId)===Number(team.id);
+    out+=`<div class="moving-token ${isShielded?'shielded':''}" data-moving-team="${team.id}" style="--token-x:${point.x}px;--token-y:${point.y}px;--token-color:${team.color};--token-fg:${G.LIGHT_FG.includes(team.id)?'#14110f':'#fff'}">${renderPawnSprite(team.id,{isMe,isLeader,isJailed,isShielded},{isMoving:true})}</div>`;
+  });
   if(App.fx.stepText)out+=`<div class="step-progress-badge">${esc(App.fx.stepText)}</div>`;
   return out+boardAftermathHTML(attackKind)+boardHUD()+'</div></div>';
 }

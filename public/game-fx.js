@@ -52,16 +52,10 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   if(role!=='team')return true;
   const mine=Number(teamId);
   if(!Number.isInteger(mine))return false;
-  if(['phase','assignment','event'].includes(task.type))return true;
-  if(['upgrade','sell','purchase'].includes(task.type))return Number(task.team?.id)===mine;
-  if(task.type==='roll')return Number(task.teamId)===mine;
+  if(['phase','assignment','event','roll','upgrade','sell','attack'].includes(task.type))return true;
+  if(['purchase'].includes(task.type))return Number(task.team?.id)===mine;
   if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
   if(task.type==='battlePrompt')return Number(task.battle?.attackerId)===mine;
-  if(task.type==='attack'){
-    const attack=task.attack||{},myPos=state?.teams?.[mine]?.pos;
-    if(Number(attack.team)===mine||Number(attack.targetTeam)===mine)return true;
-    return myPos!==undefined&&Array.isArray(attack.hit)&&attack.hit.includes(myPos);
-  }
   return true;
 }
 

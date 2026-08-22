@@ -36,9 +36,11 @@ assert.equal(presentationTier({role:'team',width:390,hardwareConcurrency:2,devic
 assert.equal(presentationTier({role:'viewer',width:1920,reducedMotion:true}),'reduced');
 const audienceState={teams:[{id:0,pos:5},{id:1,pos:9}]};
 assert.equal(isPresentationTaskRelevant({type:'roll',teamId:0},{role:'team',teamId:0,state:audienceState}),true);
-assert.equal(isPresentationTaskRelevant({type:'roll',teamId:1},{role:'team',teamId:0,state:audienceState}),false);
+assert.equal(isPresentationTaskRelevant({type:'roll',teamId:1},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[5]}},{role:'team',teamId:0,state:audienceState}),true);
-assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[9]}},{role:'team',teamId:0,state:audienceState}),false);
+assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[9]}},{role:'team',teamId:0,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'teamMoment',teamId:0},{role:'team',teamId:0,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'teamMoment',teamId:1},{role:'team',teamId:0,state:audienceState}),false);
 assert.equal(isPresentationTaskRelevant({type:'battlePrompt',battle:{attackerId:0}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'battlePrompt',battle:{attackerId:1}},{role:'team',teamId:0,state:audienceState}),false);
 assert.equal(isPurchaseReceipt({teamId:0,action:'buff',ptsDelta:-5},{team:0,cost:5}),true);

@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.48';
-import { G } from './game-core.js?v=2026.08.22.48';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES } from './game-fx.js?v=2026.08.22.48';
+const BUILD_VERSION = '2026.08.22.49';
+import { G } from './game-core.js?v=2026.08.22.49';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES } from './game-fx.js?v=2026.08.22.49';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -369,6 +369,13 @@ function executePurchaseFx(purchase,team,done){
 function executeTeamMomentFx(task,done){
   const team=task.team||App.state?.teams?.[task.teamId];if(!team){done();return;}
   const moment=task.moment||task.type,receipt=task.receipt||null;
+  if(moment==='turn'){
+    const currentTeam=App.state?.teams?.[team.id];
+    if(currentTeam?.rolled||Number(App.state?.activeTeamId)!==Number(team.id)||App.state?.phase!=='roll'){
+      done();
+      return;
+    }
+  }
   const presets={
     gain:{icon:'＋$',kicker:'LIFE RESOURCE',title:'資源入袋',detail:receipt?.reason||'本隊獲得資源',tone:'gain'},
     loss:{icon:'−$',kicker:'LIFE EXPENSE',title:'人生支出',detail:receipt?.reason||'本隊支付款項',tone:'loss'},
@@ -722,7 +729,7 @@ function processGameFx(previous,next){
     const freshReceipts=(next.receipts||[]).filter(r=>Number(r.teamId)===App.teamId&&!previousReceipts.has(`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`)).slice(0,3).reverse();
     freshReceipts.filter(receipt=>!(purchaseChanged&&isPurchaseReceipt(receipt,next.lastPurchase))).forEach(receipt=>teamLifeMoments.push({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
     if(Number(beforeMine?.buffs?.shield||0)>Number(mine?.buffs?.shield||0))teamLifeMoments.push({type:'teamMoment',team:mine,moment:'shield'});
-    if(previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll')teamLifeMoments.push({type:'teamTurn',team:mine,moment:'turn'});
+    if(previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll'&&mine&&!mine.rolled&&!mine.jailedThisTurn)teamLifeMoments.push({type:'teamTurn',team:mine,moment:'turn'});
     try{
       const previousRank=G.rankTeams(previous).findIndex(t=>t.originalIndex===App.teamId)+1,nextRank=G.rankTeams(next).findIndex(t=>t.originalIndex===App.teamId)+1;
       if(previousRank>0&&nextRank>0&&nextRank<previousRank)teamLifeMoments.push({type:'rank',team:mine,moment:'rank',fromRank:previousRank,toRank:nextRank});
@@ -2240,7 +2247,7 @@ function bindDiceGesture(){
   const pad=$('diceThrow');if(!pad)return;let active=false,startY=0,startX=0,pull=0,tilt=0,velocity=0,lastY=0,lastAt=0,frame=0,launched=false;
   const status=pad.querySelector('.throw-status'),paint=()=>{const power=Math.min(1,pull/82);frame=0;pad.style.setProperty('--throw-pull',`${pull}px`);pad.style.setProperty('--throw-y',`${-pull}px`);pad.style.setProperty('--throw-spin',`${pull*1.75}deg`);pad.style.setProperty('--throw-tilt',`${tilt}deg`);pad.style.setProperty('--throw-shadow-scale',String(1-power*.24));pad.style.setProperty('--throw-shadow-opacity',String(.22+power*.24));if(status)status.textContent=pull>=52?'放手擲出！':pull>12?'再往上一點':'向上甩動';},queuePaint=()=>{if(!frame)frame=requestAnimationFrame(paint);};
   const reset=()=>{active=false;if(frame)cancelAnimationFrame(frame);frame=0;pad.classList.remove('dragging');pad.classList.add('settling');pull=0;tilt=0;paint();setTimeout(()=>pad.classList.remove('settling'),280);};
-  const launch=()=>{if(launched||App.busy)return;launched=true;active=false;if(frame)cancelAnimationFrame(frame);paint();pad.classList.remove('dragging','settling');pad.classList.add('launch');if(status)status.textContent='擲出中…';navigator.vibrate?.([20,25,35]);SoundFX.playDiceTumble();setTimeout(()=>{pad.classList.add('waiting');if(status)status.textContent='等待骰點…';send('roll',{}, {preserveView:true});},540);};
+  const launch=()=>{if(launched||App.busy)return;launched=true;active=false;if(frame)cancelAnimationFrame(frame);paint();pad.classList.remove('dragging','settling');pad.classList.add('launch');if(status)status.textContent='擲出中…';navigator.vibrate?.([20,25,35]);SoundFX.playDiceTumble();if(App.fx.teamMoment?.moment==='turn'){App.fx.teamMoment=null;renderFx();}App.fxQueue=App.fxQueue.filter(t=>t.type!=='teamTurn');setTimeout(()=>{pad.classList.add('waiting');if(status)status.textContent='等待骰點…';send('roll',{}, {preserveView:true});},540);};
   pad.onpointerdown=e=>{if(launched)return;e.preventDefault();active=true;startY=lastY=e.clientY;startX=e.clientX;lastAt=performance.now();pull=0;tilt=0;velocity=0;pad.classList.remove('settling');pad.classList.add('dragging');pad.setPointerCapture?.(e.pointerId);queuePaint();};
   pad.onpointermove=e=>{if(!active)return;e.preventDefault();const now=performance.now(),dy=lastY-e.clientY,dt=Math.max(8,now-lastAt);velocity=velocity*.6+(dy/dt)*.4;lastY=e.clientY;lastAt=now;pull=Math.max(0,Math.min(132,startY-e.clientY));tilt=Math.max(-12,Math.min(12,(e.clientX-startX)*.12));queuePaint();};
   pad.onpointerup=e=>{if(!active)return;pad.releasePointerCapture?.(e.pointerId);if(pull>=52||(pull>=32&&velocity>.55))launch();else reset();};pad.onpointercancel=reset;pad.onlostpointercapture=()=>{if(active)reset();};pad.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pull=82;paint();launch();}};

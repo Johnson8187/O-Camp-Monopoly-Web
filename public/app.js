@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.44';
-import { G } from './game-core.js?v=2026.08.22.44';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.44';
+const BUILD_VERSION = '2026.08.22.45';
+import { G } from './game-core.js?v=2026.08.22.45';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.45';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -875,7 +875,13 @@ function boardAftermathHTML(kind){
     }
     const pt = movementPoint(targetPos || 0);
     const targetName = after?.targetTeamName || (after?.targetTeam !== undefined ? App.state?.teams?.[after.targetTeam]?.name : '');
-    return `<div class="board-aftermath board-missile" style="--lock-x:${pt.x}px;--lock-y:${pt.y}px"><div class="missile-target-circle"><i></i><i></i><i></i><b>🎯 LOCK ${targetName ? esc(targetName) : ''}</b></div><div class="board-missile-flyer"></div></div>`;
+    const centerX = 276, centerY = 251;
+    const fromX = pt.x >= centerX ? (pt.x - 340) : (pt.x + 340);
+    const fromY = pt.y >= centerY ? (pt.y - 300) : (pt.y + 300);
+    const startDx = fromX - pt.x, startDy = fromY - pt.y;
+    const flightAngle = Math.atan2(pt.y - fromY, pt.x - fromX) * 180 / Math.PI;
+    const flyerRot = Math.round(flightAngle + 45);
+    return `<div class="board-aftermath board-missile" style="--lock-x:${pt.x}px;--lock-y:${pt.y}px;--start-dx:${startDx}px;--start-dy:${startDy}px;--flyer-rot:${flyerRot}deg"><div class="missile-target-circle"><i></i><i></i><i></i><b>🎯 LOCK ${targetName ? esc(targetName) : ''}</b></div><div class="board-missile-flyer"></div><div class="board-missile-explosion"><div class="blast-core"></div><div class="blast-ring"></div>${Array.from({length:6},(_,i)=>`<div class="blast-spark" style="--i:${i}"></div>`).join('')}</div></div>`;
   }
   if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
   return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;

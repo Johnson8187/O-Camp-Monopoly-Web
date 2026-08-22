@@ -177,8 +177,8 @@ function applyMove(s, ti, steps, rnd = Math.random, diceValues = null) {
     t.lastRoll = 0;
     t.lastDice = [];
     t.jailedThisTurn = false;
-    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, dice:[], from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄中，本回合不移動"};
-    s.log.unshift(`${t.name} 在監獄中，跳過本回合`);
+    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, dice:[], from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄服刑，本回合暫停擲骰"};
+    s.log.unshift(`${t.name} 在監獄服刑，暫停本回合行動`);
     return s;
   }
   const from = t.pos;
@@ -472,7 +472,7 @@ function nextPhase(s) {
           t.rolled = true;
           t.lastRoll = 0;
           t.jailedThisTurn = true;
-          s.log.unshift(`${t.name} 在監獄中，跳過本回合行動`);
+          s.log.unshift(`${t.name} 在監獄服刑，本回合暫停擲骰`);
         } else {
           t.jailedThisTurn = false;
         }

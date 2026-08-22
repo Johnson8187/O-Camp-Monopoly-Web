@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.46';
-import { G } from './game-core.js?v=2026.08.22.46';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.46';
+const BUILD_VERSION = '2026.08.22.47';
+import { G } from './game-core.js?v=2026.08.22.47';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.47';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -1755,9 +1755,10 @@ function resumeSession(sess){ if(sess.accessToken) App.access[sess.role]=sess.ac
 function boardHUD(){
   const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null,dice=App.fx.dice;
   const marketName=S.settings.marketNames[S.market]||S.market,marketRate=(S.settings.market[S.market]||100)/100;
-  const diceValue=dice?(dice.rolling?'?':dice.value):(last?.n||'–');
-  const diceTeam=dice?.teamName||lastTeam?.name||'等待擲骰';
-  return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>房市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-bank"><span>🏦 銀行庫存</span><b>${G.money(S.bank||0)}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>${S.settings.diceCount||1} 顆骰子 · 最近行動</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
+  const isJailRoll = last && Number(last.n) === 0;
+  const diceValue=dice?(dice.rolling?'?':dice.value):(isJailRoll?'⛓️':(last?.n||'–'));
+  const diceTeam=dice?.teamName||(last?(isJailRoll?`${lastTeam?.name||''}（監獄受限）`:lastTeam?.name||''):'等待擲骰');
+  return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>房市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-bank"><span>🏦 銀行庫存</span><b>${G.money(S.bank||0)}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>${isJailRoll?'監獄停留':`${S.settings.diceCount||1} 顆骰子 · 最近行動`}</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
 }
 function activeTurnHTML(){
   const S=App.state;if(S.phase!=='roll')return '';
@@ -1913,11 +1914,14 @@ function teamControls(){
       h+=`<div class="battle-choice"><div class="battle-kicker">BASE ENCOUNTER</div><h3>抵達 ${esc(defender?.name||'對手')} 的基地</h3><p>過夜費 <b>${G.money(pending.amount)}</b> 尚未扣款；移動演出完成後會出現付款或 BATTLE 選擇視窗。</p></div>`;
     }else if(myPending&&pending.status==='awaiting_host'){
       h+=`<div class="battle-choice waiting"><div class="battle-kicker">BATTLE IN PROGRESS</div><h3>⚔️ 等待主持人裁決</h3><p>過夜費 ${G.money(pending.amount)} 仍未扣款；攻方勝免付，守方勝才會正式付款。</p></div>`;
-    }else if(me.jail>0){
-      h+=`<div class="dice-result-panel"><div style="font-size:28px;line-height:1.2;margin-bottom:6px;">⛓️</div><b style="color:#e23b3b">目前在監獄中服刑，本回合停留跳過行動</b></div>`;
+    }else if(me.jailedThisTurn){
+      h+=`<div class="dice-result-panel jail-restricted"><div class="jail-restricted-icon">⛓️</div><b style="color:#e23b3b;font-size:15px">本回合在監獄服刑，暫停擲骰移動</b><small style="display:block;margin-top:6px;color:#766d62;font-size:12px">本回合服刑完畢，下一回合將恢復正常擲骰。</small></div>`;
     }else{
       const mine=App.fx.dice?.teamId===me.id,lastMine=(typeof me.lastRoll==='number'?me.lastRoll:(S.lastRoll?.team===me.id?S.lastRoll.n:(mine?App.fx.dice?.value:null))),displayVal=lastMine!==null?lastMine:(mine?App.fx.dice?.value:1),diceValues=mine?App.fx.dice?.values:(Array.isArray(me.lastDice)&&me.lastDice.length?me.lastDice:[displayVal]),diceCount=Math.max(1,Number(S.settings.diceCount)||1);
-      if(me.rolled||App.busy)h+=`<div class="dice-result-panel ${mine&&App.fx.dice?.rolling?'rolling':''}">${diceSetHTML(diceValues,displayVal)}<b>${App.busy?'骰子飛行中…':(lastMine!==null?`本回合總點數 ${lastMine}`:'本回合已完成擲骰')}</b></div>`;
+      if(me.rolled||App.busy){
+        const landedJail = me.jail > 0;
+        h+=`<div class="dice-result-panel ${mine&&App.fx.dice?.rolling?'rolling':''}">${diceSetHTML(diceValues,displayVal)}<b>${App.busy?'骰子飛行中…':(lastMine!==null?`本回合總點數 ${lastMine}`:'本回合已完成擲骰')}</b>${landedJail?'<span class="jail-landing-warning">⚠️ 抵達監獄格！將於下回合服刑停留一次</span>':''}</div>`;
+      }
       else if(S.activeTeamId===me.id)h+=`<div class="turn-ready">主持人已允許你們擲骰！</div><div class="dice-throw-pad" id="diceThrow" role="button" tabindex="0" aria-label="向上滑動擲骰子"><div class="throw-lane"><span>FLICK ${diceCount} DICE</span><div class="dice-set preview">${Array.from({length:diceCount},()=>diceCubeHTML(1)).join('')}</div><i class="throw-arrow">↑</i><i class="throw-status">向上甩動</i></div><strong>按住骰子向上滑動，放手擲出 ${diceCount} 顆骰子</strong><small>所有骰點加總後前進；必須先由主持人允許本組操作。</small></div>`;
       else h+=`<div class="turn-waiting"><i>⏳</i><b>等待主持人允許本組擲骰</b><span>目前操作：${S.activeTeamId===null||S.activeTeamId===undefined?'尚未指定':esc(S.teams[S.activeTeamId]?.name||'其他隊伍')}</span></div>`;
     }
@@ -2115,7 +2119,7 @@ function hostPanel(){
   if(section==='flow'){
     h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
-    if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>`<button class="btn sm allow-roll ${S.activeTeamId===i?'green':'outline'}" data-i="${i}" ${t.rolled||t.jail>0||t.jailedThisTurn||S.pendingBattle?'disabled':''}><span>${i+1}</span>${esc(t.name)}<small>${t.rolled?'已完成':S.activeTeamId===i?'操作中':'允許擲骰'}</small></button>`).join('')}</div></section>`;
+    if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>{const isJailed=t.jailedThisTurn||(t.jail>0&&!t.rolled),status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):S.activeTeamId===i?'操作中':'允許擲骰';return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':'outline'}" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;}).join('')}</div></section>`;
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}
     h+=`<section class="host-work-card"><div class="host-work-title"><span>🏘️ 房市與關卡</span><small>現場常用控制</small></div><div class="row wrap mkrow">${S.settings.marketOrder.map(k=>`<button class="tg mk ${S.market===k?'on':''}" data-k="${k}">${S.settings.marketNames[k]}<span class="mx">×${S.settings.market[k]/100}</span></button>`).join('')}</div><div class="stage-unlock-grid">${G.STAGE_IDX.map(i=>`<button class="btn xs purple unl" data-i="${i}">${S.unlocked.includes(i)?'✓ 已解封':'解封'}第 ${i+1} 格</button>`).join('')}</div></section>`;
     if(S.phase!=='ended')h+=`<section class="host-work-card finish"><div class="host-work-title"><span>🏆 結算控制</span><small>活動尾聲才使用</small></div><div class="host-finish-actions">${S.phase==='settle'?'<button class="btn sm purple" id="bResume">↩ 返回遊戲</button>':'<button class="btn sm gold" id="bSettle">進行最終結算</button>'}<button class="btn sm dark" id="bEnd">結束並封存活動</button></div></section>`;

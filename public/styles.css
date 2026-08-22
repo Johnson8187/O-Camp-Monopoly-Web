@@ -179,6 +179,9 @@ input.code{font-family:'Press Start 2P',monospace;font-size:19px;letter-spacing:
 .dice-result-panel .dice-inner{transform:rotateX(-14deg) rotateY(180deg)}
 .dice-result-panel.rolling .dice-inner{animation:diceTumble .6s linear infinite}
 .dice-result-panel b{font-size:13px}
+.dice-result-panel.jail-restricted{background:#fff1f1;border-color:#e23b3b;box-shadow:0 0 16px rgba(226,59,59,.15);text-align:center}
+.jail-restricted-icon{font-size:36px;line-height:1;margin-bottom:6px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.2))}
+.jail-landing-warning{display:block;margin-top:8px;color:#c72a2a;font-size:12px;font-weight:bold;background:#ffebeb;padding:6px 10px;border-radius:4px;border:1px solid #ffb3b3;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .dice-flight{position:fixed;z-index:73;left:50%;top:48%;width:190px;height:190px;translate:-50% -50%;display:grid;place-items:center;perspective:850px;pointer-events:none}
 .dice-flight::before{content:'';position:absolute;inset:-40%;z-index:-2;border-radius:50%;background:radial-gradient(circle,rgba(242,193,46,.62),rgba(63,134,224,.15) 42%,transparent 68%);animation:diceAura 1.2s ease-in-out infinite}
 .dice-flight::after{content:'';position:absolute;z-index:-1;left:28%;right:28%;bottom:10px;height:20px;border-radius:50%;background:radial-gradient(ellipse,rgba(20,17,15,.35) 0%,transparent 70%)}

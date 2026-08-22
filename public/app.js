@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.51';
-import { G } from './game-core.js?v=2026.08.22.51';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './game-fx.js?v=2026.08.22.51';
+const BUILD_VERSION = '2026.08.22.52';
+import { G } from './game-core.js?v=2026.08.22.52';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './game-fx.js?v=2026.08.22.52';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -770,6 +770,16 @@ function processGameFx(previous,next){
   if(!previous||!next)return;
   const teamLifeMoments=[];
   if(App.fx.battlePrompt&&next.pendingBattle?.status!=='awaiting_choice')finishBattlePromptFx();
+  const previousCeremonyStep=ceremonyStep(previous.ceremonyStep),nextCeremonyStep=ceremonyStep(next.ceremonyStep);
+  if(['settle','ended'].includes(next.phase)&&previousCeremonyStep!==nextCeremonyStep){
+    if(nextCeremonyStep===3)SoundFX.playVictory();
+    else if(nextCeremonyStep===4)SoundFX.playCoinReward();
+    else SoundFX.playPhaseChange();
+    if(App.role==='team'&&App.teamId!==null){
+      const ranked=G.rankTeams(next),revealedTeam=nextCeremonyStep===1?ranked[2]:nextCeremonyStep===2?ranked[1]:nextCeremonyStep===3?ranked[0]:null;
+      if(revealedTeam&&Number(revealedTeam.id)===Number(App.teamId))navigator.vibrate?.([40,35,80,35,140]);
+    }
+  }
 
   // 1. Phase change or pause change
   if(previous.phase!==next.phase&&PHASE_FX[next.phase]){
@@ -894,6 +904,7 @@ function processGameFx(previous,next){
       if(/骰出/.test(logMsg))return;
       if(/買了(?:實體物品)?「|取得「/.test(logMsg)&&purchaseChanged)return;
       if(battlePresentation&&/BATTLE/.test(logMsg))return;
+      if(/頒獎典禮進度/.test(logMsg))return;
       enqueueFx({type:'event',message:logMsg});
     });
   }
@@ -1511,7 +1522,7 @@ async function renderDevEvents(container){
 
   const eventTypes = [
     'roll','reroll','attack','battle','gamble','buff','upgrade','sell','buyBack',
-    'assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','endGame',
+    'assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame',
     'kickTeam','idleTimeout','teamJoin','teamLeave','forceEnd'
   ];
 
@@ -2156,122 +2167,28 @@ function cfgHTML(){
   S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('每輪房屋稅',`levels.${i}.tax`,lv.tax||0,'元')+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});
   return h+'<button class="btn sm green" id="bSaveCfg">儲存全部遊戲設定</button></div>';
 }
+function ceremonyControlDockHTML(step,compact=false){
+  const current=CEREMONY_STEPS[step]||CEREMONY_STEPS[0],next=CEREMONY_STEPS[step+1];
+  return `<section class="ceremony-control-dock ${compact?'compact':''}"><div class="ceremony-control-copy"><small>HOST CEREMONY CONTROL</small><b>${esc(current.label)}</b><span>${next?`下一步：${esc(next.label)}`:'典禮畫面已全部公開'}</span></div><div class="ceremony-step-dots">${CEREMONY_STEPS.map(item=>`<i class="${item.step===step?'on':item.step<step?'done':''}" title="${esc(item.label)}"></i>`).join('')}</div><div class="ceremony-control-actions"><button type="button" class="btn sm outline ceremony-step-button" data-step="${Math.max(0,step-1)}" ${step<=0?'disabled':''}>← 上一步</button><button type="button" class="btn sm ${next?'gold':'green'} ceremony-step-button" data-step="${next?step+1:0}">${next?(next.step<=3?`揭曉：${esc(next.label.replace('揭曉',''))}`:esc(next.label)):'重新播放典禮'}</button></div></section>`;
+}
+function ceremonyPodiumCard(team,rank,revealed){
+  if(!team)return '';
+  const label=rank===1?'總冠軍':rank===2?'亞軍':'季軍',medal=rank===1?'🥇':rank===2?'🥈':'🥉',pose=rank===1?'victory':'celebrate';
+  return `<article class="ceremony-podium-entry rank-${rank} ${revealed?'revealed':'concealed'}" style="--team:${team.color}"><div class="ceremony-spotlight" aria-hidden="true"></div><div class="ceremony-character-shell">${revealed?battlePawnHTML(team,{pose,direction:'front',extraClass:'ceremony-winner-pawn',scale:rank===1?3.8:3.15}):'<div class="ceremony-silhouette">?</div>'}</div><div class="ceremony-team-name"><small>${rank}${rank===1?'ST':rank===2?'ND':'RD'} PLACE</small><b>${revealed?esc(team.name):'尚未揭曉'}</b><strong>${revealed?G.money(team.worth):'???'}</strong></div><div class="ceremony-platform"><span>${medal}</span><b>${rank}</b><small>${label}</small></div></article>`;
+}
+function ceremonyAwardCard(team,{icon,title,detail}){
+  return `<article class="ceremony-award" style="--team:${team.color}"><div class="ceremony-award-medal">${icon}</div><div class="ceremony-award-pawn">${battlePawnHTML(team,{pose:'celebrate',direction:'front',extraClass:'ceremony-medal-pawn',scale:2.05})}</div><div><small>SPECIAL HONOR</small><h3>${title}</h3><b>${esc(team.name)}</b><p>${detail}</p></div></article>`;
+}
 function settleHTML(){
   const S=App.state;
-  if(!S||!S.teams||!S.teams.length) return '<div class="card"><div class="cb">尚無隊伍資料</div></div>';
-  const ranked = G.rankTeams(S);
-  const top1 = ranked[0], top2 = ranked[1], top3 = ranked[2];
-
-  const highestCash = [...ranked].sort((a,b)=>b.cash-a.cash)[0];
-  const highestProp = [...ranked].sort((a,b)=>b.prop-a.prop)[0];
-  const highestPts = [...ranked].sort((a,b)=>b.pts-a.pts)[0];
-
-  let h = `<div class="settle-view">
-    <div class="settle-hero">
-      <div class="settle-kicker">★ VICTORY CEREMONY ★</div>
-      <h2 class="settle-title">🏆 人生里程碑 · 最終成果典禮 🏆</h2>
-      <p class="settle-subtitle">《${esc(CAMP_NAME)}》・ 第 ${S.round} 回合總成績公布</p>
-    </div>`;
-
-  h += `<div class="podium-wrap">`;
-  if(top2){
-    h += `<div class="podium-card rank-2">
-      <div class="podium-badge">🥈</div>
-      <div class="podium-rank-label">2ND 亞軍</div>
-      <div class="podium-team-swatch" style="background:${top2.color};color:${G.LIGHT_FG.includes(top2.originalIndex)?'#14110f':'#fff'}">${top2.originalIndex+1}</div>
-      <div class="podium-name">${esc(top2.name)}</div>
-      <div class="podium-worth">${G.money(top2.worth)}</div>
-      <div class="podium-breakdown">現金 ${G.money(top2.cash)}<br>房產 ${G.money(top2.prop)} ｜ 點數 ${top2.pts}</div>
-    </div>`;
-  }
-  if(top1){
-    h += `<div class="podium-card rank-1">
-      <div class="podium-badge">👑 🥇</div>
-      <div class="podium-rank-label">1ST 總冠軍</div>
-      <div class="podium-team-swatch" style="background:${top1.color};color:${G.LIGHT_FG.includes(top1.originalIndex)?'#14110f':'#fff'}">${top1.originalIndex+1}</div>
-      <div class="podium-name">${esc(top1.name)}</div>
-      <div class="podium-worth" style="font-size:15px;color:#d35400;">${G.money(top1.worth)}</div>
-      <div class="podium-breakdown">現金 ${G.money(top1.cash)}<br>房產 ${G.money(top1.prop)} ｜ 點數 ${top1.pts}</div>
-    </div>`;
-  }
-  if(top3){
-    h += `<div class="podium-card rank-3">
-      <div class="podium-badge">🥉</div>
-      <div class="podium-rank-label">3RD 季軍</div>
-      <div class="podium-team-swatch" style="background:${top3.color};color:${G.LIGHT_FG.includes(top3.originalIndex)?'#14110f':'#fff'}">${top3.originalIndex+1}</div>
-      <div class="podium-name">${esc(top3.name)}</div>
-      <div class="podium-worth">${G.money(top3.worth)}</div>
-      <div class="podium-breakdown">現金 ${G.money(top3.cash)}<br>房產 ${G.money(top3.prop)} ｜ 點數 ${top3.pts}</div>
-    </div>`;
-  }
-  h += `</div>`;
-
-  h += `<div class="settle-highlights">
-    <div class="highlight-card">
-      <div class="highlight-icon">💰</div>
-      <div class="highlight-content">
-        <h4>現金富豪</h4>
-        <strong>${esc(highestCash.name)}</strong>
-        <small>手握現金 ${G.money(highestCash.cash)}</small>
-      </div>
-    </div>
-    <div class="highlight-card">
-      <div class="highlight-icon">🏰</div>
-      <div class="highlight-content">
-        <h4>地產大亨</h4>
-        <strong>${esc(highestProp.name)}</strong>
-        <small>房產市值 ${G.money(highestProp.prop)}</small>
-      </div>
-    </div>
-    <div class="highlight-card">
-      <div class="highlight-icon">✨</div>
-      <div class="highlight-content">
-        <h4>諂媚之王</h4>
-        <strong>${esc(highestPts.name)}</strong>
-        <small>累積點數 ${highestPts.pts} 點</small>
-      </div>
-    </div>
-  </div>`;
-
-  h += `<div class="settle-table-wrap">
-    <div class="ch" style="margin-bottom:10px;">★ 全體隊伍最終總排名表</div>
-    <table class="settle-table">
-      <thead>
-        <tr>
-          <th style="width:44px;text-align:center;">名次</th>
-          <th>隊伍</th>
-          <th>基地狀態</th>
-          <th style="text-align:right;">現金</th>
-          <th style="text-align:right;">房產價值</th>
-          <th style="text-align:right;">諂媚點數</th>
-          <th style="text-align:right;">總資產</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${ranked.map((t, idx) => {
-          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx+1}`;
-          const baseName = t.sold || t.baseIdx === null ? '無（已賣出）' : `LV${t.level} ${S.settings.levels[t.level-1]?.name || '營地'}`;
-          return `<tr>
-            <td class="rank-num">${medal}</td>
-            <td>
-              <div class="team-cell">
-                <span class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(t.originalIndex)?'#14110f':'#fff'};width:22px;height:22px;font-size:9px;">${t.originalIndex+1}</span>
-                <span>${esc(t.name)}</span>
-              </div>
-            </td>
-            <td>${esc(baseName)}</td>
-            <td style="text-align:right;">${G.money(t.cash)}</td>
-            <td style="text-align:right;">${G.money(t.prop)}</td>
-            <td style="text-align:right;">${t.pts} 點</td>
-            <td class="worth-cell">${G.money(t.worth)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  </div>`;
-
-  h += `</div>`;
-  return h;
+  if(!S||!S.teams||!S.teams.length)return '<div class="card"><div class="cb">尚無隊伍資料</div></div>';
+  const ranked=G.rankTeams(S),top1=ranked[0],top2=ranked[1],top3=ranked[2],step=ceremonyStep(S.ceremonyStep);
+  const highestCash=[...ranked].sort((a,b)=>b.cash-a.cash)[0],highestProp=[...ranked].sort((a,b)=>b.prop-a.prop)[0],highestPts=[...ranked].sort((a,b)=>b.pts-a.pts)[0];
+  const confetti=step>=3?Array.from({length:34},(_,i)=>`<i style="left:${((i+1)*2.85).toFixed(2)}%;--fall:${(2.2+(i%5)*.18).toFixed(2)}s;--delay:${(-i*.11).toFixed(2)}s;--confetti-color:${ranked[i%ranked.length]?.color||'#f2c12e'}"></i>`).join(''):'';
+  const waiting=step===0?`<div class="ceremony-curtain"><div class="ceremony-curtain-crown">♛</div><small>FINAL RESULTS LOCKED</small><h2>人生旅程最終章</h2><p>${App.role==='host'?'準備好後，使用控制台逐步揭曉名次。':'等待主持人揭曉最終成果…'}</p></div>`:'';
+  const awards=step>=4?`<section class="ceremony-awards"><div class="ceremony-section-title"><small>LIFE ACHIEVEMENT MEDALS</small><h2>人生特別榮譽</h2></div><div class="ceremony-award-grid">${ceremonyAwardCard(highestCash,{icon:'💰',title:'現金富豪',detail:`手握現金 ${G.money(highestCash.cash)}`})}${ceremonyAwardCard(highestProp,{icon:'🏰',title:'地產大亨',detail:`房產市值 ${G.money(highestProp.prop)}`})}${ceremonyAwardCard(highestPts,{icon:'✨',title:'諂媚之王',detail:`累積點數 ${highestPts.pts} 點`})}</div></section>`:'';
+  const standings=step>=5?`<section class="settle-table-wrap ceremony-standings"><div class="ceremony-section-title"><small>FINAL LIFE JOURNEY BOARD</small><h2>全體隊伍最終排名</h2></div><table class="settle-table"><thead><tr><th style="width:44px;text-align:center">名次</th><th>隊伍</th><th>基地狀態</th><th style="text-align:right">現金</th><th style="text-align:right">房產價值</th><th style="text-align:right">諂媚點數</th><th style="text-align:right">總資產</th></tr></thead><tbody>${ranked.map((t,index)=>{const medal=index===0?'🥇':index===1?'🥈':index===2?'🥉':`${index+1}`,baseName=t.sold||t.baseIdx===null?'無（已賣出）':`LV${t.level} ${S.settings.levels[t.level-1]?.name||'營地'}`;return `<tr><td class="rank-num">${medal}</td><td><div class="team-cell"><span class="sw" style="background:${t.color};color:${G.LIGHT_FG.includes(t.originalIndex)?'#14110f':'#fff'};width:22px;height:22px;font-size:9px">${t.originalIndex+1}</span><span>${esc(t.name)}</span></div></td><td>${esc(baseName)}</td><td style="text-align:right">${G.money(t.cash)}</td><td style="text-align:right">${G.money(t.prop)}</td><td style="text-align:right">${t.pts} 點</td><td class="worth-cell">${G.money(t.worth)}</td></tr>`;}).join('')}</tbody></table></section>`:'';
+  return `<div class="settle-view ceremony-step-${step}"><div class="ceremony-night-sky" aria-hidden="true"><div class="ceremony-stars"></div><div class="ceremony-confetti">${confetti}</div></div><header class="settle-hero ceremony-marquee"><div class="settle-kicker">★ VICTORY CEREMONY // ROUND ${S.round} ★</div><h1 class="settle-title">人生里程碑 · 最終成果典禮</h1><p class="settle-subtitle">《${esc(CAMP_NAME)}》</p></header>${App.role==='host'?ceremonyControlDockHTML(step):''}${waiting}<section class="ceremony-podium-stage" aria-live="assertive">${ceremonyPodiumCard(top2,2,step>=2)}${ceremonyPodiumCard(top1,1,step>=3)}${ceremonyPodiumCard(top3,3,step>=1)}<div class="ceremony-stage-lights" aria-hidden="true"><i></i><i></i><i></i></div></section>${step>0&&step<4?`<div class="ceremony-next-cue">${step<3?'名次揭曉中…':'總冠軍誕生！等待頒發特別獎'}</div>`:''}${awards}${standings}</div>`;
 }
 
 function hostPanel(){
@@ -2282,6 +2199,7 @@ function hostPanel(){
   h+=`<div class="host-workspace" data-section="${section}">`;
   if(section==='flow'){
     h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
+    if(['settle','ended'].includes(S.phase))h+=ceremonyControlDockHTML(ceremonyStep(S.ceremonyStep),true);
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
     if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>{const isJailed=t.jailedThisTurn||(t.jail>0&&!t.rolled),status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):S.activeTeamId===i?'操作中':'允許擲骰';return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':'outline'}" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;}).join('')}</div></section>`;
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}
@@ -2455,6 +2373,7 @@ function bindGame(){
     bind('bPause',()=>ask('暫停活動？','暫停後隊輔暫時不能操作，但觀眾仍可觀看目前狀態。',()=>send('pauseGame')));
     bind('bResume',()=>send('resumeGame'));
     bind('bSettle',()=>ask('進行最終結算？','將進入榮譽頒獎典禮畫面，向全場隊伍與觀眾公開最終排行榜。',()=>send('settleGame')));
+    document.querySelectorAll('.ceremony-step-button').forEach(button=>button.onclick=()=>send('setCeremonyStep',{step:Number(button.dataset.step)},{preserveView:true}));
     bind('bEnd',()=>ask('結束活動並保存紀錄？','活動將正式結束並寫入 D1 歷史資料庫，所有裝置將無法再進行遊戲操作。',()=>send('endGame')));
 
     document.querySelectorAll('.allow-roll').forEach(b=>b.onclick=()=>send('allowRoll',{teamId:Number(b.dataset.i)}));

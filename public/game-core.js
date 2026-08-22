@@ -84,7 +84,7 @@ function freshState(code, teamCount, names) {
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
       buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false,
     })),
-    bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[],
+    bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], ceremonyStep:0,
     settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null,
     receipts:[], receiptSeq:0, lastPurchase:null,
   };

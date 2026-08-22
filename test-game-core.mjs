@@ -2,6 +2,7 @@ import { G } from './public/game-core.js';
 
 const state = G.freshState('smoke-test', 7);
 if (state.teams.length !== 7) throw new Error('隊伍數量未正確建立');
+if (state.ceremonyStep !== 0) throw new Error('頒獎典禮初始進度錯誤');
 if (state.teams.some(t => t.baseIdx !== null)) throw new Error('初始基地狀態錯誤');
 G.assignBases(state);
 if (state.teams.some(t => t.baseIdx === null)) throw new Error('基地分配失敗');

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
+assert.equal(CEREMONY_STEPS.length,6);
+assert.equal(ceremonyStep(-2),0);
+assert.equal(ceremonyStep(3.8),3);
+assert.equal(ceremonyStep(99),5);
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
 assert.equal(typeof SoundFX.toggleSound, 'function');
 assert.equal(typeof SoundFX.playStepHop, 'function');

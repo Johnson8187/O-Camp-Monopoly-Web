@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.22.51';
+const APP_BUILD_VERSION = '2026.08.22.52';
 
 
 
@@ -526,6 +526,8 @@ export function normalizeGameState(state){
   if(!('activeTeamId' in s))s.activeTeamId=null;
   if(!('pendingBattle' in s))s.pendingBattle=null;
   if(!('lastPurchase' in s))s.lastPurchase=null;
+  if(!('ceremonyStep' in s))s.ceremonyStep=['settle','ended'].includes(s.phase)?5:0;
+  else s.ceremonyStep=Math.max(0,Math.min(5,Math.floor(Number(s.ceremonyStep)||0)));
   s.settings=s.settings||G.clone(G.DEFAULTS);
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
   (s.teams||[]).forEach(t=>{
@@ -561,7 +563,7 @@ function appendReceipts(previous,next,action){
   if(next.receipts.length>240)next.receipts=next.receipts.slice(0,240);
 }
 
-const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','endGame','setMarket','allowRoll','resolveBattle','unlock','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
+const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','resolveBattle','unlock','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
 
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack']);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['resolveLanding','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
@@ -733,12 +735,13 @@ export class GameRoom {
       if(action==='buyBack'){const r=G.buyBackBase(s,i);return r.ok?undefined:{error:r.msg};}
     }
     if(action==='assignBases'){if(s.phase!=='setup')return {error:'遊戲開始後不能重新抽籤'};G.assignBases(s);return;}
-    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
+    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.ceremonyStep=0;s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
     if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}
-    if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle')s.phase='roll';s.log.unshift('主持人恢復了活動');return;}
+    if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle'){s.phase='roll';s.ceremonyStep=0;}s.log.unshift('主持人恢復了活動');return;}
     if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};G.nextPhase(s);return;}
-    if(action==='settleGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='settle';s.log.unshift('🏆 活動進行最終結算！公布榮譽排行榜');return;}
-    if(action==='endGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='ended';s.log.unshift('活動結束，歷史紀錄已保存');return;}
+    if(action==='settleGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='settle';s.ceremonyStep=0;s.log.unshift('🏆 活動進入最終頒獎典禮，等待主持人揭曉');return;}
+    if(action==='setCeremonyStep'){if(!['settle','ended'].includes(s.phase))return {error:'目前不是頒獎典禮階段'};const step=Number(p.step);if(!Number.isInteger(step)||step<0||step>5)return {error:'頒獎典禮進度錯誤'};s.ceremonyStep=step;s.log.unshift(`頒獎典禮進度：${step}/5`);return;}
+    if(action==='endGame'){if(s.phase==='ended')return {error:'活動已結束'};const wasSettling=s.phase==='settle';s.paused=false;s.phase='ended';if(!wasSettling)s.ceremonyStep=5;s.log.unshift('活動結束，歷史紀錄已保存');return;}
     if(action==='setMarket'){const k=p.kind;if(!s.settings.marketOrder.includes(k))return {error:'房市狀態錯誤'};s.market=k;s.log.unshift(`房市公布：${s.settings.marketNames[k]}`);return;}
     if(action==='allowRoll'){
       if(s.phase!=='roll')return {error:'目前不是擲骰階段'};

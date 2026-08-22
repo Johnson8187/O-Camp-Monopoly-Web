@@ -17,6 +17,20 @@ export const ATTACK_FX = {
   wildfire: {symbol:'🔥', title:'野火焚城', subtitle:'漫天烈焰沿橫排火速蔓延'},
 };
 
+export const CEREMONY_STEPS = [
+  {step:0,key:'ready',label:'典禮準備'},
+  {step:1,key:'third',label:'揭曉季軍'},
+  {step:2,key:'second',label:'揭曉亞軍'},
+  {step:3,key:'champion',label:'揭曉總冠軍'},
+  {step:4,key:'awards',label:'頒發特別獎'},
+  {step:5,key:'standings',label:'公布全體排名'},
+];
+
+export function ceremonyStep(value=0){
+  const parsed=Math.floor(Number(value)||0);
+  return Math.max(0,Math.min(CEREMONY_STEPS.length-1,parsed));
+}
+
 export function classifyEvent(message=''){
   const text=String(message);
   if(/發動|地震|飛彈|颱風|野火|攻擊|踢出/.test(text))return 'danger';

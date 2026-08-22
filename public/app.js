@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.50';
-import { G } from './game-core.js?v=2026.08.22.50';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition } from './game-fx.js?v=2026.08.22.50';
+const BUILD_VERSION = '2026.08.22.51';
+import { G } from './game-core.js?v=2026.08.22.51';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './game-fx.js?v=2026.08.22.51';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -46,7 +46,7 @@ const App = {
   sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,landingReaction:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
   hostDrafts:{}, hostSection:'flow', editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
 };
 
@@ -194,7 +194,7 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,landingReaction:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
   App.battlePromptDone=null;
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
@@ -211,6 +211,7 @@ function activeFxStatus(){
   else if(App.fx.sell) currentDesc = `【${App.fx.sell.teamName || '隊伍'}】變賣基地`;
   else if(App.fx.purchase) currentDesc = `【${App.fx.purchase.teamName || '隊伍'}】購買道具`;
   else if(App.fx.teamMoment) currentDesc = `【${App.fx.teamMoment.teamName || '隊伍'}】${App.fx.teamMoment.title || '小隊事件'}`;
+  else if(App.fx.landingReaction) currentDesc = `【${App.fx.landingReaction.teamName || '隊伍'}】踩格事件`;
   else if(App.fx.battlePrompt) currentDesc = '等待隊伍選擇付款或 BATTLE';
   else if(App.fx.battleDuel) currentDesc = 'BATTLE 英雄交鋒';
   else if(App.fx.battleResult) currentDesc = 'BATTLE 勝負揭曉';
@@ -221,7 +222,7 @@ function activeFxStatus(){
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', battleDuel:'BATTLE 英雄交鋒', battleResult:'BATTLE 勝負揭曉', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', landingReaction:'踩格角色反應', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', battleDuel:'BATTLE 英雄交鋒', battleResult:'BATTLE 勝負揭曉', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -299,6 +300,9 @@ function runNextFx(){
         break;
       case 'roll':
         executeRollFx(task,done);
+        break;
+      case 'landingReaction':
+        executeLandingReactionFx(task,done);
         break;
       case 'event':
         executeEventFx(task.message,done);
@@ -473,6 +477,10 @@ function executeAttackFx(attack,message,next,done){
   }
   const targetTeam = targetTeamId !== undefined && targetTeamId !== null ? next.teams?.[targetTeamId] : null;
   const targetPos = attack.targetPos ?? targetTeam?.pos ?? (Array.isArray(attack.hit) && attack.hit.length ? attack.hit[0] : null);
+  const caster=next.teams?.[Number(attack.team)]||null;
+  const victimIds=attackCharacterTargets(attack,next.teams||[]);
+  const shieldedIds=new Set((Array.isArray(attack.shielded)?attack.shielded:[]).map(Number));
+  const victims=victimIds.map(id=>next.teams?.find((team,index)=>Number(team?.id??index)===Number(id))).filter(Boolean).map(team=>({...team,shielded:shieldedIds.has(Number(team.id))}));
 
   App.fx.attack={
     ...preset,
@@ -482,11 +490,21 @@ function executeAttackFx(attack,message,next,done){
     teamId:Number(attack.team),
     targetTeam:targetTeamId,
     targetTeamName:targetTeam?.name||'',
-    targetPos
+    targetPos,
+    caster,
+    victims,
+    phase:'cast'
   };
   App.fx.aftershock=null;
   SoundFX.playAttackAlert(attack?.kind);
   renderFx();
+  fxTimeout('attackCharacterImpact',()=>{
+    if(!App.fx.attack||App.fx.attack.kind!==attack.kind)return;
+    App.fx.attack.phase='impact';
+    SoundFX.playAttackHit();
+    if(App.role==='team'&&victimIds.includes(Number(App.teamId)))navigator.vibrate?.([80,35,120]);
+    renderFx();
+  },reducedMotion?360:1250);
   fxTimeout('attack',()=>{
     App.fx.attack=null;
     App.fx.aftershock={
@@ -735,6 +753,19 @@ function executeRollFx(task,done){
   },850);
 }
 
+function executeLandingReactionFx(task,done){
+  const reaction=task.reaction,team=task.team;
+  if(!reaction||!team){done();return;}
+  App.fx.landingReaction={...reaction,team,teamId:Number(team.id),teamName:team.name,tileIndex:task.tileIndex};
+  if(reaction.tone==='reward')SoundFX.playCoinReward();
+  else if(reaction.tone==='loss'||reaction.tone==='danger')SoundFX.playAttackHit();
+  else SoundFX.playStepHop();
+  if(App.role==='team'&&Number(App.teamId)===Number(team.id))navigator.vibrate?.(reaction.tone==='loss'?[70,35,45]:[25,30,55]);
+  renderFx();
+  const tier=currentPresentationTier(),duration=reducedMotion?700:(App.role==='team'||tier==='compact'||tier==='lite'?1250:2050);
+  fxTimeout('landingReaction',()=>{App.fx.landingReaction=null;renderFx();done();},duration);
+}
+
 function processGameFx(previous,next){
   if(!previous||!next)return;
   const teamLifeMoments=[];
@@ -812,6 +843,8 @@ function processGameFx(previous,next){
       const targetPos = next.lastRoll.targetPos ?? team.pos;
       if (rollVal > 0 || beforePos !== targetPos) {
         enqueueFx({type:'roll',teamId,team,beforePos,landPos,targetPos,rollVal,diceValues:Array.isArray(next.lastRoll.dice)?next.lastRoll.dice:[rollVal]});
+        const tileKind=G.TRACK[targetPos]?.[0]||G.TRACK[landPos]?.[0]||'safe';
+        enqueueFx({type:'landingReaction',team,tileIndex:targetPos,reaction:landingReactionForTile(tileKind,next.lastRoll.note||'')});
       }
     }
   }
@@ -1972,6 +2005,17 @@ function battlePawnHTML(team,{direction='front',pose='battle',extraClass='',scal
     isMe:App.role==='team'&&Number(App.teamId)===Number(team.id),
   },{direction,pose,extraClass,scale});
 }
+function landingReactionHTML(){
+  const fx=App.fx.landingReaction;if(!fx)return '';
+  const particles=Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('');
+  return `<div class="landing-reaction-overlay landing-${fx.kind} tone-${fx.tone}" aria-live="assertive" style="--team:${fx.team.color}"><div class="landing-reaction-particles" aria-hidden="true">${particles}</div><div class="landing-reaction-card"><small>LIFE TILE // ARRIVAL</small><div class="landing-reaction-symbol">${esc(fx.symbol)}</div><div class="landing-reaction-hero">${battlePawnHTML(fx.team,{pose:fx.pose,direction:'front',extraClass:'landing-hero-pawn',scale:3.15})}</div><h2>${esc(fx.title)}</h2><b>${esc(fx.teamName)}</b><p>${esc(fx.detail)}</p></div></div>`;
+}
+function attackCharacterStageHTML(){
+  const fx=App.fx.attack;if(!fx?.caster)return '';
+  const phase=fx.phase||'cast',victims=(fx.victims||[]).slice(0,currentPresentationTier()==='full'?5:3);
+  const victimHTML=victims.length?victims.map((team,index)=>`<div class="attack-character victim ${team.shielded?'shielded':''}" style="--team:${team.color};--victim-index:${index}"><div class="attack-character-pawn">${battlePawnHTML(team,{direction:'left',pose:team.shielded?'shield':(phase==='impact'?'hit':'ready'),extraClass:'attack-victim-pawn',scale:2.45})}</div><b>${esc(team.name)}</b><small>${team.shielded?'防災護盾！':phase==='impact'?'遭受衝擊':'危險逼近'}</small></div>`).join(''):`<div class="attack-no-victim"><span>!</span><b>範圍鎖定</b><small>棋盤區域即將受到衝擊</small></div>`;
+  return `<div class="attack-character-stage phase-${phase}" style="--caster:${fx.caster.color}"><div class="attack-character caster"><div class="attack-cast-aura" aria-hidden="true"></div><div class="attack-character-pawn">${battlePawnHTML(fx.caster,{direction:'right',pose:'cast',extraClass:'attack-caster-pawn',scale:3.2})}</div><b>${esc(fx.caster.name)}</b><small>${phase==='cast'?'招式蓄力':'招式釋放'}</small></div><div class="attack-energy-lane" aria-hidden="true"><i></i><i></i><i></i></div><div class="attack-victim-party">${victimHTML}</div></div>`;
+}
 function battleEncounterHTML(){
   if(App.role!=='team'||App.teamId===null)return '';
   const S=App.state,pending=App.fx.battlePrompt?.battle||S?.pendingBattle;
@@ -2293,18 +2337,21 @@ function renderGame(){
   if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
-  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind, App.fx.attack)}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${App.role==='team'?(App.fx.attack.teamId===App.teamId?'本隊發動':'本隊遭遇'):'SPECIAL OPERATION'}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
-  const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${App.fx.dice.values?.length||1} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
+  const attackRoleLabel=App.role!=='team'?'SPECIAL OPERATION':App.fx.attack?.teamId===App.teamId?'本隊發動':App.fx.attack?.victims?.some(team=>Number(team.id)===Number(App.teamId))?'本隊遭遇':'戰況速報';
+  const attackFx=App.fx.attack?`<div class="attack-overlay with-characters attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''} attack-phase-${App.fx.attack.phase||'cast'}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind, App.fx.attack)}${attackCharacterStageHTML()}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${attackRoleLabel}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
+  const diceTeam=App.fx.dice?S.teams?.[Number(App.fx.dice.teamId)]:null;
+  const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-character-hero">${battlePawnHTML(diceTeam,{direction:'right',pose:App.fx.dice.rolling?'ready':'celebrate',extraClass:'dice-signature-pawn',scale:2.6})}</div><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${App.fx.dice.values?.length||1} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();
   const teamMomentFx=teamMomentFxHTML();
   const battleEncounter=battleEncounterHTML();
   const battleDuel=battleDuelHTML();
   const battleResult=battleResultHTML();
+  const landingReaction=landingReactionHTML();
   const audioWake=audioWakeHTML();
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${landingReaction}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }

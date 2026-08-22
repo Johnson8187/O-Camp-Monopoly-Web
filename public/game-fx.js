@@ -63,6 +63,44 @@ export function battlePresentationTransition(previous,next){
   return null;
 }
 
+const LANDING_REACTIONS = {
+  start:  {kind:'start',symbol:'🏁',title:'回到人生起點',pose:'celebrate',tone:'reward'},
+  tax:    {kind:'tax',symbol:'💸',title:'人生帳單來襲',pose:'hit',tone:'loss'},
+  fate:   {kind:'fate',symbol:'🃏',title:'命運就在手中',pose:'ready',tone:'mystery'},
+  black:  {kind:'black',symbol:'◆',title:'黑市交易開張',pose:'ready',tone:'item'},
+  casino: {kind:'casino',symbol:'🎰',title:'人生豪賭時刻',pose:'battle',tone:'danger'},
+  bank:   {kind:'bank',symbol:'💰',title:'找到銀行密道',pose:'celebrate',tone:'reward'},
+  worm:   {kind:'worm',symbol:'◎',title:'穿越人生蟲洞',pose:'warp',tone:'mystery'},
+  jail:   {kind:'jail',symbol:'⛓',title:'人生暫時受困',pose:'hit',tone:'loss'},
+  exch:   {kind:'market',symbol:'⌂',title:'房市情報更新',pose:'ready',tone:'info'},
+  stage:  {kind:'stage',symbol:'★',title:'抵達人生關卡',pose:'celebrate',tone:'reward'},
+  safe:   {kind:'safe',symbol:'✓',title:'平安抵達',pose:'land',tone:'info'},
+};
+
+export function landingReactionForTile(tileKind='',note=''){
+  const kind=String(tileKind||'safe'),detail=String(note||'平安無事');
+  if(kind==='base'){
+    if(/自己的基地/.test(detail))return {kind:'home',symbol:'🏠',title:'回到人生據點',pose:'celebrate',tone:'reward',detail};
+    if(/付款|BATTLE|對手基地|抵達.+基地/.test(detail))return {kind:'rival-base',symbol:'⚔',title:'闖入他人基地',pose:'battle',tone:'danger',detail};
+    return {kind:'base',symbol:'🚩',title:'人生基地停靠',pose:'land',tone:'info',detail};
+  }
+  const preset=LANDING_REACTIONS[kind]||LANDING_REACTIONS.safe;
+  return {...preset,detail};
+}
+
+export function attackCharacterTargets(attack={},teams=[]){
+  const caster=Number(attack?.team),hitTiles=new Set((Array.isArray(attack?.hit)?attack.hit:[]).map(Number));
+  const targetIds=new Set();
+  const add=id=>{if(id===null||id===undefined||id==='')return;const value=Number(id);if(Number.isInteger(value)&&value>=0&&value!==caster)targetIds.add(value);};
+  add(attack?.targetTeam);
+  (Array.isArray(attack?.shielded)?attack.shielded:[]).forEach(add);
+  (Array.isArray(teams)?teams:[]).forEach((team,index)=>{
+    const id=team?.id??index;
+    if(team?.baseIdx!==null&&team?.baseIdx!==undefined&&hitTiles.has(Number(team.baseIdx)))add(id);
+  });
+  return (Array.isArray(teams)?teams:[]).map((team,index)=>Number(team?.id??index)).filter(id=>targetIds.has(id));
+}
+
 export function presentationTier({role='',width=0,reducedMotion=false,hardwareConcurrency=8,deviceMemory=8}={}){
   if(reducedMotion)return 'reduced';
   const constrained=Number(hardwareConcurrency||8)<=4||Number(deviceMemory||8)<=4;
@@ -76,7 +114,7 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   if(role!=='team')return true;
   const mine=Number(teamId);
   if(!Number.isInteger(mine))return false;
-  if(['phase','assignment','event','roll','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
+  if(['phase','assignment','event','roll','landingReaction','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
   if(['purchase'].includes(task.type))return Number(task.team?.id)===mine;
   if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
   if(task.type==='battlePrompt')return Number(task.battle?.attackerId)===mine;
@@ -460,9 +498,24 @@ export const PAWN_ARCHETYPES = [
   { id: 9, name: 'Explorer', roleTitle: '冒險探家', color: '#8a6a2a', dark: '#523b12', lightFg: false }
 ];
 
+export const PAWN_SIGNATURES = [
+  {id:0,key:'warrior',label:'戰吼重踏'},
+  {id:1,key:'mage',label:'魔力浮空'},
+  {id:2,key:'ranger',label:'迅捷瞄準'},
+  {id:3,key:'bard',label:'節拍旋舞'},
+  {id:4,key:'warlock',label:'鍊金脈動'},
+  {id:5,key:'engineer',label:'機械校準'},
+  {id:6,key:'ninja',label:'殘影閃身'},
+  {id:7,key:'priestess',label:'祈願漂浮'},
+  {id:8,key:'paladin',label:'聖盾戒備'},
+  {id:9,key:'explorer',label:'探路張望'},
+];
+
+const PAWN_POSES=['idle','ready','walk','land','battle','victory','defeat','cast','hit','shield','warp','celebrate'];
+
 export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27, pose = 'idle', direction = 'front', frame = 0 } = {}) {
   const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
-  const safePose=['idle','ready','walk','land','battle','victory','defeat'].includes(pose)?pose:'idle';
+  const safePose=PAWN_POSES.includes(pose)?pose:'idle';
   const safeDirection=['front','back','left','right'].includes(direction)?direction:'front';
   const safeFrame=Math.abs(Math.floor(Number(frame)||0))%2;
   const svgOpen = `<svg class="pawn-svg pawn-svg-${safePose} pawn-svg-${safeDirection} pawn-svg-frame-${safeFrame}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 18" width="${width}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">`;
@@ -507,8 +560,9 @@ export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27, pose = 'idl
 export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = '', isMoving = false, scale = 1.0, pose = 'idle', direction = 'front', frame = 0 } = {}) {
   const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
   const arch = PAWN_ARCHETYPES[tid] || PAWN_ARCHETYPES[0];
+  const signature=PAWN_SIGNATURES[tid]||PAWN_SIGNATURES[0];
   const { isMe = false, isLeader = false, isJailed = false, isShielded = false, isHopping = false } = statusFlags;
-  const safePose=['idle','ready','walk','land','battle','victory','defeat'].includes(pose)?pose:'idle';
+  const safePose=PAWN_POSES.includes(pose)?pose:'idle';
   const safeDirection=['front','back','left','right'].includes(direction)?direction:'front';
   const safeFrame=Math.abs(Math.floor(Number(frame)||0))%2;
 
@@ -555,6 +609,7 @@ export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = ''
     `pawn-facing-${safeDirection}`,
     `pawn-pose-${safePose}`,
     `pawn-frame-${safeFrame}`,
+    `pawn-signature-${signature.key}`,
     extraClass
   ].filter(Boolean).join(' ');
 

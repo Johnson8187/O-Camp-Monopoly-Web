@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
@@ -66,6 +66,19 @@ const defenderWin={pendingBattle:null,log:['BATTLE 裁決：藍隊 守住基地�
 assert.deepEqual(battlePresentationTransition(battleFighting,attackerWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'attacker',message:attackerWin.log[0]});
 assert.deepEqual(battlePresentationTransition(battleFighting,defenderWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'defender',message:defenderWin.log[0]});
 
+assert.equal(PAWN_SIGNATURES.length,10);
+assert.equal(landingReactionForTile('tax','稅收 −$200').kind,'tax');
+assert.equal(landingReactionForTile('worm','蟲洞傳送').pose,'warp');
+assert.equal(landingReactionForTile('base','回到自己的基地').kind,'home');
+assert.equal(landingReactionForTile('base','等待選擇付款或 BATTLE').kind,'rival-base');
+assert.deepEqual(attackCharacterTargets({team:0,targetTeam:2,hit:[10,20],shielded:[3]},[
+  {id:0,baseIdx:10,pos:1},
+  {id:1,baseIdx:20,pos:2},
+  {id:2,baseIdx:30,pos:3},
+  {id:3,baseIdx:40,pos:4},
+]),[1,2,3]);
+assert.deepEqual(attackCharacterTargets({team:2,targetTeam:null,hit:[],shielded:[]},[{id:0,baseIdx:10},{id:2,baseIdx:20}]),[]);
+
 // 2.5D Pixel Pawn Archetypes & SVG Sprites Verification (R1, R2, R3)
 assert.equal(PAWN_ARCHETYPES.length, 10);
 assert.equal(PAWN_ARCHETYPES[0].name, 'Warrior');
@@ -108,6 +121,8 @@ assert.ok(walkingPawn.includes('pawn-pose-walk'));
 assert.ok(walkingPawn.includes('pawn-frame-1'));
 assert.ok(walkingPawn.includes('pawn-motion-pixels'));
 assert.ok(pawnSpriteSVG(6,{pose:'walk',direction:'left',frame:1}).includes('pawn-svg-left'));
+assert.ok(renderPawnSprite(6,{}, {pose:'cast'}).includes('pawn-signature-ninja'));
+assert.ok(renderPawnSprite(8,{}, {pose:'hit'}).includes('pawn-pose-hit'));
 
 // Garrison Stacking Verification (1 team, 2-3 teams, 4+ teams)
 const emptyGarrison = renderTileGarrison([]);

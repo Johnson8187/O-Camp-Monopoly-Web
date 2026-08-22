@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.43';
-import { G } from './game-core.js?v=2026.08.22.43';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.43';
+const BUILD_VERSION = '2026.08.22.44';
+import { G } from './game-core.js?v=2026.08.22.44';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.44';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -875,7 +875,7 @@ function boardAftermathHTML(kind){
     }
     const pt = movementPoint(targetPos || 0);
     const targetName = after?.targetTeamName || (after?.targetTeam !== undefined ? App.state?.teams?.[after.targetTeam]?.name : '');
-    return `<div class="board-aftermath board-missile" style="--lock-x:${pt.x}px;--lock-y:${pt.y}px"><div class="missile-target-circle"><i></i><i></i><i></i><b>LOCK ${targetName ? esc(targetName) : ''}</b></div></div>`;
+    return `<div class="board-aftermath board-missile" style="--lock-x:${pt.x}px;--lock-y:${pt.y}px"><div class="missile-target-circle"><i></i><i></i><i></i><b>🎯 LOCK ${targetName ? esc(targetName) : ''}</b></div><div class="board-missile-flyer"></div></div>`;
   }
   if(kind==='typhoon')return `<div class="board-aftermath board-typhoon">${Array.from({length:7},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
   return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
@@ -1963,9 +1963,12 @@ function teamControls(){
   h+='</div></div>';return h;
 }
 function attackDescription(S,k,a){const m={quake:`隨機震央，7×7 範圍基地支付 ${G.money(a.repair)} 修繕費；震央為 1.5 倍。`,missile:`鎖定排行榜相鄰隊伍，使其支付 ${G.money(a.repair)} 修繕費。`,typhoon:`隨機 7×7 暴風圈；外圈支付 ${G.money(a.repair)}，颱風眼反而獲得 ${G.money(a.eyeBonus)}。`,wildfire:`隨機延燒 1–2 個橫排，範圍基地支付 ${G.money(a.repair)} 修繕費。`};return m[k]||'發動特殊操作。';}
-function attackSceneHTML(kind){
+function attackSceneHTML(kind, attack){
   if(kind==='quake')return `<div class="attack-scene quake-scene"><img class="attack-art quake-art" src="${ATTACK_ART.quake}" alt="" aria-hidden="true"><div class="seismic-ring"></div><div class="quake-debris">${Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div></div>`;
-  if(kind==='missile')return `<div class="attack-scene missile-scene"><div class="target-reticle"><i></i><i></i><i></i></div><div class="missile-strike"><img class="attack-art missile-art" src="${ATTACK_ART.missile}" alt="" aria-hidden="true"></div><div class="impact-flash"></div>${Array.from({length:14},(_,i)=>`<i class="blast" style="--i:${i}"></i>`).join('')}</div>`;
+  if(kind==='missile'){
+    const targetName = attack?.targetTeamName || (attack?.targetTeam !== undefined ? App.state?.teams?.[attack.targetTeam]?.name : '');
+    return `<div class="attack-scene missile-scene"><div class="target-reticle">${targetName ? `<div class="reticle-lock-badge">🎯 LOCK: ${esc(targetName)}</div>` : ''}<i></i><i></i><i></i></div><div class="missile-strike"><img class="attack-art missile-art" src="${ATTACK_ART.missile}" alt="" aria-hidden="true"></div><div class="impact-flash"></div>${Array.from({length:16},(_,i)=>`<i class="blast" style="--i:${i}"></i>`).join('')}</div>`;
+  }
   if(kind==='typhoon')return `<div class="attack-scene typhoon-scene"><div class="typhoon-vortex"><img class="attack-art typhoon-art" src="${ATTACK_ART.typhoon}" alt="" aria-hidden="true"></div><div class="storm-rain">${Array.from({length:24},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div></div>`;
   return `<div class="attack-scene wildfire-scene"><div class="wildfire-surge"><img class="attack-art wildfire-art" src="${ATTACK_ART.wildfire}" alt="" aria-hidden="true"></div><div class="fire-embers">${Array.from({length:24},(_,i)=>`<span style="--i:${i}"></span>`).join('')}</div></div>`;
 }
@@ -2160,7 +2163,7 @@ function renderGame(){
   if(App.tab==='host'&&App.role==='host') body=hostPanel();
   const phaseFx=App.fx.phase?`<div class="phase-overlay ${App.fx.phase.kind}" aria-live="assertive"><div class="phase-overlay-card"><div class="phase-symbol">${esc(App.fx.phase.symbol)}</div><div class="phase-title">${esc(App.fx.phase.title)}</div><div class="phase-subtitle">${esc(App.fx.phase.subtitle)}</div></div></div>`:'';
   const eventFx=App.fx.event?`<div class="event-flash ${App.fx.event.kind}" aria-live="polite"><span class="event-mark"></span><strong>${esc(App.fx.event.message)}</strong></div>`:'';
-  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind)}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${App.role==='team'?(App.fx.attack.teamId===App.teamId?'本隊發動':'本隊遭遇'):'SPECIAL OPERATION'}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
+  const attackFx=App.fx.attack?`<div class="attack-overlay attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind, App.fx.attack)}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${App.role==='team'?(App.fx.attack.teamId===App.teamId?'本隊發動':'本隊遭遇'):'SPECIAL OPERATION'}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
   const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${App.fx.dice.values?.length||1} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value)}<strong>${App.fx.dice.rolling?'ROLLING…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();

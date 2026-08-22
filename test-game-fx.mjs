@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(typeof SoundFX.isSoundEnabled, 'function');
@@ -43,6 +43,8 @@ assert.equal(isPresentationTaskRelevant({type:'teamMoment',teamId:0},{role:'team
 assert.equal(isPresentationTaskRelevant({type:'teamMoment',teamId:1},{role:'team',teamId:0,state:audienceState}),false);
 assert.equal(isPresentationTaskRelevant({type:'battlePrompt',battle:{attackerId:0}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'battlePrompt',battle:{attackerId:1}},{role:'team',teamId:0,state:audienceState}),false);
+assert.equal(isPresentationTaskRelevant({type:'battleDuel',battle:{attackerId:0,defenderId:1}},{role:'team',teamId:9,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'battleResult',battle:{attackerId:0,defenderId:1}},{role:'team',teamId:9,state:audienceState}),true);
 assert.equal(isPurchaseReceipt({teamId:0,action:'buff',ptsDelta:-5},{team:0,cost:5}),true);
 assert.equal(isPurchaseReceipt({teamId:0,action:'gamble',ptsDelta:-3},{team:0,cost:3}),true);
 assert.equal(isPurchaseReceipt({teamId:0,action:'roll',ptsDelta:-5},{team:0,cost:5}),false);
@@ -50,6 +52,19 @@ assert.equal(isPurchaseReceipt({teamId:1,action:'buff',ptsDelta:-5},{team:0,cost
 assert.deepEqual(movementPath(42,4,2,44),[43,0,1,2]);
 assert.deepEqual(movementPath(5,2,20,44),[6,7,20]);
 assert.deepEqual(movementPath(5,0,5,44),[]);
+assert.equal(pawnFacingForStep(['base',1,1],['base',2,1]),'right');
+assert.equal(pawnFacingForStep(['base',2,1],['base',1,1]),'left');
+assert.equal(pawnFacingForStep(['base',1,1],['base',1,0]),'back');
+assert.equal(pawnFacingForStep(['base',1,0],['base',1,1]),'front');
+assert.equal(pawnFacingForStep(null,null,'left'),'left');
+
+const battleWaiting={pendingBattle:{attackerId:0,defenderId:1,amount:800,tileIndex:5,round:2,status:'awaiting_choice'},log:[]};
+const battleFighting={pendingBattle:{...battleWaiting.pendingBattle,status:'awaiting_host'},log:['紅隊 發動 BATTLE 挑戰 藍隊，等待主持人裁決']};
+assert.deepEqual(battlePresentationTransition(battleWaiting,battleFighting),{type:'battleDuel',battle:battleFighting.pendingBattle});
+const attackerWin={pendingBattle:null,log:['BATTLE 裁決：紅隊 獲勝，免付 $800 過夜費']};
+const defenderWin={pendingBattle:null,log:['BATTLE 裁決：藍隊 守住基地，紅隊 支付 $800']};
+assert.deepEqual(battlePresentationTransition(battleFighting,attackerWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'attacker',message:attackerWin.log[0]});
+assert.deepEqual(battlePresentationTransition(battleFighting,defenderWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'defender',message:defenderWin.log[0]});
 
 // 2.5D Pixel Pawn Archetypes & SVG Sprites Verification (R1, R2, R3)
 assert.equal(PAWN_ARCHETYPES.length, 10);
@@ -86,6 +101,13 @@ assert.ok(leaderJailedShieldedPawn.includes('is-leader'));
 assert.ok(leaderJailedShieldedPawn.includes('pawn-crown'));
 assert.ok(leaderJailedShieldedPawn.includes('pawn-jail-overlay'));
 assert.ok(leaderJailedShieldedPawn.includes('pawn-shield-orbit'));
+
+const walkingPawn = renderPawnSprite(6, {}, { isMoving: true, pose: 'walk', direction: 'left', frame: 1 });
+assert.ok(walkingPawn.includes('pawn-facing-left'));
+assert.ok(walkingPawn.includes('pawn-pose-walk'));
+assert.ok(walkingPawn.includes('pawn-frame-1'));
+assert.ok(walkingPawn.includes('pawn-motion-pixels'));
+assert.ok(pawnSpriteSVG(6,{pose:'walk',direction:'left',frame:1}).includes('pawn-svg-left'));
 
 // Garrison Stacking Verification (1 team, 2-3 teams, 4+ teams)
 const emptyGarrison = renderTileGarrison([]);

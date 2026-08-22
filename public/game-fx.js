@@ -39,6 +39,30 @@ export function movementPath(from,steps,finalPosition,trackLength){
   return path;
 }
 
+export function pawnFacingForStep(fromTile,toTile,fallback='front'){
+  const safeFallback=['front','back','left','right'].includes(fallback)?fallback:'front';
+  if(!Array.isArray(fromTile)||!Array.isArray(toTile))return safeFallback;
+  const dx=Number(toTile[1])-Number(fromTile[1]),dy=Number(toTile[2])-Number(fromTile[2]);
+  if(!Number.isFinite(dx)||!Number.isFinite(dy)||(dx===0&&dy===0))return safeFallback;
+  if(Math.abs(dx)>=Math.abs(dy))return dx>=0?'right':'left';
+  return dy>=0?'front':'back';
+}
+
+export function battlePresentationTransition(previous,next){
+  const before=previous?.pendingBattle,after=next?.pendingBattle;
+  if(before?.status==='awaiting_choice'&&after?.status==='awaiting_host'
+    && Number(before.attackerId)===Number(after.attackerId)
+    && Number(before.defenderId)===Number(after.defenderId)){
+    return {type:'battleDuel',battle:after};
+  }
+  if(before?.status==='awaiting_host'&&!after){
+    const message=String(next?.log?.[0]||'');
+    const outcome=/獲勝，免付/.test(message)?'attacker':/守住基地/.test(message)?'defender':null;
+    if(outcome)return {type:'battleResult',battle:before,outcome,message};
+  }
+  return null;
+}
+
 export function presentationTier({role='',width=0,reducedMotion=false,hardwareConcurrency=8,deviceMemory=8}={}){
   if(reducedMotion)return 'reduced';
   const constrained=Number(hardwareConcurrency||8)<=4||Number(deviceMemory||8)<=4;
@@ -52,7 +76,7 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   if(role!=='team')return true;
   const mine=Number(teamId);
   if(!Number.isInteger(mine))return false;
-  if(['phase','assignment','event','roll','upgrade','sell','attack'].includes(task.type))return true;
+  if(['phase','assignment','event','roll','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
   if(['purchase'].includes(task.type))return Number(task.team?.id)===mine;
   if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
   if(task.type==='battlePrompt')return Number(task.battle?.attackerId)===mine;
@@ -436,9 +460,12 @@ export const PAWN_ARCHETYPES = [
   { id: 9, name: 'Explorer', roleTitle: '冒險探家', color: '#8a6a2a', dark: '#523b12', lightFg: false }
 ];
 
-export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27 } = {}) {
+export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27, pose = 'idle', direction = 'front', frame = 0 } = {}) {
   const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
-  const svgOpen = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 18" width="${width}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">`;
+  const safePose=['idle','ready','walk','land','battle','victory','defeat'].includes(pose)?pose:'idle';
+  const safeDirection=['front','back','left','right'].includes(direction)?direction:'front';
+  const safeFrame=Math.abs(Math.floor(Number(frame)||0))%2;
+  const svgOpen = `<svg class="pawn-svg pawn-svg-${safePose} pawn-svg-${safeDirection} pawn-svg-frame-${safeFrame}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 18" width="${width}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">`;
   const svgClose = `</svg>`;
 
   switch (tid) {
@@ -477,10 +504,13 @@ export function pawnSpriteSVG(teamId = 0, { width = 24, height = 27 } = {}) {
   }
 }
 
-export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = '', isMoving = false, scale = 1.0 } = {}) {
+export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = '', isMoving = false, scale = 1.0, pose = 'idle', direction = 'front', frame = 0 } = {}) {
   const tid = ((Number(teamId) || 0) % 10 + 10) % 10;
   const arch = PAWN_ARCHETYPES[tid] || PAWN_ARCHETYPES[0];
   const { isMe = false, isLeader = false, isJailed = false, isShielded = false, isHopping = false } = statusFlags;
+  const safePose=['idle','ready','walk','land','battle','victory','defeat'].includes(pose)?pose:'idle';
+  const safeDirection=['front','back','left','right'].includes(direction)?direction:'front';
+  const safeFrame=Math.abs(Math.floor(Number(frame)||0))%2;
 
   const fgColor = arch.lightFg ? '#14110f' : '#ffffff';
   const delay = ((tid * 0.16) % 1.2).toFixed(2);
@@ -522,10 +552,13 @@ export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = ''
     isShielded ? 'is-shielded' : '',
     isMoving ? 'is-moving' : '',
     isHopping ? 'pawn-hopping' : '',
+    `pawn-facing-${safeDirection}`,
+    `pawn-pose-${safePose}`,
+    `pawn-frame-${safeFrame}`,
     extraClass
   ].filter(Boolean).join(' ');
 
-  return `<div class="${classes}" data-team="${tid}" style="--team-color:${arch.color};--team-dark:${arch.dark};--pawn-delay:${delay}s;--pawn-scale:${scale}">
+  return `<div class="${classes}" data-team="${tid}" data-direction="${safeDirection}" data-pose="${safePose}" style="--team-color:${arch.color};--team-dark:${arch.dark};--pawn-delay:${delay}s;--pawn-scale:${scale}">
     <div class="pawn-shadow"></div>
     <div class="pawn-body-container">
       ${crownHTML}
@@ -533,11 +566,13 @@ export function renderPawnSprite(teamId = 0, statusFlags = {}, { extraClass = ''
         <span>${tid + 1}</span>
       </div>
       <div class="pawn-sprite-pixel" title="${arch.roleTitle} (${arch.name})">
-        ${pawnSpriteSVG(tid, { width: 24, height: 27 })}
+        ${pawnSpriteSVG(tid, { width: 24, height: 27, pose:safePose, direction:safeDirection, frame:safeFrame })}
       </div>
+      <div class="pawn-motion-pixels" aria-hidden="true"><span></span><span></span></div>
       ${jailHTML}
       ${shieldHTML}
     </div>
+    <div class="pawn-dust" aria-hidden="true">${Array.from({length:6},(_,i)=>`<span style="left:${i * 18}%;--dust-delay:${(i * .025).toFixed(3)}s"></span>`).join('')}</div>
   </div>`;
 }
 

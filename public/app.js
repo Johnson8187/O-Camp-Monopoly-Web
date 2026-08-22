@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.49';
-import { G } from './game-core.js?v=2026.08.22.49';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES } from './game-fx.js?v=2026.08.22.49';
+const BUILD_VERSION = '2026.08.22.50';
+import { G } from './game-core.js?v=2026.08.22.50';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition } from './game-fx.js?v=2026.08.22.50';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -46,7 +46,7 @@ const App = {
   sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
   hostDrafts:{}, hostSection:'flow', editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
 };
 
@@ -194,7 +194,7 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
   App.battlePromptDone=null;
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
@@ -212,6 +212,8 @@ function activeFxStatus(){
   else if(App.fx.purchase) currentDesc = `【${App.fx.purchase.teamName || '隊伍'}】購買道具`;
   else if(App.fx.teamMoment) currentDesc = `【${App.fx.teamMoment.teamName || '隊伍'}】${App.fx.teamMoment.title || '小隊事件'}`;
   else if(App.fx.battlePrompt) currentDesc = '等待隊伍選擇付款或 BATTLE';
+  else if(App.fx.battleDuel) currentDesc = 'BATTLE 英雄交鋒';
+  else if(App.fx.battleResult) currentDesc = 'BATTLE 勝負揭曉';
   else if(App.fx.attack) currentDesc = `【${App.fx.attack.teamName || '隊伍'}】${App.fx.attack.title || '特殊操作'}`;
   else if(App.fx.aftershock) currentDesc = '特殊操作棋盤餘波';
   else if(App.fx.assignment) currentDesc = '人生起點抽籤';
@@ -219,7 +221,7 @@ function activeFxStatus(){
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', battleDuel:'BATTLE 英雄交鋒', battleResult:'BATTLE 勝負揭曉', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -285,6 +287,12 @@ function runNextFx(){
         break;
       case 'battlePrompt':
         executeBattlePromptFx(task,done);
+        break;
+      case 'battleDuel':
+        executeBattleDuelFx(task,done);
+        break;
+      case 'battleResult':
+        executeBattleResultFx(task,done);
         break;
       case 'attack':
         executeAttackFx(task.attack,task.message,task.next,done);
@@ -410,6 +418,34 @@ function finishBattlePromptFx(){
   done?.();
 }
 
+function battleFxDuration(full,compact){
+  if(reducedMotion)return 850;
+  const tier=currentPresentationTier();
+  return App.role==='team'||tier==='compact'||tier==='lite'?compact:full;
+}
+
+function executeBattleDuelFx(task,done){
+  const battle=task.battle,teams=task.teams||App.state?.teams||[],attacker=teams[battle?.attackerId],defender=teams[battle?.defenderId];
+  if(!battle||!attacker||!defender){done();return;}
+  App.fx.battleDuel={battle:{...battle},attacker,defender};
+  SoundFX.playAttackAlert('battle');
+  if(App.role==='team')navigator.vibrate?.([45,35,80,40,110]);
+  renderFx();
+  fxTimeout('battleDuel',()=>{App.fx.battleDuel=null;renderFx();done();},battleFxDuration(2800,1650));
+}
+
+function executeBattleResultFx(task,done){
+  const battle=task.battle,teams=task.teams||App.state?.teams||[],attacker=teams[battle?.attackerId],defender=teams[battle?.defenderId];
+  if(!battle||!attacker||!defender||!['attacker','defender'].includes(task.outcome)){done();return;}
+  const winner=task.outcome==='attacker'?attacker:defender,loser=task.outcome==='attacker'?defender:attacker;
+  App.fx.battleResult={battle:{...battle},attacker,defender,winner,loser,outcome:task.outcome,message:task.message||''};
+  SoundFX.playAttackHit();
+  fxTimeout('battleVictorySound',()=>SoundFX.playVictory(),reducedMotion?120:720);
+  if(App.role==='team')navigator.vibrate?.(Number(winner.id)===Number(App.teamId)?[40,35,90,35,140]:[90,45,45]);
+  renderFx();
+  fxTimeout('battleResult',()=>{App.fx.battleResult=null;renderFx();done();},battleFxDuration(3400,1950));
+}
+
 function executeAssignmentFx(next,done){
   const teams=(next.teams||[]).filter(team=>team.baseIdx!==null&&team.baseIdx!==undefined).map(team=>({id:team.id,name:team.name,color:team.color,baseIdx:team.baseIdx}));
   if(!teams.length){done();return;}
@@ -494,15 +530,40 @@ function revealRollFx(){
 }
 function removeRollFx(){document.querySelector('.dice-flight')?.remove();}
 function movementPoint(pos){const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+26,y:tile[2]*50+26};}
-function updateMovementDom(teamId,pos){
+function pawnVisualStatus(teamId,pos,team){
+  const S=App.state,ranked=S?G.rankTeams(S):[],leaderId=ranked?.[0]?.id,targetTeam=team||S?.teams?.[teamId];
+  return {
+    team:targetTeam,
+    status:{
+      isShielded:Number(targetTeam?.buffs?.shield||0)>0,
+      isJailed:Number(targetTeam?.jail||0)>0||pos===42,
+      isLeader:leaderId!==null&&leaderId!==undefined&&leaderId!==''&&Number(leaderId)===Number(teamId),
+      isMe:App.teamId!==null&&App.teamId!==undefined&&App.teamId!==''&&Number(App.teamId)===Number(teamId),
+    },
+  };
+}
+function syncMovingPawnArtwork(token,teamId,pos,{direction='front',pose='idle',frame=0,team=null}={}){
+  if(!token)return;
+  const visual=pawnVisualStatus(teamId,pos,team);
+  token.classList.toggle('shielded',visual.status.isShielded);
+  token.dataset.direction=direction;
+  token.innerHTML=renderPawnSprite(teamId,visual.status,{isMoving:true,direction,pose,frame});
+}
+function updateMovementDom(teamId,from,pos,stepFrame=0){
   const token=document.querySelector(`[data-moving-team="${teamId}"]`),point=movementPoint(pos);
   if(token){
+    const previousDirection=token.dataset.direction||'front';
+    const direction=pawnFacingForStep(G.TRACK[from],G.TRACK[pos],previousDirection);
+    const turned=previousDirection!==direction;
+    syncMovingPawnArtwork(token,teamId,pos,{direction,pose:'walk',frame:stepFrame});
     token.style.setProperty('--token-x',`${point.x}px`);
     token.style.setProperty('--token-y',`${point.y}px`);
     token.classList.remove('pawn-landing');
     token.classList.remove('pawn-hopping');
+    token.classList.remove('pawn-walking','pawn-turning');
     void token.offsetWidth;
-    token.classList.add('pawn-hopping');
+    token.classList.add('pawn-walking');
+    if(turned){token.classList.add('pawn-turning');fxTimeout(`pawnTurn${teamId}`,()=>token.isConnected&&token.classList.remove('pawn-turning'),220);}
   }
   document.querySelectorAll('.tile.camera-focus,.tile.fx-step,.tile.landing-goal').forEach(tile=>tile.classList.remove('camera-focus','fx-step','landing-goal'));
   const tile=document.querySelector(`.tile[data-i="${pos}"]`);if(tile)tile.classList.add('camera-focus','fx-step');
@@ -510,11 +571,15 @@ function updateMovementDom(teamId,pos){
   fitBoard();
 }
 function activateMovementCamera(){const wrap=$('bwrap');if(!wrap)return;wrap.classList.add('camera-active');fitBoard();}
-function finishMovementDom(pos){
+function finishMovementDom(teamId,pos){
   const tile=document.querySelector(`.tile[data-i="${pos}"]`);if(tile){tile.classList.remove('fx-step');tile.classList.add('landing-goal');}
   document.querySelectorAll('.moving-token').forEach(token=>{
-    token.classList.remove('pawn-hopping');
-    token.classList.add('pawn-landing');
+    token.classList.remove('pawn-hopping','pawn-walking','pawn-turning');
+    const movingTeam=Number(token.dataset.movingTeam);
+    if(movingTeam===Number(teamId)){
+      syncMovingPawnArtwork(token,movingTeam,pos,{direction:token.dataset.direction||'front',pose:'land'});
+      token.classList.add('pawn-landing');
+    }
   });
   const badge=document.querySelector('.step-progress-badge');if(badge)badge.textContent='★ 抵達！';
   SoundFX.playLanding();
@@ -523,28 +588,23 @@ function finishMovementDom(pos){
 function ensureMovingToken(teamId,pos,team){
   let token=document.querySelector(`[data-moving-team="${teamId}"]`);
   const point=movementPoint(pos);
-  const S=App.state;
-  const ranked=S?G.rankTeams(S):[];
-  const leaderId=ranked?.[0]?.id;
-  const targetTeam=team||S?.teams?.[teamId];
-  const isShielded=Number(targetTeam?.buffs?.shield||0)>0;
-  const isJailed=Number(targetTeam?.jail||0)>0||pos===42;
-  const isLeader=leaderId!==null&&leaderId!==undefined&&leaderId!==''&&Number(leaderId)===Number(teamId);
-  const isMe=App.teamId!==null&&App.teamId!==undefined&&App.teamId!==''&&Number(App.teamId)===Number(teamId);
+  const visual=pawnVisualStatus(teamId,pos,team),targetTeam=visual.team;
 
   if(!token){
     const bd=$('board');
     if(bd){
       token=document.createElement('div');
-      token.className=`moving-token ${isShielded?'shielded':''}`;
+      token.className=`moving-token ${visual.status.isShielded?'shielded':''}`;
       token.dataset.movingTeam=teamId;
       token.style.setProperty('--token-color',targetTeam?.color||'#f2c12e');
       token.style.setProperty('--token-fg',G.LIGHT_FG.includes(teamId)?'#14110f':'#fff');
-      token.innerHTML=renderPawnSprite(teamId,{isMe,isLeader,isJailed,isShielded},{isMoving:true});
+      token.dataset.direction='front';
+      token.innerHTML=renderPawnSprite(teamId,visual.status,{isMoving:true,pose:'ready',direction:'front'});
       bd.appendChild(token);
     }
   }
   if(token){
+    if(!token.dataset.direction)token.dataset.direction='front';
     token.style.setProperty('--token-x',`${point.x}px`);
     token.style.setProperty('--token-y',`${point.y}px`);
   }
@@ -616,7 +676,7 @@ function executeRollFx(task,done){
       App.fx.stepText=`${step+1} / ${walkPath.length}`;
       activateMovementCamera();
       SoundFX.playStepHop();
-      updateMovementDom(teamId,pos);
+      updateMovementDom(teamId,from,pos,step);
       step+=1;
 
       if(step<walkPath.length){
@@ -642,9 +702,9 @@ function executeRollFx(task,done){
             App.fx.camera={teamId,from:landPos,pos:targetPos};
             App.highlight=[targetPos];
             App.fx.stepText=isWorm?'✨ 蟲洞躍遷！':'★ 傳送抵達！';
-            updateMovementDom(teamId,targetPos);
+            updateMovementDom(teamId,targetPos,targetPos,step);
             activateMovementCamera();
-            finishMovementDom(targetPos);
+            finishMovementDom(teamId,targetPos);
 
             if(token){
               void token.offsetWidth;
@@ -658,7 +718,7 @@ function executeRollFx(task,done){
           },450);
         }else{
           App.fx.stepText='★ 抵達！';
-          finishMovementDom(pos);
+          finishMovementDom(teamId,pos);
           fxTimeout('rollFinish',()=>{
             finishRollTask(teamId,done);
           },1000);
@@ -773,6 +833,9 @@ function processGameFx(previous,next){
     enqueueFx({type:'battlePrompt',battle:next.pendingBattle,next});
   }
 
+  const battlePresentation=battlePresentationTransition(previous,next);
+  if(battlePresentation)enqueueFx({...battlePresentation,teams:next.teams||previous.teams||[]});
+
   // Team-local receipts and reactions must wait until dice and movement finish.
   teamLifeMoments.forEach(enqueueFx);
 
@@ -797,6 +860,7 @@ function processGameFx(previous,next){
       if(/抽籤/.test(logMsg)&&assignmentChanged)return;
       if(/骰出/.test(logMsg))return;
       if(/買了(?:實體物品)?「|取得「/.test(logMsg)&&purchaseChanged)return;
+      if(battlePresentation&&/BATTLE/.test(logMsg))return;
       enqueueFx({type:'event',message:logMsg});
     });
   }
@@ -1898,13 +1962,33 @@ function teamMomentFxHTML(){
   const particles=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
   return `<div class="team-moment team-moment-${fx.tone}" style="--team:${fx.color||'#f2c12e'}" aria-live="assertive"><div class="team-moment-rays" aria-hidden="true">${particles}</div><div class="team-moment-card"><small>${esc(fx.kicker)}</small><div class="team-moment-icon">${esc(fx.icon)}</div><h2>${esc(fx.title)}</h2>${fx.amount?`<strong>${esc(fx.amount)}</strong>`:''}<p>${esc(fx.teamName)} · ${esc(fx.detail)}</p></div></div>`;
 }
+function battlePawnHTML(team,{direction='front',pose='battle',extraClass='',scale=1}={}){
+  if(!team)return '';
+  const leaderId=G.rankTeams(App.state||{teams:[]})?.[0]?.id;
+  return renderPawnSprite(team.id,{
+    isLeader:Number(leaderId)===Number(team.id),
+    isJailed:Number(team.jail||0)>0,
+    isShielded:Number(team.buffs?.shield||0)>0,
+    isMe:App.role==='team'&&Number(App.teamId)===Number(team.id),
+  },{direction,pose,extraClass,scale});
+}
 function battleEncounterHTML(){
   if(App.role!=='team'||App.teamId===null)return '';
   const S=App.state,pending=App.fx.battlePrompt?.battle||S?.pendingBattle;
   if(!pending||pending.status!=='awaiting_choice'||Number(pending.attackerId)!==Number(App.teamId))return '';
   if(!App.fx.battlePrompt&&App.isFxRunning)return '';
   const attacker=S.teams?.[pending.attackerId],defender=S.teams?.[pending.defenderId],battles=Number(attacker?.battles||0);
-  return `<div class="battle-encounter-overlay" aria-live="assertive" style="--attacker:${attacker?.color||'#e23b3b'};--defender:${defender?.color||'#3f86e0'}"><div class="battle-encounter-rays" aria-hidden="true">${Array.from({length:12},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><div class="battle-encounter-card"><small>BASE ENCOUNTER // DECISION REQUIRED</small><div class="battle-versus"><div style="--team:${attacker?.color||'#e23b3b'}"><i>${Number(pending.attackerId)+1}</i><b>${esc(attacker?.name||'本隊')}</b><span>挑戰者</span></div><em>VS</em><div style="--team:${defender?.color||'#3f86e0'}"><i>${Number(pending.defenderId)+1}</i><b>${esc(defender?.name||'基地持有者')}</b><span>基地持有者</span></div></div><h2>抵達對手基地！</h2><p>過夜費 <strong>${G.money(pending.amount)}</strong> 目前仍未扣款。選擇直接付款，或消耗一次 BATTLE 等待主持人裁決。</p><div class="battle-encounter-actions"><button type="button" class="btn gold" id="battlePayNow" ${App.busy?'disabled':''}><span>💰</span><b>直接付款</b><small>支付 ${G.money(pending.amount)}</small></button><button type="button" class="btn dark" id="battleFightNow" ${battles<=0||App.busy?'disabled':''}><span>⚔️</span><b>發動 BATTLE</b><small>${battles>0?`剩餘 ${battles} 次`:'次數已用完'}</small></button></div></div></div>`;
+  return `<div class="battle-encounter-overlay" aria-live="assertive" style="--attacker:${attacker?.color||'#e23b3b'};--defender:${defender?.color||'#3f86e0'}"><div class="battle-encounter-rays" aria-hidden="true">${Array.from({length:12},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><div class="battle-encounter-card"><small>BASE ENCOUNTER // DECISION REQUIRED</small><div class="battle-versus"><div style="--team:${attacker?.color||'#e23b3b'}"><div class="battle-choice-pawn">${battlePawnHTML(attacker,{direction:'right',pose:'ready',extraClass:'battle-choice-attacker',scale:2.25})}</div><i>${Number(pending.attackerId)+1}</i><b>${esc(attacker?.name||'本隊')}</b><span>挑戰者</span></div><em>VS</em><div style="--team:${defender?.color||'#3f86e0'}"><div class="battle-choice-pawn">${battlePawnHTML(defender,{direction:'left',pose:'battle',extraClass:'battle-choice-defender',scale:2.25})}</div><i>${Number(pending.defenderId)+1}</i><b>${esc(defender?.name||'基地持有者')}</b><span>基地持有者</span></div></div><h2>抵達對手基地！</h2><p>過夜費 <strong>${G.money(pending.amount)}</strong> 目前仍未扣款。選擇直接付款，或消耗一次 BATTLE 等待主持人裁決。</p><div class="battle-encounter-actions"><button type="button" class="btn gold" id="battlePayNow" ${App.busy?'disabled':''}><span>💰</span><b>直接付款</b><small>支付 ${G.money(pending.amount)}</small></button><button type="button" class="btn dark" id="battleFightNow" ${battles<=0||App.busy?'disabled':''}><span>⚔️</span><b>發動 BATTLE</b><small>${battles>0?`剩餘 ${battles} 次`:'次數已用完'}</small></button></div></div></div>`;
+}
+function battleDuelHTML(){
+  const fx=App.fx.battleDuel;if(!fx)return '';
+  return `<div class="battle-duel-overlay" aria-live="assertive" style="--attacker:${fx.attacker.color};--defender:${fx.defender.color}"><div class="battle-duel-speedlines" aria-hidden="true"></div><div class="battle-duel-kicker">BATTLE ENGAGED // HOST DECISION</div><div class="battle-duel-stage"><section class="battle-fighter attacker"><div class="battle-hero-shell">${battlePawnHTML(fx.attacker,{direction:'right',pose:'battle',extraClass:'battle-hero battle-hero-attacker',scale:3.7})}</div><small>CHALLENGER</small><b>${esc(fx.attacker.name)}</b></section><div class="battle-clash-mark"><span>⚔</span><b>VS</b></div><section class="battle-fighter defender"><div class="battle-hero-shell">${battlePawnHTML(fx.defender,{direction:'left',pose:'battle',extraClass:'battle-hero battle-hero-defender',scale:3.7})}</div><small>BASE GUARDIAN</small><b>${esc(fx.defender.name)}</b></section></div><div class="battle-duel-note">過夜費 ${G.money(fx.battle.amount)} 凍結中 · 等待主持人裁決</div></div>`;
+}
+function battleResultHTML(){
+  const fx=App.fx.battleResult;if(!fx)return '';
+  const attackerWon=fx.outcome==='attacker',title=attackerWon?'挑戰成功！':'基地守住！',subtitle=attackerWon?`過夜費 ${G.money(fx.battle.amount)} 全額免除`:`原過夜費進入正式結算`;
+  const fighter=(team,side)=>{const won=Number(team.id)===Number(fx.winner.id);return `<section class="battle-result-fighter ${side} ${won?'winner':'loser'}"><div class="battle-hero-shell">${battlePawnHTML(team,{direction:side==='attacker'?'right':'left',pose:won?'victory':'defeat',extraClass:`battle-hero ${won?'battle-hero-winner':'battle-hero-loser'}`,scale:3.8})}</div><small>${won?'WINNER':'DEFEATED'}</small><b>${esc(team.name)}</b></section>`;};
+  return `<div class="battle-result-overlay ${attackerWon?'attacker-wins':'defender-wins'}" aria-live="assertive" style="--winner:${fx.winner.color};--loser:${fx.loser.color}"><div class="battle-result-burst" aria-hidden="true"></div><div class="battle-result-banner"><small>BATTLE VERDICT</small><h2>${title}</h2><p>${esc(subtitle)}</p></div><div class="battle-result-stage">${fighter(fx.attacker,'attacker')}<div class="battle-result-slash">勝</div>${fighter(fx.defender,'defender')}</div><div class="battle-result-message">${esc(fx.message)}</div></div>`;
 }
 function audioWakeHTML(){
   if(!['viewer','team'].includes(App.role)||!App.sound||App.audioReady)return '';
@@ -2215,10 +2299,12 @@ function renderGame(){
   const purchaseFx=purchaseFxHTML();
   const teamMomentFx=teamMomentFxHTML();
   const battleEncounter=battleEncounterHTML();
+  const battleDuel=battleDuelHTML();
+  const battleResult=battleResultHTML();
   const audioWake=audioWakeHTML();
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${battleEncounter}${assignmentFx}${attackFx}`;
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleNames[App.role])}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }

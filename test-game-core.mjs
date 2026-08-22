@@ -84,4 +84,53 @@ shieldFeedback.teams[1].level = 2;
 shieldFeedback.teams[1].buffs.shield = 1;
 G.playAttack(shieldFeedback, 0, 'missile', () => 0);
 if (shieldFeedback.teams[1].buffs.shield !== 0 || !shieldFeedback.lastAttack.shielded.includes(1) || !/啟動護盾/.test(shieldFeedback.log[0])) throw new Error('防災卡抵銷攻擊時應留下明確護盾提示');
+
+// Test: 房市倍率對過夜費、通行費的影響
+const marketFeeTest = G.freshState('market-fee-test', 2);
+marketFeeTest.round = 2; // avoid round 1 fraction discount for pure multiplier test
+marketFeeTest.teams[0].baseIdx = G.BASE_IDX[0];
+marketFeeTest.teams[0].level = 2; // 商店 (base stay: 300)
+
+marketFeeTest.market = 'flat';
+if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 300) throw new Error('平穩房市過夜費計算錯誤');
+if (G.passFee(marketFeeTest, marketFeeTest.teams[0]) !== 60) throw new Error('平穩房市通行費計算錯誤');
+
+marketFeeTest.market = 'hot'; // 150%
+if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 450) throw new Error('熱絡房市過夜費計算錯誤');
+if (G.passFee(marketFeeTest, marketFeeTest.teams[0]) !== 90) throw new Error('熱絡房市通行費計算錯誤');
+
+marketFeeTest.market = 'bubble'; // 250%
+if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 750) throw new Error('泡沫房市過夜費計算錯誤');
+
+marketFeeTest.market = 'slump'; // 70%
+if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 210) throw new Error('低迷房市過夜費計算錯誤');
+
+// Test: 房屋稅收取到銀行池，且受房市倍率影響
+const taxTest = G.freshState('tax-collection-test', 2);
+taxTest.teams[0].baseIdx = G.BASE_IDX[0];
+taxTest.teams[0].level = 2; // 商店 (base tax: 100)
+taxTest.teams[1].baseIdx = G.BASE_IDX[1];
+taxTest.teams[1].level = 3; // 賭場 (base tax: 200)
+taxTest.market = 'hot'; // 150% -> Lv2 tax: 150, Lv3 tax: 300, total = 450
+const t0CashBefore = taxTest.teams[0].cash;
+const t1CashBefore = taxTest.teams[1].cash;
+const bankBefore = taxTest.bank;
+
+const collected = G.collectPropertyTaxes(taxTest);
+if (collected !== 450) throw new Error(`房屋稅收取金額錯誤：預期 450，實得 ${collected}`);
+if (taxTest.bank !== bankBefore + 450) throw new Error('房屋稅未正確存入銀行池');
+if (taxTest.teams[0].cash !== t0CashBefore - 150 || taxTest.teams[1].cash !== t1CashBefore - 300) throw new Error('隊伍房屋稅扣款金額錯誤');
+
+// Test: 回合推進時自動收取房屋稅
+const roundTaxTest = G.freshState('round-tax-test', 2);
+roundTaxTest.teams[0].baseIdx = G.BASE_IDX[0];
+roundTaxTest.teams[0].level = 2;
+roundTaxTest.teams[1].baseIdx = G.BASE_IDX[1];
+roundTaxTest.teams[1].level = 1; // 空地 (base tax: 50)
+roundTaxTest.phase = 'roll';
+const roundBankBefore = roundTaxTest.bank;
+G.nextPhase(roundTaxTest); // advances to round 2, market phase
+if (roundTaxTest.round !== 2 || roundTaxTest.phase !== 'market') throw new Error('回合推進失敗');
+if (roundTaxTest.bank <= roundBankBefore) throw new Error('換回合時未自動收取房屋稅至銀行庫存');
+
 console.log('game-core smoke test passed');

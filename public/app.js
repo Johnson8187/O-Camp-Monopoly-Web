@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.22.40';
-import { G } from './game-core.js?v=2026.08.22.40';
-import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.40';
+const BUILD_VERSION = '2026.08.22.41';
+import { G } from './game-core.js?v=2026.08.22.41';
+import { PHASE_FX, ATTACK_FX, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt } from './game-fx.js?v=2026.08.22.41';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -1751,7 +1751,7 @@ function boardHUD(){
   const marketName=S.settings.marketNames[S.market]||S.market,marketRate=(S.settings.market[S.market]||100)/100;
   const diceValue=dice?(dice.rolling?'?':dice.value):(last?.n||'–');
   const diceTeam=dice?.teamName||lastTeam?.name||'等待擲骰';
-  return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>房市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>${S.settings.diceCount||1} 顆骰子 · 最近行動</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
+  return `<div class="board-hud"><div class="hud-kicker">LIFE GAME</div><div class="hud-round"><span>ROUND</span><b>${S.round}</b></div><div class="hud-phase">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))}</div><div class="hud-market"><span>房市 ${esc(marketName)}</span><b>×${marketRate}</b></div><div class="hud-bank"><span>🏦 銀行庫存</span><b>${G.money(S.bank||0)}</b></div><div class="hud-roll"><div class="hud-dice ${dice?.rolling?'rolling':''}">${diceValue}</div><div><small>${S.settings.diceCount||1} 顆骰子 · 最近行動</small><strong>${esc(diceTeam)}</strong></div></div></div>`;
 }
 function activeTurnHTML(){
   const S=App.state;if(S.phase!=='roll')return '';
@@ -1811,7 +1811,7 @@ function fitBoard(){
 
 
 
-function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：請抽取現場準備的實體命運卡，再由主持人調整結果。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:'銀行密道：取得銀行池的一部分。',worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:'房市情報：查看本回合房產倍率。',stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}`:''}`; }
+function tileDesc(i){ const S=App.state,kind=G.TRACK[i][0],own=G.ownerOf(S,i); const descriptions={base:'基地：可持有、升級、出售或收取過夜費。',safe:'安全格：沒有額外效果。',tax:'稅收格：支付稅金給銀行。',fate:'命運格：請抽取現場準備的實體命運卡，再由主持人調整結果。',black:'黑市：下一次商店消費折扣。',casino:'賭場：支付賭資並依規則抽獎。',bank:`銀行密道：取得銀行池的一部分（現有庫存 ${G.money(S.bank||0)}）。`,worm:'蟲洞：傳送到另一個蟲洞。',jail:'監獄：下一回合停留。',exch:`房市情報：目前房產倍率 ×${(S.settings.market[S.market]||100)/100}（影響過夜費、通行費、房屋稅與賣價）。`,stage:'關卡：由主持人解封後觸發。',start:'起點：經過或停留可取得繞圈獎勵。'}; return `${descriptions[kind]||''}${own?`<br>目前領地：${esc(own.name)}（過夜費 ${G.money(G.stayFee(S,own))} ｜ 通行費 ${G.money(G.passFee(S,own))}，付給地主）`:''}`; }
 function rankingHTML(){
   const S=App.state, money=n=>`$${Number(n||0).toLocaleString()}`;
   const ranked = G.rankTeams(S);
@@ -1871,7 +1871,7 @@ function receiptsHTML(compact=false){
   const S=App.state,all=Array.isArray(S.receipts)?S.receipts:[],canFilter=App.role==='team'&&App.teamId!==null,scope=canFilter?App.receiptScope:'all',rows=scope==='mine'?all.filter(r=>Number(r.teamId)===App.teamId):all,credit=rows.filter(r=>Number(r.cashDelta)>0).reduce((n,r)=>n+Number(r.cashDelta),0),debit=Math.abs(rows.filter(r=>Number(r.cashDelta)<0).reduce((n,r)=>n+Number(r.cashDelta),0));
   return `<div class="card receipts-card ${compact?'compact-ledger':''}"><div class="ch">🧾 電子收據 · ADVENTURER LEDGER</div><div class="cb"><div class="receipt-ledger-head"><div><small>TRANSACTION ARCHIVE</small><b>${scope==='mine'?'本隊金流帳本':'全場金流帳本'}</b><span>每筆現金與諂媚點數異動都會留下交易後餘額。</span></div>${canFilter?`<div class="receipt-filter" role="group" aria-label="收據顯示範圍"><button class="receipt-scope ${scope==='mine'?'on':''}" data-scope="mine">只看本隊</button><button class="receipt-scope ${scope==='all'?'on':''}" data-scope="all">全場款項</button></div>`:''}</div><div class="receipt-summary"><div><small>RECORDS</small><b>${rows.length}</b><span>筆交易</span></div><div class="gain"><small>CASH IN</small><b>+${G.money(credit)}</b><span>現金收入</span></div><div class="loss"><small>CASH OUT</small><b>−${G.money(debit)}</b><span>現金支出</span></div></div><div class="receipt-list">${receiptRows(rows.slice(0,100))||'<div class="receipt-empty"><i>🧾</i><b>尚無交易紀錄</b><span>發生款項或點數異動後會顯示在這裡。</span></div>'}</div></div></div>`;
 }
-function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIFE JOURNEY LIVE</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>房市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
+function stagePanelHTML(){const S=App.state,last=S.lastRoll,lastTeam=last?S.teams[last.team]:null;return `<div class="stage-panel"><div class="stage-live"><i></i> LIFE JOURNEY LIVE</div><div class="stage-round"><small>ROUND</small><b>${S.round}</b></div><div class="stage-phase">${esc(S.paused?'活動暫停':(phaseNames[S.phase]||S.phase))}</div><div class="stage-stats"><span>房市<b>${esc(S.settings.marketNames[S.market]||S.market)} ×${(S.settings.market[S.market]||100)/100}</b></span><span>🏦 銀行<b>${G.money(S.bank||0)}</b></span><span>最近骰點<b>${last?`${esc(lastTeam?.name||'')} · ${last.n}`:'等待開局'}</b></span></div></div>`;}
 function stageTickerHTML(){if(App.role!=='viewer')return '';const message=App.state.log?.[0]||'活動即將開始，請各隊做好準備';return `<div class="stage-ticker"><span>● LIVE</span><div><b>現場快報</b>${esc(message)}</div></div>`;}
 function viewerActivityHTML(){
   const S=App.state,logs=(S.log||[]).slice(0,4),receipts=(S.receipts||[]).slice(0,4);
@@ -1883,7 +1883,7 @@ function teamStatusHTML(){
   if(App.role!=='team'||App.teamId===null)return '';
   const S=App.state,me=S.teams?.[App.teamId];if(!me)return '';
   const ranked=G.rankTeams(S),mine=ranked.find(t=>t.originalIndex===me.id),active=S.activeTeamId===me.id;
-  return `<div class="team-command-hud" style="--team-color:${me.color}"><div class="team-command-id"><i>${me.id+1}</i><span><small>YOU ARE CONTROLLING</small><b>${esc(me.name)}</b></span></div><div class="team-command-stat"><small>現金</small><b>${G.money(me.cash)}</b></div><div class="team-command-stat"><small>房產</small><b>${G.money(mine?.prop||0)}</b></div><div class="team-command-stat"><small>諂媚</small><b>${me.pts} 點</b></div><div class="team-command-turn ${active?'active':''}"><small>${phaseNames[S.phase]||S.phase}</small><b>${active?'輪到本組操作':S.phase==='roll'?'等待主持人':'進行中'}</b></div></div>`;
+  return `<div class="team-command-hud" style="--team-color:${me.color}"><div class="team-command-id"><i>${me.id+1}</i><span><small>YOU ARE CONTROLLING</small><b>${esc(me.name)}</b></span></div><div class="team-command-stat"><small>現金</small><b>${G.money(me.cash)}</b></div><div class="team-command-stat"><small>房產</small><b>${G.money(mine?.prop||0)}</b></div><div class="team-command-stat"><small>諂媚</small><b>${me.pts} 點</b></div><div class="team-command-stat"><small>🏦 銀行</small><b>${G.money(S.bank||0)}</b></div><div class="team-command-turn ${active?'active':''}"><small>${phaseNames[S.phase]||S.phase}</small><b>${active?'輪到本組操作':S.phase==='roll'?'等待主持人':'進行中'}</b></div></div>`;
 }
 const BUFF_INFO={pass:{icon:'🎫',title:'通行證',rarity:'RARE',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',rarity:'MAGIC',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',rarity:'EPIC',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
 const PHYSICAL_ITEM_INFO=[{icon:'🧧',rarity:'COMMON',desc:'實體紅包或獎項憑證，由關主現場交付。'},{icon:'🎯',rarity:'COMMON',desc:'實體戳戳樂遊戲券，請向關主兌換。'},{icon:'🎟️',rarity:'RARE',desc:'實體樂透券，保留至現場開獎或兌換。'},{icon:'💎',rarity:'EPIC',desc:'高風險實體獎項憑證，請妥善保管。'}];
@@ -1976,7 +1976,7 @@ function cfgHTML(){
   h+='<div class="sub">特殊操作費用與修繕費</div>';
   Object.entries(S.settings.attacks).forEach(([k,a])=>{h+=`<div class="grp"><b>${esc(a.name)}</b>`+f('所需諂媚點數',`attacks.${k}.cost`,a.cost,'點')+f('修繕費',`attacks.${k}.repair`,a.repair,'元')+(k==='typhoon'?f('颱風眼獎勵',`attacks.${k}.eyeBonus`,a.eyeBonus,'元'):'')+'</div>';});
   h+='<div class="sub">增益道具價格</div><div class="grp">';Object.entries(S.settings.buffs).forEach(([k,b])=>{h+=f(`${b.name}所需諂媚點數`,`buffs.${k}.cost`,b.cost,'點');});h+='</div><div class="sub">基地等級</div>';
-  S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});
+  S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('每輪房屋稅',`levels.${i}.tax`,lv.tax||0,'元')+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});
   return h+'<button class="btn sm green" id="bSaveCfg">儲存全部遊戲設定</button></div>';
 }
 function settleHTML(){
@@ -2104,7 +2104,7 @@ function hostPanel(){
   h+=`<nav class="host-console-nav" aria-label="主持人工作區">${[['flow','🎮 流程'],['teams','👥 隊伍'],['rules','⚙️ 規則'],['history','🗂️ 紀錄']].map(([key,label])=>`<button class="host-section ${section===key?'on':''}" data-section="${key}">${label}</button>`).join('')}</nav>`;
   h+=`<div class="host-workspace" data-section="${section}">`;
   if(section==='flow'){
-    h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
+    h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
     if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>`<button class="btn sm allow-roll ${S.activeTeamId===i?'green':'outline'}" data-i="${i}" ${t.rolled||t.jail>0||t.jailedThisTurn||S.pendingBattle?'disabled':''}><span>${i+1}</span>${esc(t.name)}<small>${t.rolled?'已完成':S.activeTeamId===i?'操作中':'允許擲骰'}</small></button>`).join('')}</div></section>`;
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}

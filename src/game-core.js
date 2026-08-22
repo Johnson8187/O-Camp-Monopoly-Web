@@ -37,9 +37,9 @@ const DEFAULTS = {
   startCash:2000, lapBonus:300, taxAmount:200,
   casinoCost:150, casinoPayouts:[0,150,300,600],
   blackDiscount:50, bankShare:50, round1Fraction:3,
-  levels:[{name:"空地",stay:0,up:0,sell:200},
-          {name:"商店",stay:300,up:6,sell:500},
-          {name:"賭場",stay:800,up:12,sell:1000}],
+  levels:[{name:"空地",stay:0,up:0,sell:200,tax:50},
+          {name:"商店",stay:300,up:6,sell:500,tax:100},
+          {name:"賭場",stay:800,up:12,sell:1000,tax:200}],
   passRatio:20,
   market:{bubble:250,hot:150,flat:100,slump:70,crash:40},
   marketOrder:["bubble","hot","flat","slump","crash"],
@@ -90,15 +90,44 @@ function freshState(code, teamCount, names) {
   };
 }
 
-// 過夜費：停在別人基地要付
+// 過夜費：停在別人基地要付（受房市倍率影響，第 1 回合依比例打折）
 function stayFee(s, team) {
   let fee = s.settings.levels[team.level-1].stay;
+  const marketRate = (s.settings.market[s.market] ?? 100) / 100;
+  fee = Math.round(fee * marketRate);
   if (s.round === 1) fee = Math.round(fee / Math.max(1, s.settings.round1Fraction));
   return fee;
 }
-// 通行費：僅經過，為過夜費的一定比例
+// 通行費：僅經過，為過夜費的一定比例（同樣受房市倍率影響）
 function passFee(s, team) {
   return Math.round(stayFee(s, team) * s.settings.passRatio / 100);
+}
+// 房屋稅：每輪持有基地需繳納給銀行的稅金（受房市倍率影響）
+function propertyTax(s, team) {
+  if (team.sold || team.baseIdx === null) return 0;
+  const lv = s.settings.levels[team.level-1];
+  const baseTax = lv?.tax ?? 0;
+  const marketRate = (s.settings.market[s.market] ?? 100) / 100;
+  return Math.round(baseTax * marketRate);
+}
+function collectPropertyTaxes(s) {
+  let totalTax = 0;
+  const paidTeams = [];
+  s.teams.forEach(t => {
+    if (t.sold || t.baseIdx === null) return;
+    const tax = propertyTax(s, t);
+    if (tax > 0) {
+      const paid = pay(s, t.id, "bank", tax);
+      if (paid > 0) {
+        totalTax += paid;
+        paidTeams.push(`${t.name} −${money(paid)}`);
+      }
+    }
+  });
+  if (paidTeams.length > 0) {
+    s.log.unshift(`各隊繳納第 ${s.round} 回合房屋稅共 +${money(totalTax)} 入銀行庫房（${paidTeams.join("、")}）`);
+  }
+  return totalTax;
 }
 function sellValue(s, team) {
   const lv = s.settings.levels[team.level-1];
@@ -457,6 +486,7 @@ function nextPhase(s) {
   s.activeTeamId = null;
   s.teams.forEach(t => { t.rolled = false; t.lastRoll = null; t.lastDice = null; t.attackRounds = {}; t.jailedThisTurn = false; });
   s.log.unshift(`── 第 ${s.round} 回合開始（房市：${s.settings.marketNames[s.market]}）──`);
+  collectPropertyTaxes(s);
   return s;
 }
 
@@ -467,7 +497,7 @@ function rankTeams(s) {
     .sort((a, b) => b.worth - a.worth || b.cash - a.cash || b.pts - a.pts);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams};
 })();
 
 

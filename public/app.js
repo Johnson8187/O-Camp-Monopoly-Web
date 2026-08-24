@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.25.56';
-import { G } from './game-core.js?v=2026.08.25.56';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.56';
+const BUILD_VERSION = '2026.08.25.57';
+import { G } from './game-core.js?v=2026.08.25.57';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.57';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -2277,19 +2277,25 @@ function hostPanel(){
     h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
     if(['settle','ended'].includes(S.phase))h+=ceremonyControlDockHTML(ceremonyStep(S.ceremonyStep),true);
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
-    if(S.phase==='roll'){
+    if(!['settle','ended'].includes(S.phase)){
+      const isRollPhase=S.phase==='roll';
       const testSteps=Math.max(1,Math.min(48,Number(App.hostTestSteps)||1));
-      h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><button type="button" class="btn xs ${App.hostTestMode?'gold':'outline'} host-test-mode-toggle" id="toggleHostTestMode">🛠️ ${App.hostTestMode?'測試模式：開啟':'測試模式：關閉'}</button></div>`;
+      h+=`<section class="host-work-card priority ${isRollPhase?'is-roll-phase':''}"><div class="host-work-title"><span>🎲 ${isRollPhase?'指定擲骰隊伍':'擲骰與隊伍操作'}</span><button type="button" class="btn xs ${App.hostTestMode?'gold':'outline'} host-test-mode-toggle" id="toggleHostTestMode">🛠️ ${App.hostTestMode?'測試模式：開啟':'測試模式：關閉'}</button></div>`;
       if(App.hostTestMode){
         h+=`<div class="host-test-bar"><div class="host-test-bar-header"><span>🎯 指定步數：<b>${testSteps} 步</b></span><small>⚡代擲：全場同步跳格；🎯預設：隊輔手機骰出該點數</small></div><div class="host-test-quick-steps">${[1,2,3,4,5,6,10,12].map(n=>`<button type="button" class="btn xs step-btn ${testSteps===n?'gold':'outline'}" data-step="${n}">${n}</button>`).join('')}<div class="host-test-custom-step"><input type="number" min="1" max="48" class="host-test-step-input" value="${testSteps}"><span>步</span></div></div></div>`;
       }
-      h+=`<div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid ${App.hostTestMode?'test-mode':''}">${S.teams.map((t,i)=>{
+      if(!isRollPhase&&!App.hostTestMode){
+        h+=`<div class="host-turn-status">目前為 <b>${esc(phaseNames[S.phase]||S.phase)}</b> 階段（點擊上方「下一階段」進入擲骰，或開啟「🛠️ 測試模式」直接指定步數）</div>`;
+      } else {
+        h+=`<div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:(App.hostTestMode?'測試模式已開啟：可直接點選「⚡代擲」或「🎯預設」':'點選下方隊伍開放擲骰')}</div>`;
+      }
+      h+=`<div class="host-roll-grid ${App.hostTestMode?'test-mode':''}">${S.teams.map((t,i)=>{
         const isJailed=t.jailedThisTurn||(t.jail>0&&!t.rolled),isPreset=S.presetRolls&&S.presetRolls[i]!==undefined;
-        const status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):isPreset?`🎯 已預設 ${S.presetRolls[i]} 步`:S.activeTeamId===i?'操作中':'允許擲骰';
+        const status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):isPreset?`🎯 已預設 ${S.presetRolls[i]} 步`:S.activeTeamId===i?'操作中':(isRollPhase?'允許擲骰':'非擲骰階段');
         if(App.hostTestMode){
-          return `<div class="host-test-team-card ${t.rolled?'completed':''} ${isJailed?'jailed':''}"><div class="host-test-team-info"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-test-team-name"><b>${esc(t.name)}</b><small>${status}</small></div></div><div class="host-test-team-actions"><button class="btn xs green test-roll-btn" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="主持人直接替該隊擲出 ${testSteps} 步">⚡ 代擲 ${testSteps}</button><button class="btn xs ${isPreset?'gold':'outline'} test-preset-btn" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="預設該隊下次擲骰為 ${testSteps} 步">${isPreset?`✓ 預設 ${S.presetRolls[i]}`:`🎯 預設 ${testSteps}`}</button>${isPreset?`<button class="btn xs dark test-clear-preset-btn" data-i="${i}" title="清除預設">×</button>`:''}<button class="btn xs ${S.activeTeamId===i?'green':'outline'} allow-roll" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="允許隊輔自己擲骰">${S.activeTeamId===i?'開放中':'允許'}</button></div></div>`;
+          return `<div class="host-test-team-card ${t.rolled?'completed':''} ${isJailed?'jailed':''}"><div class="host-test-team-info"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-test-team-name"><b>${esc(t.name)}</b><small>${status}</small></div></div><div class="host-test-team-actions"><button class="btn xs green test-roll-btn" data-i="${i}" ${S.pendingBattle?'disabled':''} title="主持人直接替該隊擲出 ${testSteps} 步">⚡ 代擲 ${testSteps}</button><button class="btn xs ${isPreset?'gold':'outline'} test-preset-btn" data-i="${i}" ${S.pendingBattle?'disabled':''} title="預設該隊下次擲骰為 ${testSteps} 步">${isPreset?`✓ 預設 ${S.presetRolls[i]}`:`🎯 預設 ${testSteps}`}</button>${isPreset?`<button class="btn xs dark test-clear-preset-btn" data-i="${i}" title="清除預設">×</button>`:''}<button class="btn xs ${S.activeTeamId===i?'green':'outline'} allow-roll" data-i="${i}" ${!isRollPhase||t.rolled||isJailed||S.pendingBattle?'disabled':''} title="允許隊輔自己擲骰">${S.activeTeamId===i?'開放中':'允許'}</button></div></div>`;
         }
-        return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':isPreset?'gold':'outline'}" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;
+        return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':isPreset?'gold':'outline'}" data-i="${i}" ${!isRollPhase||t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;
       }).join('')}</div></section>`;
     }
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}

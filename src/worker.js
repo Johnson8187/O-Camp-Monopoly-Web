@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.24.53';
+const APP_BUILD_VERSION = '2026.08.25.54';
 
 
 
@@ -539,6 +539,11 @@ export function normalizeGameState(state){
   s.publicFeed=Array.isArray(s.publicFeed)?s.publicFeed:[];
   s.stageNotices=Array.isArray(s.stageNotices)?s.stageNotices:[];
   s.stageNoticeSeq=Number(s.stageNoticeSeq)||0;
+  s.viewers=Array.isArray(s.viewers)?s.viewers.filter(viewer=>viewer&&Number.isInteger(Number(viewer.teamId))&&s.teams?.[Number(viewer.teamId)]).map(viewer=>({
+    id:text(viewer.id).slice(0,80),teamId:Number(viewer.teamId),name:text(viewer.name).slice(0,40),
+    status:['pending','approved','rejected','removed'].includes(viewer.status)?viewer.status:'removed',
+    sessionTokenHash:text(viewer.sessionTokenHash),requestedAt:text(viewer.requestedAt,now()),approvedAt:text(viewer.approvedAt),lastSeenAt:text(viewer.lastSeenAt),removedAt:text(viewer.removedAt),
+  })).filter(viewer=>viewer.id&&viewer.name):[];
   ensureTeamAccessCodes(s,(s.teams||[]).length);
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
   (s.teams||[]).forEach(t=>{
@@ -559,9 +564,25 @@ export function normalizeGameState(state){
 
 function validAccessEntry(entry){return Boolean(entry&&/^T-[2-9A-HJ-KM-NP-Z]{5}$/.test(entry.teamCode||'')&&/^V-[2-9A-HJ-KM-NP-Z]{5}$/.test(entry.viewerCode||''));}
 export function ensureTeamAccessCodes(state,teamCount=(state.teams||[]).length){
-  const current=Array.isArray(state.accessCodes)?state.accessCodes:[];let changed=current.length!==teamCount;
-  state.accessCodes=Array.from({length:teamCount},(_,index)=>{const entry=current[index];if(validAccessEntry(entry))return entry;changed=true;return {teamCode:randomAccessCode('T'),viewerCode:randomAccessCode('V')};});
+  const current=Array.isArray(state.accessCodes)?state.accessCodes:[],usedTeam=new Set(),usedViewer=new Set();let changed=current.length!==teamCount;
+  const uniqueCode=(prefix,used)=>{let code='';do{code=randomAccessCode(prefix);}while(used.has(code));used.add(code);return code;};
+  state.accessCodes=Array.from({length:teamCount},(_,index)=>{
+    const entry=current[index],teamCode=String(entry?.teamCode||'').toUpperCase(),viewerCode=String(entry?.viewerCode||'').toUpperCase();
+    if(validAccessEntry({teamCode,viewerCode})&&!usedTeam.has(teamCode)&&!usedViewer.has(viewerCode)){usedTeam.add(teamCode);usedViewer.add(viewerCode);return {teamCode,viewerCode};}
+    changed=true;return {teamCode:uniqueCode('T',usedTeam),viewerCode:uniqueCode('V',usedViewer)};
+  });
   return changed;
+}
+
+export async function resolveAccessCode(state,kind,value){
+  const key=kind==='team'?'teamCode':kind==='viewer'?'viewerCode':null,code=text(value).toUpperCase();if(!key||!code)return null;
+  for(let teamId=0;teamId<(state.accessCodes||[]).length;teamId++)if(await verifyAccessCode(code,state.accessCodes[teamId]?.[key]))return teamId;
+  return null;
+}
+
+function publicViewerRecord(viewer,online=false){return {id:viewer.id,teamId:viewer.teamId,name:viewer.name,status:viewer.status,requestedAt:viewer.requestedAt,approvedAt:viewer.approvedAt,lastSeenAt:viewer.lastSeenAt,removedAt:viewer.removedAt,online:Boolean(online)};}
+function revokeTeamViewers(state,teamId,status='removed'){
+  const timestamp=now();(state.viewers||[]).forEach(viewer=>{if(Number(viewer.teamId)!==Number(teamId)||!['pending','approved'].includes(viewer.status))return;viewer.status=status;viewer.sessionTokenHash='';viewer.removedAt=timestamp;});
 }
 
 function publicCeremonyReveal(state){
@@ -581,17 +602,22 @@ function redactTeam(team){
   return {...team,cash:null,pts:null,buffs:null,items:null,battles:null,discount:null,attackRounds:null,lastDice:null};
 }
 
-export function projectStateForActor(fullState,actor={role:'viewer',teamId:null}){
+export function projectStateForActor(fullState,actor={role:'viewer',teamId:null},onlineViewerIds=new Set()){
   const projected=G.clone(fullState),role=actor?.role||'viewer',teamId=Number.isInteger(actor?.teamId)?actor.teamId:null;
-  if(role==='host'||role==='dev'||role==='system')return projected;
+  if(role==='dev'||role==='system')return projected;
+  if(role==='host'){projected.viewers=(projected.viewers||[]).map(viewer=>publicViewerRecord(viewer,onlineViewerIds.has(viewer.id)));return projected;}
   const reveal=publicCeremonyReveal(fullState),resultsPublic=reveal.full;
   projected.ceremonyReveal=reveal;
   projected.myViewerCode=role==='team'&&teamId!==null?fullState.accessCodes?.[teamId]?.viewerCode||null:null;
+  projected.viewerRoster=role==='team'&&teamId!==null?(fullState.viewers||[]).filter(viewer=>Number(viewer.teamId)===teamId).map(viewer=>publicViewerRecord(viewer,onlineViewerIds.has(viewer.id))):[];
+  delete projected.viewers;
   delete projected.accessCodes;
-  projected.receipts=(teamId!==null?(fullState.receipts||[]).filter(receipt=>Number(receipt.teamId)===teamId):[]);
+  const viewerApproved=role!=='viewer'||Boolean(actor?.viewerId&&(fullState.viewers||[]).some(viewer=>viewer.id===actor.viewerId&&viewer.status==='approved'&&Number(viewer.teamId)===teamId));
+  const canSeeOwn=teamId!==null&&(role==='team'||(role==='viewer'&&viewerApproved));
+  projected.receipts=(canSeeOwn?(fullState.receipts||[]).filter(receipt=>Number(receipt.teamId)===teamId):[]);
   projected.log=(fullState.publicFeed||[]).map(entry=>String(entry?.message||entry)).slice(0,80);
   projected.publicFeed=G.clone(fullState.publicFeed||[]);
-  projected.teams=(fullState.teams||[]).map((team,index)=>{if(index===teamId)return G.clone(team);const safe=redactTeam(G.clone(team));if(resultsPublic){safe.cash=team.cash;safe.pts=team.pts;}return safe;});
+  projected.teams=(fullState.teams||[]).map((team,index)=>{if(canSeeOwn&&index===teamId)return G.clone(team);const safe=redactTeam(G.clone(team));if(resultsPublic){safe.cash=team.cash;safe.pts=team.pts;}return safe;});
   if(projected.lastRoll&&Number(projected.lastRoll.team)!==teamId)projected.lastRoll={...projected.lastRoll,note:'完成移動'};
   if(projected.lastPurchase&&Number(projected.lastPurchase.team)!==teamId)projected.lastPurchase=null;
   return projected;
@@ -631,7 +657,8 @@ function appendReceipts(previous,next,action){
 
 const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','resolveBattle','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
 
-const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack']);
+const TEAM_ADMIN_ACTIONS=new Set(['approveViewer','rejectViewer','removeViewer','regenerateOwnViewerCode']);
+const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack',...TEAM_ADMIN_ACTIONS]);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['resolveLanding','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
 const CONFIG_RANGES={lapBonus:[0,1000000],taxAmount:[0,1000000],casinoCost:[0,1000000],blackDiscount:[1,100],bankShare:[0,100],diceSides:[2,20],diceCount:[1,5],passRatio:[0,100]};
 function configRange(path){ if(CONFIG_RANGES[path])return CONFIG_RANGES[path];if(/^stages\.\d+\.(cash|pts)$/.test(path))return [-1000000,1000000];return /^(levels\.\d+\.(stay|up|sell|tax)|attacks\.(quake|missile|typhoon|wildfire)\.(cost|repair)|attacks\.typhoon\.eyeBonus|buffs\.(pass|reroll|shield)\.cost)$/.test(path)?[0,1000000]:null; }
@@ -643,7 +670,7 @@ function updateConfig(settings,path,rawValue){
   const key=parts.at(-1);if(!(key in target))return '設定路徑錯誤';target[key]=value;return null;
 }
 export function teamActionError(state,action){
-  if(action==='leaveTeam')return null;
+  if(action==='leaveTeam'||TEAM_ADMIN_ACTIONS.has(action))return null;
   if(state.phase==='setup')return '遊戲尚未開始';
   if(state.phase==='ended')return '活動已經結束';
   if(state.paused)return '活動目前已暫停';
@@ -680,6 +707,7 @@ export class GameRoom {
     this.ctx=ctx;this.env=env;this.loaded=false;this.state=null;this.meta=null;this.gameId=null;this.lastActivityAt=0;this.kickedTeams=new Set();
     this.actionQueue = Promise.resolve();
     this.processedActions = new Map();
+    this.viewerRequestCooldown = new Map();
   }
   async load(){
     await this.ctx.blockConcurrencyWhile(async()=>{
@@ -691,12 +719,12 @@ export class GameRoom {
       const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,state_json,updated_at FROM games WHERE id=?').bind(this.gameId).first();
       if(!row) throw new Error('找不到活動');
       this.meta={id:row.id,name:row.name,status:row.status,teamCount:row.team_count,hostTokenHash:row.host_token_hash};
-      const source=cached||JSON.parse(row.state_json||'{}'),hadCodes=Array.isArray(source.accessCodes)&&source.accessCodes.length===row.team_count&&source.accessCodes.every(validAccessEntry);
+      const source=cached||JSON.parse(row.state_json||'{}'),hadCodes=Array.isArray(source.accessCodes)&&source.accessCodes.length===row.team_count&&source.accessCodes.every(validAccessEntry),hadViewers=Array.isArray(source.viewers);
       this.state=normalizeGameState(source); this.loaded=true;
       const dbActivity=Date.parse(row.updated_at)||Date.now();
       this.lastActivityAt=Math.max(storedActivity,dbActivity);
-      if(!cached||!hadCodes) await this.ctx.storage.put('state',this.state);
-      if(!hadCodes&&this.env.DB?.prepare)await this.env.DB.prepare('UPDATE games SET state_json=? WHERE id=?').bind(JSON.stringify(this.state),this.gameId).run();
+      if(!cached||!hadCodes||!hadViewers) await this.ctx.storage.put('state',this.state);
+      if((!hadCodes||!hadViewers)&&this.env.DB?.prepare)await this.env.DB.prepare('UPDATE games SET state_json=? WHERE id=?').bind(JSON.stringify(this.state),this.gameId).run();
       await this.ctx.storage.put('gameId',this.gameId);
       await this.ctx.storage.put('lastActivityAt',this.lastActivityAt);
     });
@@ -753,16 +781,36 @@ export class GameRoom {
     let actor=ws.deserializeAttachment?.()||{role:'pending',teamId:null};
     if(actor.role==='pending'){
       if(m.type!=='hello') return socketSend(ws,{type:'error',error:'請先完成登入'});
-      const role=m.role;const teamId=Number.isInteger(m.teamId)?m.teamId:null;
-      let ok=false;
-      if(role==='viewer'&&teamId===null)ok=true;
-      else if(role==='viewer'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount)ok=await verifyAccessCode(m.accessToken,this.state.accessCodes?.[teamId]?.viewerCode);
-      else if(role==='host') ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);
-      else if(role==='team'&&teamId!==null&&teamId>=0&&teamId<this.meta.teamCount)ok=await verifyAccessCode(m.accessToken,this.state.accessCodes?.[teamId]?.teamCode);
-      if(!ok){ws.close(1008,'授權失敗');return;}
-      actor={role,teamId};ws.serializeAttachment(actor);
-      if(role==='team'&&this.state.teams[teamId]&&!this.state.teams[teamId].joined){ this.kickedTeams.delete(teamId); const next=G.clone(this.state);next.teams[teamId].joined=true;next.log.unshift(`${next.teams[teamId].name} 已加入活動`);await this.commit(next,actor,'teamJoin',{}); }
-      socketSend(ws,{type:'hello_ok',state:projectStateForActor(this.state,actor),meta:{id:this.meta.id,name:this.meta.name,status:statusOf(this.state),teamCount:this.meta.teamCount}});
+      const role=String(m.role||'');let teamId=null,viewer=null;
+      if(role==='viewer_request'){
+        teamId=await resolveAccessCode(this.state,'viewer',m.accessToken);const viewerName=text(m.viewerName).replace(/\s+/g,' ').slice(0,40),nameLength=Array.from(viewerName).length;
+        if(teamId===null||nameLength<1||nameLength>20){ws.close(1008,'代碼無效或已更新');return;}
+        const cooldownKey=`${teamId}:${viewerName.toLocaleLowerCase()}`,lastRequest=this.viewerRequestCooldown.get(cooldownKey)||0,activeRequest=(this.state.viewers||[]).find(item=>Number(item.teamId)===teamId&&item.name.toLocaleLowerCase()===viewerName.toLocaleLowerCase()&&item.status==='pending');
+        if(!activeRequest&&Date.now()-lastRequest<3000){socketSend(ws,{type:'error',error:'申請送出過於頻繁，請稍候再試'});return;}
+        this.viewerRequestCooldown.set(cooldownKey,Date.now());
+        const next=G.clone(this.state),existing=(next.viewers||[]).find(item=>Number(item.teamId)===teamId&&item.name.toLocaleLowerCase()===viewerName.toLocaleLowerCase()&&['pending','approved'].includes(item.status));
+        if(existing?.status==='approved'){socketSend(ws,{type:'viewer_request_rejected',message:'這個署名已在批准名單；若要更換裝置，請先請隊輔移除舊資格'});ws.close(4007,'viewer-name-already-approved');return;}
+        viewer=existing?.status==='pending'?existing:{id:randomHex(12),teamId,name:viewerName,status:'pending',sessionTokenHash:'',requestedAt:now(),approvedAt:'',lastSeenAt:'',removedAt:''};
+        if(!existing||existing.status!=='pending')next.viewers.push(viewer);else{viewer.requestedAt=now();}
+        const archived=next.viewers.filter(item=>Number(item.teamId)===teamId&&['rejected','removed'].includes(item.status)).sort((a,b)=>String(b.removedAt||b.requestedAt).localeCompare(String(a.removedAt||a.requestedAt)));
+        if(archived.length>60){const removeIds=new Set(archived.slice(60).map(item=>item.id));next.viewers=next.viewers.filter(item=>!removeIds.has(item.id));}
+        next.log.unshift(`${next.teams[teamId].name} 收到具名觀眾申請`);next.rev=(this.state.rev||0)+1;
+        actor={role:'viewer_pending',teamId,viewerId:viewer.id};ws.serializeAttachment(actor);await this.commit(next,actor,'viewerRequest',{viewerId:viewer.id});
+        socketSend(ws,{type:'viewer_pending',viewerId:viewer.id,viewerName:viewer.name,teamId,teamName:this.state.teams[teamId]?.name,gameId:this.meta.id,gameName:this.meta.name});return;
+      }
+      if(role==='viewer'&&m.viewerId&&m.sessionToken){
+        viewer=(this.state.viewers||[]).find(item=>item.id===text(m.viewerId)&&item.status==='approved');
+        if(!viewer||!(await verifySecret(m.sessionToken,viewer.sessionTokenHash))){ws.close(1008,'觀眾資格已失效');return;}
+        teamId=Number(viewer.teamId);actor={role:'viewer',teamId,viewerId:viewer.id};ws.serializeAttachment(actor);
+        const next=G.clone(this.state),saved=next.viewers.find(item=>item.id===viewer.id);if(saved)saved.lastSeenAt=now();next.rev=(this.state.rev||0)+1;await this.commit(next,actor,'viewerOnline',{viewerId:viewer.id});
+      }else if(role==='viewer'&&!m.viewerId&&!m.sessionToken){actor={role:'viewer',teamId:null};ws.serializeAttachment(actor);
+      }else if(role==='host'){
+        const ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);if(!ok){ws.close(1008,'授權失敗');return;}actor={role:'host',teamId:null};ws.serializeAttachment(actor);
+      }else if(role==='team'){
+        teamId=await resolveAccessCode(this.state,'team',m.accessToken);if(teamId===null){ws.close(1008,'代碼無效或已更新');return;}actor={role:'team',teamId};ws.serializeAttachment(actor);
+        if(this.state.teams[teamId]&&!this.state.teams[teamId].joined){this.kickedTeams.delete(teamId);const next=G.clone(this.state);next.teams[teamId].joined=true;next.log.unshift(`${next.teams[teamId].name} 已加入活動`);await this.commit(next,actor,'teamJoin',{});}
+      }else{ws.close(1008,'授權失敗');return;}
+      socketSend(ws,{type:'hello_ok',state:projectStateForActor(this.state,actor,this.onlineViewerIds()),meta:{id:this.meta.id,name:this.meta.name,status:statusOf(this.state),teamCount:this.meta.teamCount,teamId:actor.teamId,viewerId:actor.viewerId||null,viewerName:viewer?.name||null}});
       return;
     }
     if(m.type==='ping') return socketSend(ws,{type:'pong'});
@@ -785,18 +833,23 @@ export class GameRoom {
       socketSend(ws,{type:'action_ok',actionId,rev:next.rev});
       return;
     }
-    if((actor.role==='host'&&!HOST_ACTIONS.has(m.action))||(actor.role==='team'&&!TEAM_ACTIONS.has(m.action))||actor.role==='viewer')return fail('你的角色不能執行這個操作');
+    if((actor.role==='host'&&!HOST_ACTIONS.has(m.action))||(actor.role==='team'&&!TEAM_ACTIONS.has(m.action))||['viewer','viewer_pending'].includes(actor.role))return fail('你的角色不能執行這個操作');
     if(actor.role==='team'){
       const phaseError=teamActionError(this.state,m.action);if(phaseError)return fail(phaseError);
     }
     try{
       const next=G.clone(this.state);
-      const result=this.applyAction(next,actor,m.action,m.payload||{});
+      let viewerSessionToken='';const actionPayload={...(m.payload||{})};
+      if(actor.role==='team'&&m.action==='approveViewer'){viewerSessionToken=randomHex(24);actionPayload.sessionTokenHash=await hashSecret(viewerSessionToken);}
+      const result=this.applyAction(next,actor,m.action,actionPayload);
       if(result?.error)return fail(result.error);
       appendReceipts(this.state,next,m.action);
       next.rev=(this.state.rev||0)+1;
       await this.commit(next,actor,m.action,{...(m.payload||{}),actionId});
       if(m.action==='regenerateAccessCode')this.invalidateAccessCode(Number(m.payload?.teamId),String(m.payload?.kind||''));
+      if(m.action==='regenerateOwnViewerCode')this.invalidateAccessCode(actor.teamId,'viewer');
+      if(m.action==='approveViewer')this.approveViewerSession(text(m.payload?.viewerId),viewerSessionToken);
+      if(['rejectViewer','removeViewer'].includes(m.action))this.invalidateViewer(text(m.payload?.viewerId),m.action==='rejectViewer'?'觀眾申請未獲批准':'隊輔已移除這位觀眾');
       if(actionId){
         this.processedActions.set(actionId, {rev:next.rev, time:Date.now()});
         if(this.processedActions.size > 500){
@@ -810,6 +863,22 @@ export class GameRoom {
   applyAction(s,actor,action,p){
     if(actor.role==='team'){
       const i=actor.teamId;if(i===null||!s.teams[i])return {error:'找不到隊伍'};
+      if(action==='approveViewer'||action==='rejectViewer'||action==='removeViewer'){
+        const viewer=(s.viewers||[]).find(item=>item.id===text(p.viewerId));if(!viewer||Number(viewer.teamId)!==i)return {error:'找不到本隊觀眾'};
+        if(action==='approveViewer'){
+          if(viewer.status!=='pending'||!text(p.sessionTokenHash))return {error:'這筆申請已經處理'};
+          viewer.status='approved';viewer.sessionTokenHash=text(p.sessionTokenHash);viewer.approvedAt=now();viewer.removedAt='';s.log.unshift(`${s.teams[i].name} 批准一位具名觀眾`);return;
+        }
+        if(action==='rejectViewer'){
+          if(viewer.status!=='pending')return {error:'這筆申請已經處理'};
+          viewer.status='rejected';viewer.sessionTokenHash='';viewer.removedAt=now();s.log.unshift(`${s.teams[i].name} 拒絕一位觀眾申請`);return;
+        }
+        if(viewer.status!=='approved')return {error:'這位觀眾目前不在已批准名單'};
+        viewer.status='removed';viewer.sessionTokenHash='';viewer.removedAt=now();s.log.unshift(`${s.teams[i].name} 移除一位具名觀眾`);return;
+      }
+      if(action==='regenerateOwnViewerCode'){
+        ensureTeamAccessCodes(s,s.teams.length);const used=new Set(s.accessCodes.map(entry=>entry.viewerCode));let code='';do{code=randomAccessCode('V');}while(used.has(code));s.accessCodes[i].viewerCode=code;revokeTeamViewers(s,i);s.log.unshift(`${s.teams[i].name} 重新產生本隊觀眾代碼`);return;
+      }
       if(action==='leaveTeam'){s.teams[i].joined=false;s.log.unshift(`${s.teams[i].name} 已主動離開活動`);return;}
       if(action==='roll'){
         const t=s.teams[i];if(s.phase!=='roll'||t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能擲骰'};
@@ -846,7 +915,7 @@ export class GameRoom {
     }
     if(action==='resolveBattle'){const r=G.adjudicateBattle(s,String(p.outcome||''));return r.ok?undefined:{error:r.msg};}
     if(action==='unlock'){const i=Number(p.index),stageIndex=G.STAGE_IDX.indexOf(i),stage=s.settings.stages?.[stageIndex];if(stageIndex<0||!stage)return {error:'關卡格錯誤'};if(!s.unlocked.includes(i)){s.unlocked.push(i);s.stageNoticeSeq=Number(s.stageNoticeSeq||0)+1;s.stageNotices=[...(s.stageNotices||[]),{id:s.stageNoticeSeq,stageIndex,tileIndex:i,stage:G.clone(stage),createdAt:now()}].slice(-20);}s.log.unshift(`${stage.name}關卡解封（第 ${i+1} 格）`);return;}
-    if(action==='regenerateAccessCode'){const i=Number(p.teamId),kind=String(p.kind||'');if(!s.teams[i]||!['team','viewer'].includes(kind))return {error:'登入代碼設定錯誤'};ensureTeamAccessCodes(s,s.teams.length);s.accessCodes[i][kind==='team'?'teamCode':'viewerCode']=randomAccessCode(kind==='team'?'T':'V');s.log.unshift(`主持人重新產生 ${s.teams[i].name} 的${kind==='team'?'隊輔':'觀眾'}代碼`);return;}
+    if(action==='regenerateAccessCode'){const i=Number(p.teamId),kind=String(p.kind||'');if(!s.teams[i]||!['team','viewer'].includes(kind))return {error:'登入代碼設定錯誤'};ensureTeamAccessCodes(s,s.teams.length);const key=kind==='team'?'teamCode':'viewerCode',used=new Set(s.accessCodes.map(entry=>entry[key]));let code='';do{code=randomAccessCode(kind==='team'?'T':'V');}while(used.has(code));s.accessCodes[i][key]=code;if(kind==='viewer')revokeTeamViewers(s,i);s.log.unshift(`主持人重新產生 ${s.teams[i].name} 的${kind==='team'?'隊輔':'觀眾'}代碼`);return;}
     if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash')s.teams[i].cash+=amount;else s.teams[i].pts=Math.max(0,s.teams[i].pts+amount);s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}
     if(action==='renameTeams'){if(!Array.isArray(p.names))return {error:'隊伍名稱格式錯誤'};s.teams.forEach((t,i)=>{const n=text(p.names[i],t.name).slice(0,30);if(n)t.name=n;});s.log.unshift('主持人更新了隊伍名稱');return;}
     if(action==='setConfig'){const path=String(p.path||''),error=updateConfig(s.settings,path,p.value);if(error)return {error};s.log.unshift(`主持人調整設定：${path}`);return;}
@@ -890,10 +959,14 @@ export class GameRoom {
     this.broadcast({type:'state',state:next,status,resolvedActionId:payload?.actionId});
   }
   kickTeam(teamId){ this.kickedTeams.add(teamId); for(const ws of this.ctx.getWebSockets()){ const a=ws.deserializeAttachment?.(); if(a?.role==='team'&&a.teamId===teamId){ try{ws.send(JSON.stringify({type:'kicked',message:'主持人已將你踢出活動'}));ws.close(4003,'kicked');}catch{} } } }
-  invalidateAccessCode(teamId,kind){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();const affected=kind==='team'?actor?.role==='team'&&actor.teamId===teamId:actor?.role==='viewer'&&actor.teamId===teamId;if(affected){try{ws.send(JSON.stringify({type:'credentials_changed',message:'登入代碼已由主持人更新，請使用新代碼重新登入'}));ws.close(4005,'credentials-changed');}catch{}}}}
-  broadcast(message){for(const ws of this.ctx.getWebSockets()){try{const actor=ws.deserializeAttachment?.()||{role:'viewer',teamId:null},payload=message?.type==='state'?{...message,state:projectStateForActor(message.state,actor)}:message;ws.send(JSON.stringify(payload));}catch{}}}
+  onlineViewerIds(){return new Set((this.ctx.getWebSockets?.()||[]).map(ws=>ws.deserializeAttachment?.()).filter(actor=>actor?.role==='viewer'&&actor.viewerId).map(actor=>actor.viewerId));}
+  approveViewerSession(viewerId,sessionToken){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();if(actor?.role==='viewer_pending'&&actor.viewerId===viewerId){socketSend(ws,{type:'viewer_approved',viewerId,sessionToken});}}}
+  invalidateViewer(viewerId,message){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();if(actor?.viewerId===viewerId){try{socketSend(ws,{type:'viewer_access_revoked',message});ws.close(4006,'viewer-access-revoked');}catch{}}}}
+  invalidateAccessCode(teamId,kind){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();const affected=kind==='team'?actor?.role==='team'&&actor.teamId===teamId:['viewer','viewer_pending'].includes(actor?.role)&&actor.teamId===teamId;if(affected){try{socketSend(ws,{type:'credentials_changed',message:'登入代碼已更新，請使用新代碼重新登入'});ws.close(4005,'credentials-changed');}catch{}}}}
+  broadcast(message){const online=this.onlineViewerIds();for(const ws of this.ctx.getWebSockets()){try{const actor=ws.deserializeAttachment?.()||{role:'pending',teamId:null};if(actor.role==='pending'||actor.role==='viewer_pending')continue;const payload=message?.type==='state'?{...message,state:projectStateForActor(message.state,actor,online)}:message;ws.send(JSON.stringify(payload));}catch{}}}
   async webSocketClose(ws){
     const actor=ws.deserializeAttachment?.();
+    if(actor?.role==='viewer'&&actor.viewerId){if(this.loaded&&this.state)this.broadcast({type:'state',state:this.state,status:statusOf(this.state)});return;}
     if(!actor || actor.role!=='team' || this.kickedTeams.has(actor.teamId) || !this.loaded || this.state?.phase==='ended' || !this.state?.teams?.[actor.teamId]?.joined) return;
     const stillConnected=this.ctx.getWebSockets().some(other=>other!==ws&&other.deserializeAttachment?.()?.role==='team'&&other.deserializeAttachment?.()?.teamId===actor.teamId);
     if(stillConnected)return;

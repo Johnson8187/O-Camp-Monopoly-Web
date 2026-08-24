@@ -94,7 +94,7 @@ function freshState(code, teamCount, names) {
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
     stageNotices:[], stageNoticeSeq:0,
     settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null,
-    receipts:[], receiptSeq:0, lastPurchase:null,
+    receipts:[], receiptSeq:0, lastPurchase:null, viewers:[],
   };
 }
 

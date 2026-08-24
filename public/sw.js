@@ -1,4 +1,4 @@
-const BUILD_VERSION = '2026.08.24.53';
+const BUILD_VERSION = '2026.08.25.54';
 
 
 

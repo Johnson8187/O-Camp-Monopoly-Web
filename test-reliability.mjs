@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import worker, { GameRoom, ensureTeamAccessCodes, normalizeGameState, projectStateForActor, teamActionError } from './src/worker.js';
+import worker, { GameRoom, ensureTeamAccessCodes, normalizeGameState, projectStateForActor, resolveAccessCode, teamActionError } from './src/worker.js';
 import { G } from './src/game-core.js';
 
 const appSource=await readFile(new URL('./public/app.js',import.meta.url),'utf8');
@@ -44,7 +44,15 @@ assert.match(stylesSource,/\.ceremony-podium-stage/);
 assert.match(appSource,/showMissileTargetModal/);
 assert.match(appSource,/stageNoticeHTML/);
 assert.match(appSource,/hostAccessCodeGridHTML/);
+assert.match(appSource,/viewerManagementHTML/);
+assert.match(appSource,/viewer_request/);
+assert.match(appSource,/sessionStorageKey\(App\.role\)/);
+assert.match(appSource,/if\(!\['host','team','viewer'\]\.includes\(App\.role\)\)return/);
+assert.doesNotMatch(appSource,/你要追蹤哪一隊/);
+assert.doesNotMatch(appSource,/選擇你的隊伍/);
+assert.doesNotMatch(appSource,/life-open-games/);
 assert.match(stylesSource,/\.stage-notice-overlay/);
+assert.match(stylesSource,/max-aspect-ratio:29\/20/);
 assert.match(stylesSource,/life-festival-plaza-v1\.png/);
 for(const asset of ['fx-quake-v1.png','fx-missile-v1.png','fx-typhoon-v1.png','fx-wildfire-v1.png'])assert.match(stylesSource,new RegExp(asset.replace('.','\\.')));
 assert.match(appSource,/bSkipFx/);
@@ -177,7 +185,8 @@ assert.equal(lobby.games[0].joinedCount,1);
 
 
 
-const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});
+const roomSockets=[];
+const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{},getWebSockets:()=>roomSockets},{});
 room.loaded=true;
 room.lastActivityAt=0;
 room.meta={id:'GAME1',name:'測試活動',teamCount:2,hostTokenHash:'unused'};
@@ -189,31 +198,71 @@ function pendingSocket(){
   return {sent:[],closed:false,send(data){this.sent.push(JSON.parse(data));},close(){this.closed=true;},deserializeAttachment(){return attachment;},serializeAttachment(value){attachment=value;}};
 }
 
+const unloadedRoom=new GameRoom({storage:{},getWebSockets:()=>[]},{});
+const earlyViewerClose=pendingSocket();
+earlyViewerClose.serializeAttachment({role:'viewer',teamId:0,viewerId:'viewer-before-load'});
+await assert.doesNotReject(()=>unloadedRoom.webSocketClose(earlyViewerClose));
+
 const wrongSocket=pendingSocket();
-await room.webSocketMessage(wrongSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'wrong',token:'not-needed'}));
+roomSockets.push(wrongSocket);
+await room.webSocketMessage(wrongSocket,JSON.stringify({type:'hello',role:'team',accessToken:'wrong',token:'not-needed'}));
 assert.equal(wrongSocket.closed,true);
 const teamSocket=pendingSocket();
-await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:room.state.accessCodes[0].teamCode}));
+roomSockets.push(teamSocket);
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',accessToken:room.state.accessCodes[0].teamCode}));
 assert.equal(teamSocket.closed,false);
 assert.equal(teamSocket.sent.at(-1).type,'hello_ok');
+assert.equal(teamSocket.sent.at(-1).meta.teamId,0);
+assert.equal(await resolveAccessCode(room.state,'team',room.state.accessCodes[1].teamCode),1);
 const crossTeamSocket=pendingSocket();
-await room.webSocketMessage(crossTeamSocket,JSON.stringify({type:'hello',role:'team',teamId:1,accessToken:room.state.accessCodes[0].teamCode}));
+roomSockets.push(crossTeamSocket);
+await room.webSocketMessage(crossTeamSocket,JSON.stringify({type:'hello',role:'team',accessToken:room.state.accessCodes[0].viewerCode}));
 assert.equal(crossTeamSocket.closed,true);
 const privateViewerSocket=pendingSocket();
-await room.webSocketMessage(privateViewerSocket,JSON.stringify({type:'hello',role:'viewer',teamId:1,accessToken:room.state.accessCodes[1].viewerCode}));
+roomSockets.push(privateViewerSocket);
+await room.webSocketMessage(privateViewerSocket,JSON.stringify({type:'hello',role:'viewer_request',accessToken:room.state.accessCodes[0].viewerCode,viewerName:'小明'}));
 assert.equal(privateViewerSocket.closed,false);
+assert.equal(privateViewerSocket.sent.at(-1).type,'viewer_pending');
+assert.equal(privateViewerSocket.sent.some(message=>message.state?.teams?.[0]?.cash!==undefined),false);
+const requestedViewerId=privateViewerSocket.sent.at(-1).viewerId;
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'action',action:'approveViewer',payload:{viewerId:requestedViewerId},actionId:'approve-viewer-1'}));
+const approval=privateViewerSocket.sent.find(message=>message.type==='viewer_approved');
+assert.ok(approval?.sessionToken);
+const approvedViewerSocket=pendingSocket();roomSockets.push(approvedViewerSocket);
+await room.webSocketMessage(approvedViewerSocket,JSON.stringify({type:'hello',role:'viewer',viewerId:requestedViewerId,sessionToken:approval.sessionToken}));
+assert.equal(approvedViewerSocket.closed,false);
+assert.equal(approvedViewerSocket.sent.at(-1).type,'hello_ok');
+assert.equal(approvedViewerSocket.sent.at(-1).meta.teamId,0);
+const otherTeamSocket=pendingSocket();roomSockets.push(otherTeamSocket);
+await room.webSocketMessage(otherTeamSocket,JSON.stringify({type:'hello',role:'team',accessToken:room.state.accessCodes[1].teamCode}));
+await room.webSocketMessage(otherTeamSocket,JSON.stringify({type:'action',action:'removeViewer',payload:{viewerId:requestedViewerId},actionId:'cross-team-remove'}));
+assert.match(otherTeamSocket.sent.at(-1).error,/本隊觀眾/);
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'action',action:'removeViewer',payload:{viewerId:requestedViewerId},actionId:'remove-viewer-1'}));
+assert.equal(approvedViewerSocket.closed,true);
+const revokedViewerSocket=pendingSocket();roomSockets.push(revokedViewerSocket);
+await room.webSocketMessage(revokedViewerSocket,JSON.stringify({type:'hello',role:'viewer',viewerId:requestedViewerId,sessionToken:approval.sessionToken}));
+assert.equal(revokedViewerSocket.closed,true);
+
+const duplicateCodes=G.freshState('DUPLICATE-CODES',2);
+duplicateCodes.accessCodes=[{teamCode:'T-23456',viewerCode:'V-23456'},{teamCode:'T-23456',viewerCode:'V-23456'}];
+ensureTeamAccessCodes(duplicateCodes,2);
+assert.notEqual(duplicateCodes.accessCodes[0].teamCode,duplicateCodes.accessCodes[1].teamCode);
+assert.notEqual(duplicateCodes.accessCodes[0].viewerCode,duplicateCodes.accessCodes[1].viewerCode);
 
 const secrets=normalizeGameState(G.freshState('SECRETS',3));
 secrets.teams[0].cash=1111;secrets.teams[0].pts=11;secrets.teams[1].cash=2222;secrets.teams[1].pts=22;secrets.teams[2].cash=3333;secrets.teams[2].pts=33;
 secrets.receipts=[{id:1,teamId:0,cashDelta:111,afterCash:1111},{id:2,teamId:1,cashDelta:222,afterCash:2222}];
+secrets.viewers=[{id:'viewer-secret',teamId:0,name:'測試觀眾',status:'approved',sessionTokenHash:'NEVER-EXPOSE',requestedAt:'2026-08-25T00:00:00.000Z',approvedAt:'2026-08-25T00:01:00.000Z',lastSeenAt:'',removedAt:''}];
 secrets.log=['藍隊現金 +99999'];secrets.publicFeed=[{id:1,message:'藍隊完成移動'}];
 const publicProjection=projectStateForActor(secrets,{role:'viewer',teamId:null});
 assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);
 const teamProjection=projectStateForActor(secrets,{role:'team',teamId:0});
-assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal('accessCodes'in teamProjection,false);
+assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal(teamProjection.viewerRoster[0].name,'測試觀眾');assert.equal('sessionTokenHash'in teamProjection.viewerRoster[0],false);assert.equal('accessCodes'in teamProjection,false);
 const viewerProjection=projectStateForActor(secrets,{role:'viewer',teamId:1});
-assert.equal(viewerProjection.teams[1].cash,2222);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
-const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);
+assert.equal(viewerProjection.teams[1].cash,null);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
+const approvedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(approvedProjection.teams[0].cash,1111);
+secrets.viewers[0].status='removed';const removedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(removedProjection.teams[0].cash,null);secrets.viewers[0].status='approved';
+const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);assert.equal('sessionTokenHash'in hostProjection.viewers[0],false);
 secrets.phase='settle';secrets.ceremonyStep=3;const partialReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(partialReveal.ceremonyReveal.podium.length,3);assert.equal(partialReveal.teams.every(team=>team.cash===null),true);
 secrets.ceremonyStep=5;const fullReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(fullReveal.teams[2].cash,3333);assert.equal(fullReveal.teams[2].items,null);
 

@@ -294,4 +294,44 @@ assert.equal(receiptRoom.state.receipts.length,1);
 assert.equal(receiptRoom.state.receipts[0].cashDelta,250);
 assert.equal(receiptRoom.state.receipts[0].afterCash,receiptRoom.state.teams[0].cash);
 
-console.log('reliability phase-guard, team-picker and control-header tests passed');
+// Test Mode: testRoll and setPresetRoll verification
+const testRollRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});
+testRollRoom.loaded=true;
+testRollRoom.lastActivityAt=Date.now();
+testRollRoom.meta={id:'TEST-ROLL',name:'測試步數',teamCount:2,hostTokenHash:'unused'};
+testRollRoom.state=G.freshState('TEST-ROLL',2);
+G.assignBases(testRollRoom.state,()=>0);
+testRollRoom.state.phase='roll';
+testRollRoom.commit=async next=>{testRollRoom.state=next;};
+const testHostSocket=pendingSocket();
+testHostSocket.serializeAttachment({role:'host',teamId:null});
+
+// 1. Host testRoll specifies exact 5 steps
+await testRollRoom.webSocketMessage(testHostSocket,JSON.stringify({type:'action',action:'testRoll',payload:{teamId:0,steps:5},actionId:'test-roll-1'}));
+assert.equal(testHostSocket.sent.find(m=>m.type==='action_ok')?.actionId,'test-roll-1');
+assert.equal(testRollRoom.state.teams[0].pos,5);
+assert.equal(testRollRoom.state.teams[0].rolled,true);
+assert.equal(testRollRoom.state.lastRoll.n,5);
+
+// 2. Host setPresetRoll specifies team 1 to roll 8 steps on next turn
+testRollRoom.state.teams[1].rolled=false;
+await testRollRoom.webSocketMessage(testHostSocket,JSON.stringify({type:'action',action:'setPresetRoll',payload:{teamId:1,steps:8},actionId:'preset-1'}));
+assert.equal(testRollRoom.state.presetRolls[1],8);
+
+// 3. Team 1 rolls with preset value 8
+const team1Socket=pendingSocket();
+team1Socket.serializeAttachment({role:'team',teamId:1});
+testRollRoom.state.activeTeamId=1;
+await testRollRoom.webSocketMessage(team1Socket,JSON.stringify({type:'action',action:'roll',actionId:'team-roll-1'}));
+assert.equal(testRollRoom.state.teams[1].pos,8);
+assert.equal(testRollRoom.state.teams[1].rolled,true);
+assert.equal(testRollRoom.state.lastRoll.n,8);
+assert.equal(testRollRoom.state.presetRolls[1],undefined);
+
+// UI assertions for host test mode
+assert.match(appSource,/host-test-mode-toggle/);
+assert.match(appSource,/test-roll-btn/);
+assert.match(appSource,/test-preset-btn/);
+assert.match(stylesSource,/\.host-test-bar/);
+
+console.log('reliability phase-guard, team-picker, test-roll and control-header tests passed');

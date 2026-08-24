@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.25.55';
-import { G } from './game-core.js?v=2026.08.25.55';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.55';
+const BUILD_VERSION = '2026.08.25.56';
+import { G } from './game-core.js?v=2026.08.25.56';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.56';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -47,7 +47,7 @@ const App = {
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
   fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
-  hostDrafts:{}, hostSection:'flow', editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
+  hostDrafts:{}, hostSection:'flow', hostTestMode:false, hostTestSteps:1, editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
   viewerId:null, viewerSessionToken:'', viewerName:'', pendingViewer:null,
 };
 
@@ -2277,7 +2277,21 @@ function hostPanel(){
     h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
     if(['settle','ended'].includes(S.phase))h+=ceremonyControlDockHTML(ceremonyStep(S.ceremonyStep),true);
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
-    if(S.phase==='roll')h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><small>每隊都必須由主持人允許</small></div><div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid">${S.teams.map((t,i)=>{const isJailed=t.jailedThisTurn||(t.jail>0&&!t.rolled),status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):S.activeTeamId===i?'操作中':'允許擲骰';return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':'outline'}" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;}).join('')}</div></section>`;
+    if(S.phase==='roll'){
+      const testSteps=Math.max(1,Math.min(48,Number(App.hostTestSteps)||1));
+      h+=`<section class="host-work-card priority"><div class="host-work-title"><span>🎲 指定擲骰隊伍</span><button type="button" class="btn xs ${App.hostTestMode?'gold':'outline'} host-test-mode-toggle" id="toggleHostTestMode">🛠️ ${App.hostTestMode?'測試模式：開啟':'測試模式：關閉'}</button></div>`;
+      if(App.hostTestMode){
+        h+=`<div class="host-test-bar"><div class="host-test-bar-header"><span>🎯 指定步數：<b>${testSteps} 步</b></span><small>⚡代擲：全場同步跳格；🎯預設：隊輔手機骰出該點數</small></div><div class="host-test-quick-steps">${[1,2,3,4,5,6,10,12].map(n=>`<button type="button" class="btn xs step-btn ${testSteps===n?'gold':'outline'}" data-step="${n}">${n}</button>`).join('')}<div class="host-test-custom-step"><input type="number" min="1" max="48" class="host-test-step-input" value="${testSteps}"><span>步</span></div></div></div>`;
+      }
+      h+=`<div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid ${App.hostTestMode?'test-mode':''}">${S.teams.map((t,i)=>{
+        const isJailed=t.jailedThisTurn||(t.jail>0&&!t.rolled),isPreset=S.presetRolls&&S.presetRolls[i]!==undefined;
+        const status=isJailed?'⛓️ 監獄服刑':t.rolled?(t.jail>0?'抵達監獄':'已完成'):isPreset?`🎯 已預設 ${S.presetRolls[i]} 步`:S.activeTeamId===i?'操作中':'允許擲骰';
+        if(App.hostTestMode){
+          return `<div class="host-test-team-card ${t.rolled?'completed':''} ${isJailed?'jailed':''}"><div class="host-test-team-info"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-test-team-name"><b>${esc(t.name)}</b><small>${status}</small></div></div><div class="host-test-team-actions"><button class="btn xs green test-roll-btn" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="主持人直接替該隊擲出 ${testSteps} 步">⚡ 代擲 ${testSteps}</button><button class="btn xs ${isPreset?'gold':'outline'} test-preset-btn" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="預設該隊下次擲骰為 ${testSteps} 步">${isPreset?`✓ 預設 ${S.presetRolls[i]}`:`🎯 預設 ${testSteps}`}</button>${isPreset?`<button class="btn xs dark test-clear-preset-btn" data-i="${i}" title="清除預設">×</button>`:''}<button class="btn xs ${S.activeTeamId===i?'green':'outline'} allow-roll" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''} title="允許隊輔自己擲骰">${S.activeTeamId===i?'開放中':'允許'}</button></div></div>`;
+        }
+        return `<button class="btn sm allow-roll ${S.activeTeamId===i?'green':isJailed?'dark':isPreset?'gold':'outline'}" data-i="${i}" ${t.rolled||isJailed||S.pendingBattle?'disabled':''}><span class="sw" style="background:${t.color}">${i+1}</span>${esc(t.name)}<small>${status}</small></button>`;
+      }).join('')}</div></section>`;
+    }
     if(S.pendingBattle){const p=S.pendingBattle,attacker=S.teams[p.attackerId],defender=S.teams[p.defenderId];h+=`<div class="host-battle-panel"><div class="sub">⚔️ BATTLE 待裁決</div><p><b>${esc(attacker?.name||'攻方')}</b> 挑戰 <b>${esc(defender?.name||'守方')}</b>，過夜費 ${G.money(p.amount)}。</p>${p.status==='awaiting_host'?`<div class="battle-actions"><button class="btn sm green battle-result" data-outcome="attacker">攻方勝 · 免付</button><button class="btn sm dark battle-result" data-outcome="defender">守方勝 · 收費</button></div>`:'<div class="note">等待攻方選擇付款或 BATTLE。</div>'}</div>`;}
     h+=`<section class="host-work-card"><div class="host-work-title"><span>🏘️ 房市與五大關</span><small>解鎖後全裝置需確認公告</small></div><div class="row wrap mkrow">${S.settings.marketOrder.map(k=>`<button class="tg mk ${S.market===k?'on':''}" data-k="${k}">${S.settings.marketNames[k]}<span class="mx">×${S.settings.market[k]/100}</span></button>`).join('')}</div><div class="stage-unlock-grid">${G.STAGE_IDX.map((tile,index)=>`<button class="btn xs purple unl" data-i="${tile}" ${S.unlocked.includes(tile)?'disabled':''}>${S.unlocked.includes(tile)?'✓ 已解鎖':'解鎖'} ${esc(S.settings.stages?.[index]?.name||`第 ${tile+1} 格`)}</button>`).join('')}</div></section>`;
     if(S.phase!=='ended')h+=`<section class="host-work-card finish"><div class="host-work-title"><span>🏆 結算控制</span><small>活動尾聲才使用</small></div><div class="host-finish-actions">${S.phase==='settle'?'<button class="btn sm purple" id="bResume">↩ 返回遊戲</button>':'<button class="btn sm gold" id="bSettle">進行最終結算</button>'}<button class="btn sm dark" id="bEnd">結束並封存活動</button></div></section>`;
@@ -2464,6 +2478,13 @@ function bindGame(){
     bind('bSettle',()=>ask('進行最終結算？','將進入榮譽頒獎典禮畫面，向全場隊伍與觀眾公開最終排行榜。',()=>send('settleGame')));
     document.querySelectorAll('.ceremony-step-button').forEach(button=>button.onclick=()=>send('setCeremonyStep',{step:Number(button.dataset.step)},{preserveView:true}));
     bind('bEnd',()=>ask('結束活動並保存紀錄？','活動將正式結束並寫入 D1 歷史資料庫，所有裝置將無法再進行遊戲操作。',()=>send('endGame')));
+
+    bind('toggleHostTestMode',()=>{App.hostTestMode=!App.hostTestMode;render(true);});
+    document.querySelectorAll('.step-btn').forEach(b=>b.onclick=()=>{App.hostTestSteps=Number(b.dataset.step);render(true);});
+    document.querySelectorAll('.host-test-step-input').forEach(inp=>{inp.onchange=()=>{App.hostTestSteps=Math.max(1,Math.min(48,Math.floor(Number(inp.value)||1)));render(true);};inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();};});
+    document.querySelectorAll('.test-roll-btn').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.i),steps=Math.max(1,Math.min(48,Number(App.hostTestSteps)||1));ask(`指定 ${S.teams[i]?.name||'該隊'} 前進 ${steps} 步？`,`全場將同步播放 ${steps} 步的完整跳格移動動畫並結算停留格。`,()=>send('testRoll',{teamId:i,steps},{preserveView:true}));});
+    document.querySelectorAll('.test-preset-btn').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.i),steps=Math.max(1,Math.min(48,Number(App.hostTestSteps)||1));send('setPresetRoll',{teamId:i,steps},{preserveView:true});});
+    document.querySelectorAll('.test-clear-preset-btn').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.i);send('clearPresetRoll',{teamId:i},{preserveView:true});});
 
     document.querySelectorAll('.allow-roll').forEach(b=>b.onclick=()=>send('allowRoll',{teamId:Number(b.dataset.i)}));
     document.querySelectorAll('.battle-result').forEach(b=>b.onclick=()=>{const outcome=b.dataset.outcome,label=outcome==='attacker'?'攻方獲勝並免付過夜費':'守方獲勝並收取原過夜費';ask('確認 BATTLE 裁決？',label,()=>send('resolveBattle',{outcome}));});

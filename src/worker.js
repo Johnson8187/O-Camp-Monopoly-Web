@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.25.55';
+const APP_BUILD_VERSION = '2026.08.25.56';
 
 
 
@@ -544,6 +544,7 @@ export function normalizeGameState(state){
     status:['pending','approved','rejected','removed'].includes(viewer.status)?viewer.status:'removed',
     sessionTokenHash:text(viewer.sessionTokenHash),requestedAt:text(viewer.requestedAt,now()),approvedAt:text(viewer.approvedAt),lastSeenAt:text(viewer.lastSeenAt),removedAt:text(viewer.removedAt),
   })).filter(viewer=>viewer.id&&viewer.name):[];
+  s.presetRolls = s.presetRolls && typeof s.presetRolls === 'object' ? s.presetRolls : {};
   ensureTeamAccessCodes(s,(s.teams||[]).length);
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
   (s.teams||[]).forEach(t=>{
@@ -568,10 +569,21 @@ export function ensureTeamAccessCodes(state,teamCount=(state.teams||[]).length){
   const uniqueCode=(prefix,used)=>{let code='';do{code=randomAccessCode(prefix);}while(used.has(code));used.add(code);return code;};
   state.accessCodes=Array.from({length:teamCount},(_,index)=>{
     const entry=current[index],teamCode=String(entry?.teamCode||'').toUpperCase(),viewerCode=String(entry?.viewerCode||'').toUpperCase();
-    if(validAccessEntry({teamCode,viewerCode})&&!usedTeam.has(teamCode)&&!usedViewer.has(viewerCode)){usedTeam.add(teamCode);usedViewer.add(viewerCode);return {teamCode,viewerCode};}
-    changed=true;return {teamCode:uniqueCode('T',usedTeam),viewerCode:uniqueCode('V',usedViewer)};
+    const validTeam=validAccessEntry({teamCode,viewerCode:entry?.viewerCode})&&!usedTeam.has(teamCode);
+    const validViewer=validAccessEntry({teamCode:entry?.teamCode,viewerCode})&&!usedViewer.has(viewerCode);
+    const finalTeam=validTeam?teamCode:uniqueCode('T',usedTeam);
+    const finalViewer=validViewer?viewerCode:uniqueCode('V',usedViewer);
+    if(!validTeam||!validViewer)changed=true;
+    usedTeam.add(finalTeam);usedViewer.add(finalViewer);
+    return {teamCode:finalTeam,viewerCode:finalViewer};
   });
   return changed;
+}
+
+function findTeamByAccessCode(state,code,kind='team'){
+  const target=String(code||'').trim().toUpperCase(),key=kind==='team'?'teamCode':'viewerCode';
+  const index=(state.accessCodes||[]).findIndex(entry=>entry[key]===target);
+  return index>=0?index:null;
 }
 
 export async function resolveAccessCode(state,kind,value){
@@ -630,7 +642,7 @@ function socketSend(ws,payload){
 function receiptReason(next,action,teamId){
   const team=next.teams?.[teamId],purchase=next.lastPurchase;
   if(['gamble','buff'].includes(action)&&Number(purchase?.team)===teamId)return `購買「${purchase.name||'道具'}」`;
-  if(action==='roll'){const kind=G.TRACK[team?.pos]?.[0],stageIndex=kind==='stage'?G.STAGE_IDX.indexOf(team.pos):-1;return stageIndex>=0?`完成「${next.settings.stages?.[stageIndex]?.name||'關卡'}」`:'本隊移動結算';}
+  if(action==='roll'||action==='testRoll'){const kind=G.TRACK[team?.pos]?.[0],stageIndex=kind==='stage'?G.STAGE_IDX.indexOf(team.pos):-1;return stageIndex>=0?`完成「${next.settings.stages?.[stageIndex]?.name||'關卡'}」`:'本隊移動結算';}
   if(action==='reroll')return '使用重骰卡';
   if(action==='attack')return Number(next.lastAttack?.team)===teamId?`發動「${next.lastAttack?.name||'特殊操作'}」`:'受到特殊操作影響';
   if(action==='nextPhase'||action==='startGame')return '本回合房屋稅結算';
@@ -680,7 +692,7 @@ export function teamActionError(state,action){
 
 function safePublicEvent(state,eventType,actor,payload={}){
   const actorTeam=Number.isInteger(actor?.teamId)?state.teams?.[actor.teamId]:null;
-  if(eventType==='roll'){
+  if(eventType==='roll'||eventType==='testRoll'){
     const last=state.lastRoll,team=state.teams?.[last?.team],kind=G.TRACK[last?.targetPos??team?.pos]?.[0],stageIndex=kind==='stage'?G.STAGE_IDX.indexOf(last?.targetPos??team?.pos):-1;
     return stageIndex>=0&&state.unlocked.includes(last?.targetPos??team?.pos)?`${team?.name||'隊伍'} 完成「${state.settings.stages?.[stageIndex]?.name||'關卡'}」`:`${team?.name||'隊伍'} 完成移動，抵達第 ${Number(last?.targetPos??team?.pos)+1} 格`;
   }
@@ -884,8 +896,16 @@ export class GameRoom {
         const t=s.teams[i];if(s.phase!=='roll'||t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能擲骰'};
         if(s.pendingBattle)return {error:'請先完成目前的基地付款或 BATTLE'};
         if(s.activeTeamId!==i)return {error:'請等待主持人允許你的隊伍擲骰'};
-        const count=Math.max(1,Math.min(5,Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
-        const dice=Array.from({length:count},()=>1+Math.floor(Math.random()*sides)),total=dice.reduce((sum,n)=>sum+n,0);
+        let total, dice;
+        if(s.presetRolls && typeof s.presetRolls[i] === 'number' && Number.isInteger(s.presetRolls[i]) && s.presetRolls[i] >= 1){
+          total = s.presetRolls[i];
+          dice = [total];
+          delete s.presetRolls[i];
+        } else {
+          const count=Math.max(1,Math.min(5,Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
+          dice=Array.from({length:count},()=>1+Math.floor(Math.random()*sides));
+          total=dice.reduce((sum,n)=>sum+n,0);
+        }
         G.applyMove(s,i,total,Math.random,dice);s.activeTeamId=null;return;
       }
       if(action==='reroll'){const t=s.teams[i];if(s.pendingBattle)return {error:'請先處理基地付款或 BATTLE'};if(t.buffs.reroll<=0||!t.rolled||t.jail>0||t.jailedThisTurn)return {error:'在監獄中或目前不能重骰'};t.buffs.reroll-=1;t.rolled=false;t.lastRoll=null;t.lastDice=null;s.activeTeamId=i;s.log.unshift(`${t.name} 使用重骰卡，已重新取得擲骰權限`);return;}
@@ -912,6 +932,37 @@ export class GameRoom {
       const i=Number(p.teamId),t=s.teams[i];if(!Number.isInteger(i)||!t)return {error:'隊伍編號錯誤'};
       if(t.rolled||t.jail>0||t.jailedThisTurn)return {error:'這一隊本回合不能再擲骰'};
       s.activeTeamId=i;s.log.unshift(`主持人允許 ${t.name} 擲骰`);return;
+    }
+    if(action==='setPresetRoll'){
+      if(s.phase!=='roll'&&s.phase!=='setup')return {error:'目前不是擲骰或準備階段'};
+      const i=Number(p.teamId), steps=Number(p.steps);
+      if(!Number.isInteger(i)||!s.teams[i])return {error:'隊伍編號錯誤'};
+      if(!Number.isInteger(steps)||steps<1||steps>48)return {error:'指定步數需介於 1 到 48 之間'};
+      s.presetRolls = { ...(s.presetRolls||{}), [i]: steps };
+      s.log.unshift(`[測試模式] 主持人預設 ${s.teams[i].name} 下次擲骰為 ${steps} 步`);
+      return;
+    }
+    if(action==='clearPresetRoll'){
+      const i=Number(p.teamId);
+      if(s.presetRolls && s.presetRolls[i] !== undefined){
+        delete s.presetRolls[i];
+        s.log.unshift(`[測試模式] 取消 ${s.teams[i]?.name||'該隊'} 的預設步數`);
+      }
+      return;
+    }
+    if(action==='testRoll'){
+      if(s.phase!=='roll')return {error:'目前不是擲骰階段'};
+      if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};
+      const i=Number(p.teamId), steps=Number(p.steps);
+      if(!Number.isInteger(i)||!s.teams[i])return {error:'隊伍編號錯誤'};
+      const t=s.teams[i];
+      if(t.rolled||t.jail>0||t.jailedThisTurn)return {error:'這一隊本回合不能再擲骰'};
+      if(!Number.isInteger(steps)||steps<1||steps>48)return {error:'指定步數需介於 1 到 48 之間'};
+      if(s.presetRolls) delete s.presetRolls[i];
+      G.applyMove(s,i,steps,Math.random,[steps]);
+      s.activeTeamId=null;
+      s.log.unshift(`[測試模式] 主持人指定 ${t.name} 前進 ${steps} 步`);
+      return;
     }
     if(action==='resolveBattle'){const r=G.adjudicateBattle(s,String(p.outcome||''));return r.ok?undefined:{error:r.msg};}
     if(action==='unlock'){const i=Number(p.index),stageIndex=G.STAGE_IDX.indexOf(i),stage=s.settings.stages?.[stageIndex];if(stageIndex<0||!stage)return {error:'關卡格錯誤'};if(!s.unlocked.includes(i)){s.unlocked.push(i);s.stageNoticeSeq=Number(s.stageNoticeSeq||0)+1;s.stageNotices=[...(s.stageNotices||[]),{id:s.stageNoticeSeq,stageIndex,tileIndex:i,stage:G.clone(stage),createdAt:now()}].slice(-20);}s.log.unshift(`${stage.name}關卡解封（第 ${i+1} 格）`);return;}

@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.25.57';
+const APP_BUILD_VERSION = '2026.08.25.58';
 
 
 
@@ -667,7 +667,7 @@ function appendReceipts(previous,next,action){
   if(next.receipts.length>240)next.receipts=next.receipts.slice(0,240);
 }
 
-const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','resolveBattle','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
+const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','testRoll','setPresetRoll','clearPresetRoll','resolveBattle','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
 
 const TEAM_ADMIN_ACTIONS=new Set(['approveViewer','rejectViewer','removeViewer','regenerateOwnViewerCode']);
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack',...TEAM_ADMIN_ACTIONS]);
@@ -934,7 +934,7 @@ export class GameRoom {
       s.activeTeamId=i;s.log.unshift(`主持人允許 ${t.name} 擲骰`);return;
     }
     if(action==='setPresetRoll'){
-      if(s.phase==='ended')return {error:'活動已結束'};
+      if(s.phase!=='roll'&&s.phase!=='setup')return {error:'目前不是擲骰或準備階段'};
       const i=Number(p.teamId), steps=Number(p.steps);
       if(!Number.isInteger(i)||!s.teams[i])return {error:'隊伍編號錯誤'};
       if(!Number.isInteger(steps)||steps<1||steps>48)return {error:'指定步數需介於 1 到 48 之間'};
@@ -951,7 +951,7 @@ export class GameRoom {
       return;
     }
     if(action==='testRoll'){
-      if(s.phase==='ended')return {error:'活動已結束'};
+      if(s.phase!=='roll')return {error:'目前不是擲骰階段'};
       if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};
       const i=Number(p.teamId), steps=Number(p.steps);
       if(!Number.isInteger(i)||!s.teams[i])return {error:'隊伍編號錯誤'};

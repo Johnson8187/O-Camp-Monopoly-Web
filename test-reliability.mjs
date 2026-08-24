@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import worker, { GameRoom, normalizeGameState, teamActionError } from './src/worker.js';
+import worker, { GameRoom, ensureTeamAccessCodes, normalizeGameState, projectStateForActor, teamActionError } from './src/worker.js';
 import { G } from './src/game-core.js';
 
 const appSource=await readFile(new URL('./public/app.js',import.meta.url),'utf8');
@@ -41,6 +41,10 @@ assert.match(appSource,/ceremony-control-dock/);
 assert.match(appSource,/ceremony-podium-stage/);
 assert.match(appSource,/setCeremonyStep/);
 assert.match(stylesSource,/\.ceremony-podium-stage/);
+assert.match(appSource,/showMissileTargetModal/);
+assert.match(appSource,/stageNoticeHTML/);
+assert.match(appSource,/hostAccessCodeGridHTML/);
+assert.match(stylesSource,/\.stage-notice-overlay/);
 assert.match(stylesSource,/life-festival-plaza-v1\.png/);
 for(const asset of ['fx-quake-v1.png','fx-missile-v1.png','fx-typhoon-v1.png','fx-wildfire-v1.png'])assert.match(stylesSource,new RegExp(asset.replace('.','\\.')));
 assert.match(appSource,/bSkipFx/);
@@ -90,6 +94,22 @@ assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setC
 assert.equal(configurable.settings.diceCount,3);
 assert.equal(configurable.settings.attacks.quake.repair,888);
 assert.equal(configurable.settings.buffs.shield.cost,12);
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'stages.1.cash',value:-750}),undefined);
+assert.equal(configurable.settings.stages[1].cash,-750);
+const legacyUnlocks=normalizeGameState({phase:'setup',teams:[],log:[],settings:G.clone(G.DEFAULTS)});
+assert.deepEqual(legacyUnlocks.unlocked,[]);
+const stageControl=G.freshState('STAGE-CONTROL',2);
+assert.equal(configRoom.applyAction(stageControl,{role:'host',teamId:null},'unlock',{index:G.STAGE_IDX[0]}),undefined);
+assert.equal(stageControl.stageNotices.length,1);
+assert.equal(stageControl.stageNotices[0].stage.cash,500);
+assert.equal(configRoom.applyAction(stageControl,{role:'host',teamId:null},'unlock',{index:G.STAGE_IDX[0]}),undefined);
+assert.equal(stageControl.stageNotices.length,1);
+ensureTeamAccessCodes(stageControl,stageControl.teams.length);
+const formerTeamCode=stageControl.accessCodes[0].teamCode;
+const formerViewerCode=stageControl.accessCodes[0].viewerCode;
+assert.equal(configRoom.applyAction(stageControl,{role:'host',teamId:null},'regenerateAccessCode',{teamId:0,kind:'team'}),undefined);
+assert.notEqual(stageControl.accessCodes[0].teamCode,formerTeamCode);
+assert.equal(stageControl.accessCodes[0].viewerCode,formerViewerCode);
 configurable.phase='roll';
 configurable.round=1;
 configurable.teams[0].pts=100;
@@ -157,12 +177,11 @@ assert.equal(lobby.games[0].joinedCount,1);
 
 
 
-const passwordHash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('iii'))).toString('hex');
-const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{TEAM_PASSWORD_HASH:passwordHash});
+const room=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});
 room.loaded=true;
 room.lastActivityAt=0;
 room.meta={id:'GAME1',name:'測試活動',teamCount:2,hostTokenHash:'unused'};
-room.state={phase:'setup',paused:false,teams:[{name:'紅隊',joined:true},{name:'藍隊',joined:false}],log:[]};
+room.state=normalizeGameState(G.freshState('GAME1',2));room.state.teams[0].joined=true;
 
 function pendingSocket(){
 
@@ -174,9 +193,29 @@ const wrongSocket=pendingSocket();
 await room.webSocketMessage(wrongSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'wrong',token:'not-needed'}));
 assert.equal(wrongSocket.closed,true);
 const teamSocket=pendingSocket();
-await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:'iii'}));
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',teamId:0,accessToken:room.state.accessCodes[0].teamCode}));
 assert.equal(teamSocket.closed,false);
 assert.equal(teamSocket.sent.at(-1).type,'hello_ok');
+const crossTeamSocket=pendingSocket();
+await room.webSocketMessage(crossTeamSocket,JSON.stringify({type:'hello',role:'team',teamId:1,accessToken:room.state.accessCodes[0].teamCode}));
+assert.equal(crossTeamSocket.closed,true);
+const privateViewerSocket=pendingSocket();
+await room.webSocketMessage(privateViewerSocket,JSON.stringify({type:'hello',role:'viewer',teamId:1,accessToken:room.state.accessCodes[1].viewerCode}));
+assert.equal(privateViewerSocket.closed,false);
+
+const secrets=normalizeGameState(G.freshState('SECRETS',3));
+secrets.teams[0].cash=1111;secrets.teams[0].pts=11;secrets.teams[1].cash=2222;secrets.teams[1].pts=22;secrets.teams[2].cash=3333;secrets.teams[2].pts=33;
+secrets.receipts=[{id:1,teamId:0,cashDelta:111,afterCash:1111},{id:2,teamId:1,cashDelta:222,afterCash:2222}];
+secrets.log=['藍隊現金 +99999'];secrets.publicFeed=[{id:1,message:'藍隊完成移動'}];
+const publicProjection=projectStateForActor(secrets,{role:'viewer',teamId:null});
+assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);
+const teamProjection=projectStateForActor(secrets,{role:'team',teamId:0});
+assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal('accessCodes'in teamProjection,false);
+const viewerProjection=projectStateForActor(secrets,{role:'viewer',teamId:1});
+assert.equal(viewerProjection.teams[1].cash,2222);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
+const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);
+secrets.phase='settle';secrets.ceremonyStep=3;const partialReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(partialReveal.ceremonyReveal.podium.length,3);assert.equal(partialReveal.teams.every(team=>team.cash===null),true);
+secrets.ceremonyStep=5;const fullReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(fullReveal.teams[2].cash,3333);assert.equal(fullReveal.teams[2].items,null);
 
 const hostSocket=pendingSocket();
 hostSocket.serializeAttachment({role:'host',teamId:null});

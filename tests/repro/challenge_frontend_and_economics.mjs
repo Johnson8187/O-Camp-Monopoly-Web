@@ -264,10 +264,11 @@ function challengeEconomicSolvencyInvariants() {
   const sBankTest = G.freshState('BANK_TEST', 2);
   sBankTest.teams[0].cash = 2000; sBankTest.teams[0].pts = 10;
   sBankTest.teams[1].cash = 0; // Debtor with $0
+  sBankTest.teams[1].baseIdx = G.BASE_IDX[1];
   sBankTest.bank = 0;
 
   // Team 0 missiles Team 1 (Debtor is rank[1], target = rank[0+1] = Team 1)
-  const attackRes = G.playAttack(sBankTest, 0, 'missile', () => 0);
+  const attackRes = G.playAttack(sBankTest, 0, 'missile', {targetTeamId:1}, () => 0);
   assert.equal(attackRes.ok, true);
 
   console.log(`  - Debtor cash after missile: $${sBankTest.teams[1].cash} (Debt plunged to -$400)`);

@@ -41,8 +41,9 @@ function testInsolventNegativeCash() {
 
   // Attack debtor with missile
   s.teams[0].pts = 10;
+  s.teams[1].baseIdx = G.BASE_IDX[1];
   s.bank = 0;
-  const attackRes = G.playAttack(s, 0, 'missile', () => 0);
+  const attackRes = G.playAttack(s, 0, 'missile', {targetTeamId:1}, () => 0);
   assert.equal(attackRes.ok, true, 'Missile attack should succeed');
   assert.equal(s.teams[1].cash, 0, 'Debtor cash remains non-negative 0');
   assert.equal(s.bank, 0, 'Bank receives 0 unbacked phantom liquidity');

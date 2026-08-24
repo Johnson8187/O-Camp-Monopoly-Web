@@ -53,6 +53,13 @@ const DEFAULTS = {
   gambles:[{name:"紅包",cost:1},{name:"戳戳樂",cost:2},
            {name:"樂透",cost:4},{name:"全押",cost:6}],
   buffs:{pass:{name:"通行證",cost:3},reroll:{name:"重骰卡",cost:2},shield:{name:"防災卡",cost:4}},
+  stages:[
+    {key:"night",name:"夜教",cash:500,pts:0,icon:"🌙",story:"在夜教時反殺警長成功，成功解救所有警察同胞，獲得蔡英文頒獎。"},
+    {key:"land",name:"陸大",cash:-600,pts:0,icon:"🌾",story:"吹麵粉吹到關主頭上，關主很開心給你一拳。"},
+    {key:"water",name:"水大",cash:1000,pts:0,icon:"💧",story:"在水球大戰中佔據優良地理位置，在水桶底部發現獎金。"},
+    {key:"rpg",name:"RPG",cash:0,pts:10,icon:"⚔️",story:"獲得所有物資穿越回現代，並成為校園中的男神／女神。"},
+    {key:"bbq",name:"烤肉",cash:2000,pts:0,icon:"🍖",story:"因為烤的肉太美味，獲得隔壁奶奶的挖角費。"},
+  ],
   battlesPerTeam:2, inflateThreshold:5, diceSides:6, diceCount:1,
 };
 
@@ -84,7 +91,8 @@ function freshState(code, teamCount, names) {
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
       buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false,
     })),
-    bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], ceremonyStep:0,
+    bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
+    stageNotices:[], stageNoticeSeq:0,
     settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null,
     receipts:[], receiptSeq:0, lastPurchase:null,
   };
@@ -282,7 +290,15 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
     notes.push("房市中心：查看本回合房產資訊");
 
   } else if (kind === "stage") {
-    notes.push(s.unlocked.includes(t.pos) ? "關卡已解封，觸發關卡技能" : "關卡尚未解封");
+    const stageIndex=STAGE_IDX.indexOf(t.pos),stage=S.stages?.[stageIndex];
+    if(!s.unlocked.includes(t.pos)||!stage){notes.push("關卡尚未解封");}
+    else{
+      const effects=[];
+      if(Number(stage.cash)>0){t.cash+=Number(stage.cash);effects.push(`現金 +${money(stage.cash)}`);}
+      else if(Number(stage.cash)<0){const paid=pay(s,ti,"bank",Math.abs(Number(stage.cash)));effects.push(`現金 −${money(paid)}`);}
+      if(Number(stage.pts)){const before=t.pts;t.pts=Math.max(0,t.pts+Number(stage.pts));const delta=t.pts-before;effects.push(`諂媚點 ${delta>=0?"+":""}${delta}`);}
+      notes.push(`${stage.name}：${effects.join("、")||"完成關卡"}`);
+    }
   }
   return notes;
 }
@@ -395,7 +411,8 @@ function tilesInSquare(col, row, half) {
   }
   return out;
 }
-function playAttack(s, ti, kind, rnd = Math.random) {
+function playAttack(s, ti, kind, options = {}, rnd = Math.random) {
+  if(typeof options === "function"){rnd=options;options={};}
   const t = s.teams[ti], A = s.settings.attacks[kind];
   if (!A) return {ok:false, msg:"找不到這個特殊操作"};
   const useKey = `${Number(s.round)}:${ti}:${kind}`;
@@ -437,12 +454,8 @@ function playAttack(s, ti, kind, rnd = Math.random) {
     hit.forEach(i => damage(i, A.repair));
 
   } else if (kind === "missile") {
-    const rank = [...s.teams].sort((a,b) => netWorth(s,b) - netWorth(s,a));
-    const mine = rank.findIndex(x => x.id === ti);
-    let target = null;
-    if (mine > 0) target = rank[mine - 1];
-    else if (rank.length > 1) target = rank[1];
-    if (!target) { t.pts += cost; s.disasters -= 1; return {ok:false, msg:"沒有可攻擊的對手"}; }
+    const targetId=Number(options?.targetTeamId),target=s.teams[targetId];
+    if(!Number.isInteger(targetId)||!target||targetId===ti||target.sold||target.baseIdx===null){t.pts+=cost;s.disasters-=1;return {ok:false,msg:"請選擇仍持有基地的其他隊伍"};}
     msg = `鎖定 ${target.name}`;
     if (s.teams[target.id].buffs.shield > 0) { s.teams[target.id].buffs.shield -= 1; shielded.push(target.id); }
     else pay(s, target.id, "bank", A.repair);
@@ -497,7 +510,13 @@ function rankTeams(s) {
     .sort((a, b) => b.worth - a.worth || b.cash - a.cash || b.pts - a.pts);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams};
+function rankBases(s){
+  return [...s.teams]
+    .map((t,idx)=>({...t,originalIndex:idx,pass:passFee(s,t),stay:stayFee(s,t)}))
+    .sort((a,b)=>Number(Boolean(a.sold||a.baseIdx===null))-Number(Boolean(b.sold||b.baseIdx===null))||Number(b.level||0)-Number(a.level||0)||a.originalIndex-b.originalIndex);
+}
+
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases};
 })();
 
 

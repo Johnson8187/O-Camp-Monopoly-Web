@@ -83,7 +83,7 @@ shieldFeedback.teams[0].pts = 100;
 shieldFeedback.teams[1].baseIdx = G.BASE_IDX[0];
 shieldFeedback.teams[1].level = 2;
 shieldFeedback.teams[1].buffs.shield = 1;
-G.playAttack(shieldFeedback, 0, 'missile', () => 0);
+G.playAttack(shieldFeedback, 0, 'missile', {targetTeamId:1}, () => 0);
 if (shieldFeedback.teams[1].buffs.shield !== 0 || !shieldFeedback.lastAttack.shielded.includes(1) || !/啟動護盾/.test(shieldFeedback.log[0])) throw new Error('防災卡抵銷攻擊時應留下明確護盾提示');
 
 // Test: 房市倍率對過夜費、通行費的影響
@@ -95,6 +95,23 @@ marketFeeTest.teams[0].level = 2; // 商店 (base stay: 300)
 marketFeeTest.market = 'flat';
 if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 300) throw new Error('平穩房市過夜費計算錯誤');
 if (G.passFee(marketFeeTest, marketFeeTest.teams[0]) !== 60) throw new Error('平穩房市通行費計算錯誤');
+
+const stageRewards=G.freshState('stage-rewards',2);
+stageRewards.teams[0].cash=2000;stageRewards.teams[0].pts=0;stageRewards.unlocked=[...G.STAGE_IDX];
+stageRewards.teams[0].pos=G.STAGE_IDX[0];G.landEffect(stageRewards,0,[]);G.landEffect(stageRewards,0,[]);
+if(stageRewards.teams[0].cash!==3000)throw new Error('夜教應每次踩踏都重複發放獎勵');
+stageRewards.teams[0].pos=G.STAGE_IDX[1];G.landEffect(stageRewards,0,[]);
+if(stageRewards.teams[0].cash!==2400||stageRewards.bank!==600)throw new Error('陸大扣款應安全進入銀行');
+stageRewards.teams[0].pos=G.STAGE_IDX[3];G.landEffect(stageRewards,0,[]);
+if(stageRewards.teams[0].pts!==10)throw new Error('RPG 諂媚點獎勵錯誤');
+stageRewards.teams[0].level=3;stageRewards.teams[1].level=1;
+if(G.rankBases(stageRewards)[0].id!==0)throw new Error('基地排行榜必須依基地等級排序');
+
+const missileTarget=G.freshState('missile-target',3);missileTarget.round=2;missileTarget.teams[0].pts=20;missileTarget.teams[1].baseIdx=G.BASE_IDX[0];missileTarget.teams[2].baseIdx=G.BASE_IDX[1];
+const beforeTargetCash=missileTarget.teams[2].cash,missileCost=missileTarget.settings.attacks.missile.cost;
+if(!G.playAttack(missileTarget,0,'missile',{targetTeamId:2}).ok||missileTarget.teams[2].cash>=beforeTargetCash)throw new Error('飛彈未攻擊指定隊伍');
+const invalidMissile=G.freshState('invalid-missile',2);invalidMissile.round=2;invalidMissile.teams[0].pts=20;const beforePts=invalidMissile.teams[0].pts;
+if(G.playAttack(invalidMissile,0,'missile',{targetTeamId:0}).ok||invalidMissile.teams[0].pts!==beforePts)throw new Error('無效飛彈目標不得扣點');
 
 marketFeeTest.market = 'hot'; // 150%
 if (G.stayFee(marketFeeTest, marketFeeTest.teams[0]) !== 450) throw new Error('熱絡房市過夜費計算錯誤');

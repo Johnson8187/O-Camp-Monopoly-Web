@@ -103,11 +103,11 @@ export function landingReactionForTile(tileKind='',note=''){
 }
 
 export const STAGE_PRESENTATIONS = Object.freeze({
-  night:{kicker:'NIGHT RESCUE CLEAR',title:'夜教反殺成功！',scene:'成功解救警察同胞，總統頒獎台正式開啟',pose:'victory',symbol:'✦',beat:'award'},
-  land:{kicker:'FLOUR FIGHT IMPACT',title:'陸大麵粉暴走！',scene:'關主滿臉麵粉，開心送上一記友情重拳',pose:'hit',symbol:'拳',beat:'punch'},
-  water:{kicker:'WATER BATTLE TREASURE',title:'水大水桶藏寶！',scene:'佔據絕佳位置，從水桶底部找到意外獎金',pose:'celebrate',symbol:'水',beat:'splash'},
-  rpg:{kicker:'RPG PORTAL COMPLETE',title:'穿越回現代！',scene:'物資收集完成，校園人氣光環全面展開',pose:'warp',symbol:'晶',beat:'portal'},
-  bbq:{kicker:'BBQ TALENT SCOUT',title:'烤肉香到被挖角！',scene:'隔壁奶奶帶著合約與挖角費正式登場',pose:'celebrate',symbol:'火',beat:'contract'},
+  night:{kicker:'NIGHT RESCUE CLEAR',title:'夜教反殺成功！',scene:'警察同胞列隊致敬，蔡英文親自登台頒發獎章',pose:'victory',symbol:'✦',beat:'award'},
+  land:{kicker:'FLOUR FIGHT IMPACT',title:'陸大麵粉暴走！',scene:'滿臉麵粉的關主愣了兩秒，接著開心送上一記友情重拳',pose:'hit',symbol:'拳',beat:'punch'},
+  water:{kicker:'WATER BATTLE TREASURE',title:'水大水桶藏寶！',scene:'隊友指向翻倒的水桶，退去的水幕下冒出閃亮獎金',pose:'celebrate',symbol:'水',beat:'splash'},
+  rpg:{kicker:'RPG PORTAL COMPLETE',title:'穿越回現代！',scene:'全物資穿過傳送門，全校同學舉起手機為男神／女神歡呼',pose:'warp',symbol:'晶',beat:'portal'},
+  bbq:{kicker:'BBQ TALENT SCOUT',title:'烤肉香到被挖角！',scene:'隔壁奶奶聞香衝出家門，拿著紅包與鈔票當場挖角',pose:'celebrate',symbol:'火',beat:'contract'},
 });
 
 export function stagePresentationFor(stage={},index=0){

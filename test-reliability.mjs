@@ -60,6 +60,11 @@ assert.doesNotMatch(appSource,/life-open-games/);
 assert.match(stylesSource,/\.stage-notice-overlay/);
 assert.match(stylesSource,/\.stage-landing-overlay/);
 for(const asset of ['stage-night-v1.webp','stage-land-v1.webp','stage-water-v1.webp','stage-rpg-v1.webp','stage-bbq-v1.webp'])assert.match(stylesSource,new RegExp(asset.replace('.','\\.')));
+for(const asset of ['stage-night-cast-v2.webp','stage-land-cast-v2.webp','stage-water-cast-v2.webp','stage-rpg-cast-v2.webp','stage-bbq-cast-v2.webp'])assert.match(stylesSource,new RegExp(asset.replace('.','\\.')));
+assert.match(appSource,/STAGE_BEATS/);
+assert.match(appSource,/stageBeatTrackHTML/);
+assert.match(appSource,/stage-camera-flashes/);
+assert.match(appSource,/stage-contract-stamp/);
 assert.match(stylesSource,/max-aspect-ratio:29\/20/);
 assert.match(stylesSource,/life-festival-plaza-v1\.png/);
 for(const asset of ['fx-quake-v1.png','fx-missile-v1.png','fx-typhoon-v1.png','fx-wildfire-v1.png'])assert.match(stylesSource,new RegExp(asset.replace('.','\\.')));
@@ -305,11 +310,13 @@ testRollRoom.state.phase='roll';
 testRollRoom.commit=async next=>{testRollRoom.state=next;};
 const testHostSocket=pendingSocket();
 testHostSocket.serializeAttachment({role:'host',teamId:null});
+const team0StartPos=testRollRoom.state.teams[0].pos;
+const team1StartPos=testRollRoom.state.teams[1].pos;
 
 // 1. Host testRoll specifies exact 5 steps
 await testRollRoom.webSocketMessage(testHostSocket,JSON.stringify({type:'action',action:'testRoll',payload:{teamId:0,steps:5},actionId:'test-roll-1'}));
 assert.equal(testHostSocket.sent.find(m=>m.type==='action_ok')?.actionId,'test-roll-1');
-assert.equal(testRollRoom.state.teams[0].pos,5);
+assert.equal(testRollRoom.state.teams[0].pos,(team0StartPos+5)%G.N);
 assert.equal(testRollRoom.state.teams[0].rolled,true);
 assert.equal(testRollRoom.state.lastRoll.n,5);
 
@@ -323,7 +330,7 @@ const team1Socket=pendingSocket();
 team1Socket.serializeAttachment({role:'team',teamId:1});
 testRollRoom.state.activeTeamId=1;
 await testRollRoom.webSocketMessage(team1Socket,JSON.stringify({type:'action',action:'roll',actionId:'team-roll-1'}));
-assert.equal(testRollRoom.state.teams[1].pos,8);
+assert.equal(testRollRoom.state.teams[1].pos,(team1StartPos+8)%G.N);
 assert.equal(testRollRoom.state.teams[1].rolled,true);
 assert.equal(testRollRoom.state.lastRoll.n,8);
 assert.equal(testRollRoom.state.presetRolls[1],undefined);

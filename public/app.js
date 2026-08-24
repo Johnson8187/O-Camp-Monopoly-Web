@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.25.58';
-import { G } from './game-core.js?v=2026.08.25.58';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.58';
+const BUILD_VERSION = '2026.08.25.59';
+import { G } from './game-core.js?v=2026.08.25.59';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.59';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -776,12 +776,18 @@ function executeStageLandingFx(task,done){
   if(!team||!stage){done();return;}
   App.fx.stageLanding={...presentation,team,teamId:Number(team.id),teamName:team.name,stage,stageIndex:Number(task.stageIndex),tileIndex:Number(task.tileIndex)};
   SoundFX.playStageCue(presentation.key);
+  fxTimeout('stageAccent',()=>{
+    if(!App.fx.stageLanding)return;
+    if(presentation.key==='land')SoundFX.playAttackHit();
+    else if(presentation.key==='water'||presentation.key==='bbq')SoundFX.playCoinReward();
+    else SoundFX.playRankUp();
+  },presentation.key==='land'?1380:1650);
   if(App.role==='team'&&Number(App.teamId)===Number(team.id)){
-    const haptics={night:[30,30,55,30,90],land:[45,30,130],water:[20,25,20,25,65],rpg:[20,25,35,30,80],bbq:[25,30,60]};
+    const haptics={night:[30,25,45,35,90,40,120],land:[45,35,190,45,90],water:[20,20,20,25,70,35,90],rpg:[20,25,35,30,80,35,110],bbq:[25,25,55,35,95]};
     navigator.vibrate?.(haptics[presentation.key]||[30,30,60]);
   }
   renderFx();
-  const tier=currentPresentationTier(),duration=reducedMotion?1200:(App.role==='team'||['compact','lite'].includes(tier)?3200:4600);
+  const tier=currentPresentationTier(),duration=reducedMotion?1600:(tier==='lite'?3800:(App.role==='team'||tier==='compact'?4300:6000));
   fxTimeout('stageLanding',()=>{App.fx.stageLanding=null;renderFx();done();},duration);
 }
 
@@ -2053,17 +2059,26 @@ function landingReactionHTML(){
   const particles=Array.from({length:16},(_,i)=>`<i style="--i:${i}"></i>`).join('');
   return `<div class="landing-reaction-overlay landing-${fx.kind} tone-${fx.tone}" aria-live="assertive" style="--team:${fx.team.color}"><div class="landing-reaction-particles" aria-hidden="true">${particles}</div><div class="landing-reaction-card"><small>LIFE TILE // ARRIVAL</small><div class="landing-reaction-symbol">${esc(fx.symbol)}</div><div class="landing-reaction-hero">${battlePawnHTML(fx.team,{pose:fx.pose,direction:'front',extraClass:'landing-hero-pawn',scale:3.15})}</div><h2>${esc(fx.title)}</h2><b>${esc(fx.teamName)}</b><p>${esc(fx.detail)}</p></div></div>`;
 }
+const STAGE_BEATS={
+  night:['反殺警長成功','警察同胞全員獲救','蔡英文登台頒獎'],
+  land:['麵粉正中關主','關主開心得不得了','友情重拳！'],
+  water:['搶下優良地形','翻開水桶底部','發現 $1000！'],
+  rpg:['物資全數到齊','穿越回到現代','校園男神／女神誕生'],
+  bbq:['烤肉香氣飄出場外','隔壁奶奶聞香登場','送上 $2000 挖角費'],
+};
+function stageBeatTrackHTML(key){return `<div class="stage-beat-track" aria-hidden="true">${(STAGE_BEATS[key]||[]).map((label,index)=>`<b style="--beat:${index}"><i>0${index+1}</i>${esc(label)}</b>`).join('')}</div>`;}
 function stageDramaticPropsHTML(key){
-  if(key==='night')return `<div class="stage-rescue-squad"><i></i><i></i><i></i></div><div class="stage-award-podium"><span>總統頒獎</span><b>★</b></div>`;
-  if(key==='land')return `<div class="stage-flour-cloud">${Array.from({length:13},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><div class="stage-pixel-fist">拳</div>`;
-  if(key==='water')return `<div class="stage-water-wave"><i></i><i></i><i></i></div><div class="stage-coin-fountain">${Array.from({length:8},(_,i)=>`<b style="--i:${i}">$</b>`).join('')}</div>`;
-  if(key==='rpg')return `<div class="stage-inventory-orbit"><i>◆</i><i>✚</i><i>◈</i><i>巻</i><i>✦</i></div><div class="stage-popularity-aura"></div>`;
-  return `<div class="stage-bbq-smoke"><i></i><i></i><i></i></div><div class="stage-grandma"><i></i><b>奶奶</b><span>挖角合約</span></div>`;
+  const cast=`<div class="stage-cast stage-cast-${key}" aria-hidden="true"></div>`,beats=stageBeatTrackHTML(key);
+  if(key==='night')return `${cast}${beats}<div class="stage-camera-flashes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="stage-gold-confetti" aria-hidden="true">${Array.from({length:18},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
+  if(key==='land')return `${cast}${beats}<div class="stage-flour-cloud">${Array.from({length:13},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><div class="stage-impact-word" aria-hidden="true">BOOM!</div><div class="stage-pixel-fist">拳</div>`;
+  if(key==='water')return `${cast}${beats}<div class="stage-water-wave"><i></i><i></i><i></i></div><div class="stage-water-curtain" aria-hidden="true"></div><div class="stage-coin-fountain">${Array.from({length:11},(_,i)=>`<b style="--i:${i}">$</b>`).join('')}</div>`;
+  if(key==='rpg')return `${cast}${beats}<div class="stage-inventory-orbit"><i>◆</i><i>✚</i><i>◈</i><i>巻</i><i>✦</i></div><div class="stage-popularity-aura"></div><div class="stage-heart-burst" aria-hidden="true">${Array.from({length:14},(_,i)=>`<i style="--i:${i}">♥</i>`).join('')}</div>`;
+  return `${cast}${beats}<div class="stage-bbq-smoke"><i></i><i></i><i></i></div><div class="stage-aroma-trail" aria-hidden="true">${Array.from({length:7},(_,i)=>`<i style="--i:${i}">✦</i>`).join('')}</div><div class="stage-contract-stamp" aria-hidden="true">挖角成功</div>`;
 }
 function stageLandingFxHTML(){
   const fx=App.fx.stageLanding;if(!fx)return '';
   const particles=Array.from({length:20},(_,i)=>`<i style="--i:${i}"></i>`).join('');
-  return `<div class="stage-landing-overlay stage-cinematic-${fx.key} beat-${fx.beat}" aria-live="assertive" style="--team:${fx.team.color}"><div class="stage-scene-art" aria-hidden="true"></div><div class="stage-scene-vignette" aria-hidden="true"></div><div class="stage-scene-particles" aria-hidden="true">${particles}</div>${stageDramaticPropsHTML(fx.key)}<div class="stage-landing-hero">${battlePawnHTML(fx.team,{pose:fx.pose,direction:fx.key==='land'?'left':'front',extraClass:`stage-hero-pawn stage-hero-${fx.key}`,scale:4.15})}</div><article class="stage-story-card"><small>${esc(fx.kicker)} // CHECKPOINT ${Number(fx.stageIndex)+1}/5</small><h2>${esc(fx.title)}</h2><b>${esc(fx.teamName)} · ${esc(fx.stage.name)}</b><p>${esc(fx.stage.story)}</p><strong>${esc(stageEffectText(fx.stage))}</strong>${fx.key==='night'?'<button type="button" class="btn gold" id="replayStageFanfare">▶ 再次播放頒獎奏樂</button>':''}</article></div>`;
+  return `<div class="stage-landing-overlay stage-cinematic-${fx.key} beat-${fx.beat}" aria-live="assertive" style="--team:${fx.team.color}"><div class="stage-scene-art" aria-hidden="true"></div><div class="stage-scene-vignette" aria-hidden="true"></div><div class="stage-scene-particles" aria-hidden="true">${particles}</div>${stageDramaticPropsHTML(fx.key)}<div class="stage-landing-hero">${battlePawnHTML(fx.team,{pose:fx.pose,direction:fx.key==='land'?'left':'front',extraClass:`stage-hero-pawn stage-hero-${fx.key}`,scale:4.15})}</div><article class="stage-story-card"><small>${esc(fx.kicker)} // CHECKPOINT ${Number(fx.stageIndex)+1}/5</small><h2>${esc(fx.title)}</h2><b>${esc(fx.teamName)} · ${esc(fx.stage.name)}</b><em>${esc(fx.scene)}</em><p>${esc(fx.stage.story)}</p><strong>${esc(stageEffectText(fx.stage))}</strong>${fx.key==='night'?'<button type="button" class="btn gold" id="replayStageFanfare">▶ 再次播放頒獎奏樂</button>':''}</article></div>`;
 }
 function attackCharacterStageHTML(){
   const fx=App.fx.attack;if(!fx?.caster)return '';
@@ -2114,7 +2129,8 @@ function teamStatusHTML(){
 const BUFF_INFO={pass:{icon:'🎫',title:'通行證',rarity:'RARE',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',rarity:'MAGIC',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',rarity:'EPIC',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
 const PHYSICAL_ITEM_INFO=[{icon:'🧧',rarity:'COMMON',desc:'實體紅包或獎項憑證，由關主現場交付。'},{icon:'🎯',rarity:'COMMON',desc:'實體戳戳樂遊戲券，請向關主兌換。'},{icon:'🎟️',rarity:'RARE',desc:'實體樂透券，保留至現場開獎或兌換。'},{icon:'💎',rarity:'EPIC',desc:'高風險實體獎項憑證，請妥善保管。'}];
 const ATTACK_ART={quake:'./assets/fx-quake-v1.png',missile:'./assets/fx-missile-v1.png',typhoon:'./assets/fx-typhoon-v1.png',wildfire:'./assets/fx-wildfire-v1.png'};
-function preloadAttackArt(){if(navigator.connection?.saveData)return;const load=()=>Object.values(ATTACK_ART).forEach(src=>{const image=new Image();image.decoding='async';image.src=src;});if('requestIdleCallback'in window)requestIdleCallback(load,{timeout:4500});else setTimeout(load,1800);}
+const STAGE_CAST_ART={night:'./assets/stage-night-cast-v2.webp',land:'./assets/stage-land-cast-v2.webp',water:'./assets/stage-water-cast-v2.webp',rpg:'./assets/stage-rpg-cast-v2.webp',bbq:'./assets/stage-bbq-cast-v2.webp'};
+function preloadAttackArt(){if(navigator.connection?.saveData)return;const load=()=>[...Object.values(ATTACK_ART),...Object.values(STAGE_CAST_ART)].forEach(src=>{const image=new Image();image.decoding='async';image.src=src;});if('requestIdleCallback'in window)requestIdleCallback(load,{timeout:4500});else setTimeout(load,1800);}
 function rpgSlot({icon,name,count,desc,rarity='COMMON',active=false}){const owned=Number(count)>0||active;return `<div class="rpg-slot rarity-${rarity.toLowerCase()} ${owned?'owned':'empty'} ${active?'active':''}"><div class="slot-icon"><i>${icon}</i>${Number(count)>0?`<b>×${Number(count)}</b>`:''}</div><div class="slot-copy"><small>${rarity}</small><strong>${esc(name)}</strong><span>${esc(desc)}</span></div></div>`;}
 function backpackHTML(me){const S=App.state,physical=S.settings.gambles.map((g,i)=>{const info=PHYSICAL_ITEM_INFO[i]||{icon:'🎁',rarity:'COMMON',desc:'活動現場發放的實體物品。'};return rpgSlot({icon:info.icon,name:g.name,count:me.items?.[`g${i}`]||0,desc:info.desc,rarity:info.rarity});}).join(''),buffs=Object.entries(BUFF_INFO).map(([k,info])=>rpgSlot({icon:info.icon,name:info.title,count:me.buffs?.[k]||0,desc:info.desc,rarity:info.rarity,active:k==='shield'&&Number(me.buffs?.shield)>0})).join(''),usedSlots=Object.values(me.buffs||{}).filter(n=>Number(n)>0).length+Object.values(me.items||{}).filter(n=>Number(n)>0).length+(me.battles>0?1:0)+(me.discount?1:0);return `<div class="card backpack-card rpg-backpack"><div class="ch">🎒 PIXEL ADVENTURER INVENTORY</div><div class="cb"><div class="bag-hero" style="--team-color:${me.color}"><div class="bag-avatar">${me.id+1}</div><div><small>PARTY INVENTORY</small><b>${esc(me.name)}</b><span>LV${me.level} · 第 ${S.round} 回合</span></div><div class="bag-wallet"><span>💰 ${G.money(me.cash)}</span><span>✨ ${me.pts} 點</span><span>▦ ${usedSlots}/10 格</span></div></div><div class="bag-section"><div class="bag-section-title"><span>◆ 冒險道具</span><small>BUFF & SKILL</small></div><div class="rpg-grid">${buffs}${rpgSlot({icon:'⚔️',name:'BATTLE',count:me.battles,desc:'踩到他人基地時發動；攻方勝免付，守方勝支付原過夜費。',rarity:'LEGEND'})}${rpgSlot({icon:'🏴',name:'黑市折扣',count:0,active:Boolean(me.discount),desc:me.discount?'下一次商店消費會自動套用折扣。':'目前沒有啟用中的黑市折扣。',rarity:'RARE'})}</div></div><div class="bag-section physical"><div class="bag-section-title"><span>◆ 實體物品</span><small>PHYSICAL LOOT</small></div><div class="rpg-grid">${physical}</div></div><div class="inventory-note">所有購買紀錄會立即進背包；增益卡跨回合保留，實體物品請配合現場發放與兌換。</div></div></div>`;}
 function teamControls(){

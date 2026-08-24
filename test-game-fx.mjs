@@ -30,6 +30,8 @@ assert.equal(typeof isSoundEnabled, 'function');
 assert.deepEqual(Object.keys(STAGE_PRESENTATIONS),['night','land','water','rpg','bbq']);
 assert.equal(stagePresentationFor({key:'water'},2).beat,'splash');
 assert.equal(stagePresentationFor({},4).key,'bbq');
+assert.match(stagePresentationFor({key:'night'},0).scene,/蔡英文/);
+assert.match(stagePresentationFor({key:'rpg'},3).scene,/男神／女神/);
 
 assert.equal(typeof toggleSound, 'function');
 

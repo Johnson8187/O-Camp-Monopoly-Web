@@ -102,6 +102,19 @@ export function landingReactionForTile(tileKind='',note=''){
   return {...preset,detail};
 }
 
+export const STAGE_PRESENTATIONS = Object.freeze({
+  night:{kicker:'NIGHT RESCUE CLEAR',title:'夜教反殺成功！',scene:'成功解救警察同胞，總統頒獎台正式開啟',pose:'victory',symbol:'✦',beat:'award'},
+  land:{kicker:'FLOUR FIGHT IMPACT',title:'陸大麵粉暴走！',scene:'關主滿臉麵粉，開心送上一記友情重拳',pose:'hit',symbol:'拳',beat:'punch'},
+  water:{kicker:'WATER BATTLE TREASURE',title:'水大水桶藏寶！',scene:'佔據絕佳位置，從水桶底部找到意外獎金',pose:'celebrate',symbol:'水',beat:'splash'},
+  rpg:{kicker:'RPG PORTAL COMPLETE',title:'穿越回現代！',scene:'物資收集完成，校園人氣光環全面展開',pose:'warp',symbol:'晶',beat:'portal'},
+  bbq:{kicker:'BBQ TALENT SCOUT',title:'烤肉香到被挖角！',scene:'隔壁奶奶帶著合約與挖角費正式登場',pose:'celebrate',symbol:'火',beat:'contract'},
+});
+
+export function stagePresentationFor(stage={},index=0){
+  const fallbackKeys=['night','land','water','rpg','bbq'],key=STAGE_PRESENTATIONS[stage?.key]?stage.key:(fallbackKeys[index]||'night');
+  return {...STAGE_PRESENTATIONS[key],key,index:Number(index)||0};
+}
+
 export function attackCharacterTargets(attack={},teams=[]){
   const caster=Number(attack?.team),hitTiles=new Set((Array.isArray(attack?.hit)?attack.hit:[]).map(Number));
   const targetIds=new Set();
@@ -128,7 +141,7 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   if(role!=='team')return true;
   const mine=Number(teamId);
   if(!Number.isInteger(mine))return false;
-  if(['phase','assignment','event','roll','landingReaction','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
+  if(['phase','assignment','event','roll','landingReaction','stageLanding','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
   if(['purchase'].includes(task.type))return Number(task.team?.id)===mine;
   if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
   if(task.type==='battlePrompt')return Number(task.battle?.attackerId)===mine;
@@ -200,6 +213,14 @@ export const SoundFX = {
   unlockAudio,
   isAudioReady,
   playFestivalIntro(){playNotes([{f:261.63,d:.15},{f:329.63,t:.12,d:.15},{f:392,t:.24,d:.18},{f:523.25,t:.38,d:.42}],'triangle',.2);},
+  playStageFanfare(){playNotes([{f:392,d:.13},{f:523.25,t:.11,d:.13},{f:659.25,t:.22,d:.16},{f:783.99,t:.36,d:.18},{f:1046.5,t:.52,d:.42},{f:783.99,t:.56,d:.34}],'square',.16);},
+  playStageCue(kind=''){
+    if(kind==='night')return this.playStageFanfare();
+    if(kind==='land')return playNotes([{f:180,d:.1},{f:130,t:.1,d:.12},{f:82,t:.22,d:.32}],'square',.18);
+    if(kind==='water')return playNotes([{f:523.25,d:.1},{f:659.25,t:.09,d:.1},{f:783.99,t:.18,d:.1},{f:1046.5,t:.29,d:.3}],'sine',.18);
+    if(kind==='rpg')return playNotes([{f:261.63,d:.18},{f:392,t:.08,d:.2},{f:523.25,t:.18,d:.24},{f:783.99,t:.32,d:.38}],'triangle',.17);
+    return playNotes([{f:329.63,d:.12},{f:392,t:.1,d:.12},{f:493.88,t:.2,d:.16},{f:659.25,t:.34,d:.32}],'square',.14);
+  },
   playPayment(){playNotes([{f:660,d:.09},{f:440,t:.08,d:.09},{f:294,t:.16,d:.18}],'square',.13);},
   playShield(){playNotes([{f:330,d:.12},{f:660,t:.08,d:.16},{f:990,t:.17,d:.3}],'triangle',.2);},
   playRankUp(){playNotes([{f:523.25,d:.12},{f:659.25,t:.1,d:.12},{f:783.99,t:.2,d:.12},{f:1046.5,t:.3,d:.34}],'square',.15);},

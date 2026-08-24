@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, STAGE_PRESENTATIONS, stagePresentationFor } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(CEREMONY_STEPS.length,6);
@@ -23,7 +23,13 @@ assert.equal(typeof SoundFX.playFestivalIntro, 'function');
 assert.equal(typeof SoundFX.playPayment, 'function');
 assert.equal(typeof SoundFX.playShield, 'function');
 assert.equal(typeof SoundFX.playRankUp, 'function');
+assert.equal(typeof SoundFX.playStageFanfare, 'function');
+assert.equal(typeof SoundFX.playStageCue, 'function');
 assert.equal(typeof isSoundEnabled, 'function');
+
+assert.deepEqual(Object.keys(STAGE_PRESENTATIONS),['night','land','water','rpg','bbq']);
+assert.equal(stagePresentationFor({key:'water'},2).beat,'splash');
+assert.equal(stagePresentationFor({},4).key,'bbq');
 
 assert.equal(typeof toggleSound, 'function');
 
@@ -41,6 +47,7 @@ assert.equal(presentationTier({role:'viewer',width:1920,reducedMotion:true}),'re
 const audienceState={teams:[{id:0,pos:5},{id:1,pos:9}]};
 assert.equal(isPresentationTaskRelevant({type:'roll',teamId:0},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'roll',teamId:1},{role:'team',teamId:0,state:audienceState}),true);
+assert.equal(isPresentationTaskRelevant({type:'stageLanding',team:{id:1}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[5]}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'attack',attack:{team:1,hit:[9]}},{role:'team',teamId:0,state:audienceState}),true);
 assert.equal(isPresentationTaskRelevant({type:'teamMoment',teamId:0},{role:'team',teamId:0,state:audienceState}),true);

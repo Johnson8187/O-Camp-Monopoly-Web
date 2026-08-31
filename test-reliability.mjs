@@ -13,8 +13,10 @@ assert.match(appSource,/life-square/);
 assert.match(appSource,/teamMomentFxHTML/);
 assert.match(appSource,/isPresentationTaskRelevant/);
 assert.match(appSource,/isPurchaseReceipt/);
-assert.match(appSource,/teamLifeMoments\.filter\([\s\S]*?\.forEach\(enqueueFx\)/);
-assert.ok(appSource.indexOf("enqueueFx({type:'roll'")<appSource.indexOf('teamLifeMoments.filter('));
+assert.match(appSource,/teamLifeMoments\.forEach\(enqueueFx\)/);
+assert.match(appSource,/teamSettlementFxHTML/);
+assert.match(appSource,/type:'teamSettlement'/);
+assert.ok(appSource.indexOf("enqueueFx({type:'roll'")<appSource.indexOf('teamLifeMoments.forEach('));
 assert.doesNotMatch(indexSource,/id="bottomNav"/);
 assert.match(appSource,/entryBackHomeHTML/);
 assert.match(appSource,/team-name-edit-button/);
@@ -47,7 +49,7 @@ assert.match(appSource,/stageLandingFxHTML/);
 assert.match(appSource,/type:'stageLanding'/);
 assert.match(appSource,/replayStageFanfare/);
 assert.doesNotMatch(appSource,/id="playStageFanfare"/);
-assert.match(appSource,/task\.receipt\?\.action==='roll'&&\/\^完成/);
+assert.match(appSource,/moveReceipts=visibleReceipts\.filter/);
 assert.ok(appSource.indexOf("enqueueFx({type:'roll'")<appSource.indexOf("enqueueFx({type:'stageLanding'"));
 assert.match(appSource,/hostAccessCodeGridHTML/);
 assert.match(appSource,/viewerManagementHTML/);
@@ -298,6 +300,36 @@ await receiptRoom.webSocketMessage(receiptSocket,JSON.stringify({type:'action',a
 assert.equal(receiptRoom.state.receipts.length,1);
 assert.equal(receiptRoom.state.receipts[0].cashDelta,250);
 assert.equal(receiptRoom.state.receipts[0].afterCash,receiptRoom.state.teams[0].cash);
+assert.equal(receiptRoom.state.receipts[0].reason,'主持人調整本隊現金');
+assert.ok(receiptRoom.state.receipts[0].transactionId);
+
+// Production D1 regression: 15 steps, four pass fees, then the -$600 Land checkpoint.
+const ledgerRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});
+ledgerRoom.loaded=true;ledgerRoom.lastActivityAt=Date.now();ledgerRoom.meta={id:'LEDGER',name:'逐筆金流',teamCount:5,hostTokenHash:'unused'};
+ledgerRoom.state=G.freshState('LEDGER',5);ledgerRoom.state.phase='roll';ledgerRoom.state.round=3;ledgerRoom.state.market='flat';
+ledgerRoom.state.teams[0].pos=40;ledgerRoom.state.teams[0].cash=2000;
+[[41,2],[2,3],[6,2],[10,3]].forEach(([baseIdx,level],index)=>{ledgerRoom.state.teams[index+1].baseIdx=baseIdx;ledgerRoom.state.teams[index+1].level=level;});
+ledgerRoom.state.unlocked=[G.STAGE_IDX[1]];ledgerRoom.commit=async next=>{ledgerRoom.state=next;};
+const ledgerSocket=pendingSocket();ledgerSocket.serializeAttachment({role:'host',teamId:null});
+await ledgerRoom.webSocketMessage(ledgerSocket,JSON.stringify({type:'action',action:'testRoll',payload:{teamId:0,steps:15},actionId:'ledger-roll-15'}));
+const actorReceipts=ledgerRoom.state.receipts.filter(receipt=>receipt.teamId===0&&receipt.action==='testRoll');
+assert.deepEqual(actorReceipts.map(receipt=>receipt.cashDelta).sort((a,b)=>a-b),[-600,-160,-160,-60,-60]);
+assert.equal(actorReceipts.reduce((sum,receipt)=>sum+receipt.cashDelta,0),-1040);
+assert.equal(ledgerRoom.state.teams[0].cash,960);
+assert.equal(ledgerRoom.state.bank,600);
+assert.equal(ledgerRoom.state.receipts.filter(receipt=>receipt.action==='testRoll').length,9);
+assert.equal(actorReceipts.some(receipt=>receipt.reason==='本隊移動結算'),false);
+assert.ok(actorReceipts.every(receipt=>receipt.transactionId));
+assert.deepEqual(ledgerRoom.state.teams.slice(1).map(team=>team.cash),[2060,2160,2060,2160]);
+
+const typhoonEye=G.freshState('TYPHOON-EYE',2);typhoonEye.round=2;typhoonEye.teams[0].pts=100;typhoonEye.teams[1].baseIdx=G.BASE_IDX[0];
+const typhoonCash=typhoonEye.teams[1].cash,eyeRandom=()=>G.BASE_IDX[0]/G.N;
+assert.equal(G.playAttack(typhoonEye,0,'typhoon',{},eyeRandom).ok,true);
+assert.equal(typhoonEye.teams[1].cash,typhoonCash,'颱風眼安全區不應憑空增加現金');
+assert.equal(G.DEFAULTS.bankShare,25);assert.equal(G.DEFAULTS.attacks.quake.cost,25);assert.equal(G.DEFAULTS.buffs.shield.cost,15);assert.equal(G.DEFAULTS.gambles[3].cost,25);
+
+const lowDisasterMarket=G.freshState('LOW-DISASTER',2);lowDisasterMarket.phase='roll';lowDisasterMarket.disasters=0;G.nextPhase(lowDisasterMarket);assert.equal(lowDisasterMarket.market,'bubble');
+const highDisasterMarket=G.freshState('HIGH-DISASTER',2);highDisasterMarket.phase='roll';highDisasterMarket.disasters=8;G.nextPhase(highDisasterMarket);assert.equal(highDisasterMarket.market,'crash');
 
 // Test Mode: testRoll and setPresetRoll verification
 const testRollRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{}},{});

@@ -107,10 +107,10 @@ if(stageRewards.teams[0].pts!==10)throw new Error('RPG 諂媚點獎勵錯誤');
 stageRewards.teams[0].level=3;stageRewards.teams[1].level=1;
 if(G.rankBases(stageRewards)[0].id!==0)throw new Error('基地排行榜必須依基地等級排序');
 
-const missileTarget=G.freshState('missile-target',3);missileTarget.round=2;missileTarget.teams[0].pts=20;missileTarget.teams[1].baseIdx=G.BASE_IDX[0];missileTarget.teams[2].baseIdx=G.BASE_IDX[1];
+const missileTarget=G.freshState('missile-target',3);missileTarget.round=2;missileTarget.teams[0].pts=30;missileTarget.teams[1].baseIdx=G.BASE_IDX[0];missileTarget.teams[2].baseIdx=G.BASE_IDX[1];
 const beforeTargetCash=missileTarget.teams[2].cash,missileCost=missileTarget.settings.attacks.missile.cost;
 if(!G.playAttack(missileTarget,0,'missile',{targetTeamId:2}).ok||missileTarget.teams[2].cash>=beforeTargetCash)throw new Error('飛彈未攻擊指定隊伍');
-const invalidMissile=G.freshState('invalid-missile',2);invalidMissile.round=2;invalidMissile.teams[0].pts=20;const beforePts=invalidMissile.teams[0].pts;
+const invalidMissile=G.freshState('invalid-missile',2);invalidMissile.round=2;invalidMissile.teams[0].pts=30;const beforePts=invalidMissile.teams[0].pts;
 if(G.playAttack(invalidMissile,0,'missile',{targetTeamId:0}).ok||invalidMissile.teams[0].pts!==beforePts)throw new Error('無效飛彈目標不得扣點');
 
 marketFeeTest.market = 'hot'; // 150%

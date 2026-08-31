@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.08.25.59';
-import { G } from './game-core.js?v=2026.08.25.59';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.25.59';
+const BUILD_VERSION = '2026.08.31.60';
+import { G } from './game-core.js?v=2026.08.31.60';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.08.31.60';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -46,7 +46,7 @@ const App = {
   sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
-  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
+  fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,teamSettlement:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
   hostDrafts:{}, hostSection:'flow', hostTestMode:false, hostTestSteps:1, editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
   viewerId:null, viewerSessionToken:'', viewerName:'', pendingViewer:null,
 };
@@ -195,7 +195,7 @@ function resetGameFx(){
   App.fxQueue=[];
   App.isFxRunning=false;
   Object.values(App.fx.timers).forEach(clearTimeout);
-  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
+  App.fx={phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,teamSettlement:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''};
   App.battlePromptDone=null;
   App.highlight=[];
   document.querySelectorAll('.moving-token').forEach(el=>el.remove());
@@ -212,6 +212,7 @@ function activeFxStatus(){
   else if(App.fx.sell) currentDesc = `【${App.fx.sell.teamName || '隊伍'}】變賣基地`;
   else if(App.fx.purchase) currentDesc = `【${App.fx.purchase.teamName || '隊伍'}】購買道具`;
   else if(App.fx.teamMoment) currentDesc = `【${App.fx.teamMoment.teamName || '隊伍'}】${App.fx.teamMoment.title || '小隊事件'}`;
+  else if(App.fx.teamSettlement) currentDesc = `【${App.fx.teamSettlement.teamName || '隊伍'}】逐筆金流結算`;
   else if(App.fx.landingReaction) currentDesc = `【${App.fx.landingReaction.teamName || '隊伍'}】踩格事件`;
   else if(App.fx.stageLanding) currentDesc = `【${App.fx.stageLanding.teamName || '隊伍'}】${App.fx.stageLanding.stage?.name || '五大關'}劇情`;
   else if(App.fx.battlePrompt) currentDesc = '等待隊伍選擇付款或 BATTLE';
@@ -224,7 +225,7 @@ function activeFxStatus(){
   else if(App.fx.event) currentDesc = `事件公告（${App.fx.event.message || ''}）`;
   else if(App.fxQueue?.length) {
     const next = App.fxQueue[0];
-    const typeNames = {roll:'隊伍擲骰移動', landingReaction:'踩格角色反應', stageLanding:'五大關劇情演出', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', battleDuel:'BATTLE 英雄交鋒', battleResult:'BATTLE 勝負揭曉', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
+    const typeNames = {roll:'隊伍擲骰移動', landingReaction:'踩格角色反應', stageLanding:'五大關劇情演出', upgrade:'基地升級', sell:'基地變賣', purchase:'購買道具', teamMoment:'小隊人生事件', teamSettlement:'逐筆金流結算', rank:'排名提升', teamTurn:'輪到本隊', battlePrompt:'基地 BATTLE 選擇', battleDuel:'BATTLE 英雄交鋒', battleResult:'BATTLE 勝負揭曉', attack:'特殊操作', event:'事件公告', assignment:'基地抽籤', phase:'階段切換'};
     currentDesc = typeNames[next.type] || '特效動畫';
   } else {
     currentDesc = '特效動畫';
@@ -287,6 +288,9 @@ function runNextFx(){
       case 'rank':
       case 'teamTurn':
         executeTeamMomentFx(task,done);
+        break;
+      case 'teamSettlement':
+        executeTeamSettlementFx(task,done);
         break;
       case 'battlePrompt':
         executeBattlePromptFx(task,done);
@@ -791,6 +795,16 @@ function executeStageLandingFx(task,done){
   fxTimeout('stageLanding',()=>{App.fx.stageLanding=null;renderFx();done();},duration);
 }
 
+function executeTeamSettlementFx(task,done){
+  const team=task.team||App.state?.teams?.[task.teamId],receipts=Array.isArray(task.receipts)?task.receipts:[];if(!team||!receipts.length){done();return;}
+  const cashNet=receipts.reduce((sum,receipt)=>sum+Number(receipt.cashDelta||0),0),ptsNet=receipts.reduce((sum,receipt)=>sum+Number(receipt.ptsDelta||0),0),ownMove=receipts.some(receipt=>Number(receipt.actorTeam)===Number(team.id));
+  App.fx.teamSettlement={teamId:team.id,teamName:team.name,color:team.color,receipts,cashNet,ptsNet,ownMove};
+  if(cashNet>0)SoundFX.playCoinReward();else if(cashNet<0)SoundFX.playPayment();else SoundFX.playPhaseChange();
+  if(App.role==='team')navigator.vibrate?.(cashNet<0?[35,25,35]:[25,20,45]);
+  renderFx();
+  fxTimeout('teamSettlement',()=>{App.fx.teamSettlement=null;renderFx();done();},reducedMotion?1100:3600);
+}
+
 function processGameFx(previous,next){
   if(!previous||!next)return;
   const teamLifeMoments=[];let stageLandingQueued=false;
@@ -852,8 +866,10 @@ function processGameFx(previous,next){
   if((App.role==='team'||App.role==='viewer')&&App.teamId!==null){
     const mine=next.teams?.[App.teamId],beforeMine=previous.teams?.[App.teamId];
     const previousReceipts=new Set((previous.receipts||[]).map(r=>`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`));
-    const freshReceipts=(next.receipts||[]).filter(r=>Number(r.teamId)===App.teamId&&!previousReceipts.has(`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`)).slice(0,3).reverse();
-    freshReceipts.filter(receipt=>!(purchaseChanged&&isPurchaseReceipt(receipt,next.lastPurchase))).forEach(receipt=>teamLifeMoments.push({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
+    const freshReceipts=(next.receipts||[]).filter(r=>Number(r.teamId)===App.teamId&&!previousReceipts.has(`${r.id??''}:${r.teamId}:${r.cashDelta||0}:${r.ptsDelta||0}:${r.reason||''}`)).slice(0,20).reverse();
+    const visibleReceipts=freshReceipts.filter(receipt=>!(purchaseChanged&&isPurchaseReceipt(receipt,next.lastPurchase))),moveReceipts=visibleReceipts.filter(receipt=>['roll','testRoll'].includes(receipt.action));
+    if(moveReceipts.length)teamLifeMoments.push({type:'teamSettlement',team:mine,receipts:moveReceipts});
+    visibleReceipts.filter(receipt=>!['roll','testRoll'].includes(receipt.action)).forEach(receipt=>teamLifeMoments.push({type:'teamMoment',team:mine,receipt,moment:Number(receipt.cashDelta||0)>0?'gain':Number(receipt.cashDelta||0)<0?'loss':'points'}));
     if(Number(beforeMine?.buffs?.shield||0)>Number(mine?.buffs?.shield||0))teamLifeMoments.push({type:'teamMoment',team:mine,moment:'shield'});
     if(App.role==='team'&&previous.activeTeamId!==next.activeTeamId&&Number(next.activeTeamId)===App.teamId&&next.phase==='roll'&&mine&&!mine.rolled&&!mine.jailedThisTurn)teamLifeMoments.push({type:'teamTurn',team:mine,moment:'turn'});
   }
@@ -902,7 +918,7 @@ function processGameFx(previous,next){
   if(battlePresentation)enqueueFx({...battlePresentation,teams:next.teams||previous.teams||[]});
 
   // Team-local receipts and reactions must wait until dice and movement finish.
-  teamLifeMoments.filter(task=>!(stageLandingQueued&&task.receipt?.action==='roll'&&/^完成「/.test(task.receipt?.reason||''))).forEach(enqueueFx);
+  teamLifeMoments.forEach(enqueueFx);
 
 
   // 6. Announcements & Event logs in FIFO order
@@ -2026,7 +2042,7 @@ function rankingHTML(){
 
 function logHTML(){ return `<div class="card"><div class="ch">★ 遊戲紀錄</div><div class="cb">${(App.state.log||[]).slice(0,80).map(x=>`<div class="lg">${esc(x)}</div>`).join('')||'<div class="note">尚無紀錄</div>'}</div></div>`; }
 function receiptRows(receipts){
-  return receipts.map(r=>{const team=App.state.teams?.[r.teamId],cash=Number(r.cashDelta||0),pts=Number(r.ptsDelta||0),positive=cash>0||(!cash&&pts>0),kind=cash?'cash':'points';return `<div class="receipt-item ${positive?'credit':'debit'}"><div class="receipt-icon">${kind==='cash'?'💰':'✨'}</div><div class="receipt-stamp">${positive?'已入帳':'已扣款'}</div><div class="receipt-main"><b>${esc(team?.name||`第 ${Number(r.teamId)+1} 組`)}<em>#${String(r.id||0).padStart(4,'0')}</em></b><span>${esc(r.reason)}</span><small>ROUND ${r.round} · ${esc(phaseNames[r.phase]||r.phase||'')}</small></div><div class="receipt-amount">${cash?`<strong>${cash>0?'+':''}${G.money(cash)}</strong><small>交易後 ${G.money(r.afterCash)}</small>`:''}${pts?`<strong>${pts>0?'+':''}${pts} 點</strong><small>交易後 ${r.afterPts} 點</small>`:''}</div></div>`;}).join('');
+  return receipts.map(r=>{const team=App.state.teams?.[r.teamId],cash=Number(r.cashDelta||0),pts=Number(r.ptsDelta||0),positive=cash>0||(!cash&&pts>0),kind=cash?'cash':'points',tx=r.transactionId?`TX ${String(r.transactionId).slice(-12)}`:`#${String(r.id||0).padStart(4,'0')}`;return `<div class="receipt-item ${positive?'credit':'debit'}"><div class="receipt-icon">${kind==='cash'?'💰':'✨'}</div><div class="receipt-stamp">${positive?'已入帳':'已扣款'}</div><div class="receipt-main"><b>${esc(team?.name||`第 ${Number(r.teamId)+1} 組`)}<em>${esc(tx)}</em></b><span>${esc(r.reason)}</span><small>ROUND ${r.round} · ${esc(phaseNames[r.phase]||r.phase||'')}</small></div><div class="receipt-amount">${cash?`<strong>${cash>0?'+':''}${G.money(cash)}</strong><small>交易後 ${G.money(r.afterCash)}</small>`:''}${pts?`<strong>${pts>0?'+':''}${pts} 點</strong><small>交易後 ${r.afterPts} 點</small>`:''}</div></div>`;}).join('');
 }
 function purchaseFxHTML(){const fx=App.fx.purchase;if(!fx)return '';const info=BUFF_INFO[fx.kind],unit=fx.kind==='physical'?'個':'張';return `<div class="purchase-overlay" aria-live="assertive"><div class="purchase-card" style="--purchase-color:${fx.color||'#f2c12e'}"><div class="purchase-kicker">LIFE SUPPLY ACQUIRED</div><div class="life-supply-box" aria-hidden="true"><i></i><b>${info?.icon||(fx.kind==='physical'?'🎁':'🛍️')}</b></div><h2>人生補給入袋</h2><strong>${esc(fx.name)}</strong><p>${esc(fx.teamName)} · 消耗 ${Number(fx.cost||0)} 點 · 背包共有 ${Number(fx.count||1)} ${unit}</p></div></div>`;}
 function teamMomentFxHTML(){
@@ -2074,6 +2090,12 @@ function stageDramaticPropsHTML(key){
   if(key==='water')return `${cast}${beats}<div class="stage-water-wave"><i></i><i></i><i></i></div><div class="stage-water-curtain" aria-hidden="true"></div><div class="stage-coin-fountain">${Array.from({length:11},(_,i)=>`<b style="--i:${i}">$</b>`).join('')}</div>`;
   if(key==='rpg')return `${cast}${beats}<div class="stage-inventory-orbit"><i>◆</i><i>✚</i><i>◈</i><i>巻</i><i>✦</i></div><div class="stage-popularity-aura"></div><div class="stage-heart-burst" aria-hidden="true">${Array.from({length:14},(_,i)=>`<i style="--i:${i}">♥</i>`).join('')}</div>`;
   return `${cast}${beats}<div class="stage-bbq-smoke"><i></i><i></i><i></i></div><div class="stage-aroma-trail" aria-hidden="true">${Array.from({length:7},(_,i)=>`<i style="--i:${i}">✦</i>`).join('')}</div><div class="stage-contract-stamp" aria-hidden="true">挖角成功</div>`;
+}
+function teamSettlementFxHTML(){
+  const fx=App.fx.teamSettlement;if(!fx)return '';
+  const lines=fx.receipts.map(receipt=>{const cash=Number(receipt.cashDelta||0),pts=Number(receipt.ptsDelta||0),positive=cash>0||(!cash&&pts>0),amount=cash?`${cash>0?'+':''}${G.money(cash)}`:`${pts>0?'+':''}${pts} 點`;return `<li class="${positive?'credit':'debit'}"><span>${esc(receipt.reason)}</span><strong>${esc(amount)}</strong></li>`;}).join('');
+  const netParts=[];if(fx.cashNet)netParts.push(`${fx.cashNet>0?'+':''}${G.money(fx.cashNet)}`);if(fx.ptsNet)netParts.push(`${fx.ptsNet>0?'+':''}${fx.ptsNet} 點`);
+  return `<div class="team-settlement" style="--team:${fx.color||'#f2c12e'}" aria-live="assertive"><article><small>VERIFIED TRANSACTION LEDGER</small><h2>${fx.ownMove?'移動逐筆結算':'本隊收到款項'}</h2><b>${esc(fx.teamName)}</b><ul>${lines}</ul><div class="team-settlement-net"><span>本次淨變動</span><strong>${esc(netParts.join(' ／ ')||'無現金變動')}</strong></div><em>✓ 已與伺服器餘額核對</em></article></div>`;
 }
 function stageLandingFxHTML(){
   const fx=App.fx.stageLanding;if(!fx)return '';
@@ -2228,8 +2250,9 @@ function cfgHTML(){
   let h='<div class="cfgbox"><div class="note">修改完成後請按最下方的「儲存全部遊戲設定」，所有數值會一次驗證並套用。</div>';
   h+=f('繞圈獎勵','lapBonus',S.settings.lapBonus)+f('稅收扣款','taxAmount',S.settings.taxAmount)+f('賭場花費','casinoCost',S.settings.casinoCost)+f('黑市折扣','blackDiscount',S.settings.blackDiscount,'%')+f('銀行密道取走','bankShare',S.settings.bankShare,'%')+f('每顆骰子面數','diceSides',S.settings.diceSides,'面')+f('每次骰子顆數','diceCount',S.settings.diceCount||1,'顆')+f('通行費佔過夜費','passRatio',S.settings.passRatio,'%');
   h+='<div class="sub">特殊操作費用與修繕費</div>';
-  Object.entries(S.settings.attacks).forEach(([k,a])=>{h+=`<div class="grp"><b>${esc(a.name)}</b>`+f('所需諂媚點數',`attacks.${k}.cost`,a.cost,'點')+f('修繕費',`attacks.${k}.repair`,a.repair,'元')+(k==='typhoon'?f('颱風眼獎勵',`attacks.${k}.eyeBonus`,a.eyeBonus,'元'):'')+'</div>';});
-  h+='<div class="sub">增益道具價格</div><div class="grp">';Object.entries(S.settings.buffs).forEach(([k,b])=>{h+=f(`${b.name}所需諂媚點數`,`buffs.${k}.cost`,b.cost,'點');});h+='</div><div class="sub">基地等級</div>';
+  Object.entries(S.settings.attacks).forEach(([k,a])=>{h+=`<div class="grp"><b>${esc(a.name)}</b>`+f('所需諂媚點數',`attacks.${k}.cost`,a.cost,'點')+f('修繕費',`attacks.${k}.repair`,a.repair,'元')+(k==='typhoon'?f('颱風眼補助（0 為只免傷）',`attacks.${k}.eyeBonus`,a.eyeBonus,'元'):'')+'</div>';});
+  h+='<div class="sub">增益道具價格</div><div class="grp">';Object.entries(S.settings.buffs).forEach(([k,b])=>{h+=f(`${b.name}所需諂媚點數`,`buffs.${k}.cost`,b.cost,'點');});h+='</div>';
+  h+='<div class="sub">實體物品價格</div><div class="grp">';(S.settings.gambles||[]).forEach((item,index)=>{h+=f(`${item.name}所需諂媚點數`,`gambles.${index}.cost`,item.cost,'點');});h+='</div><div class="sub">基地等級</div>';
   S.settings.levels.forEach((lv,i)=>{h+=`<div class="grp"><b>Lv${i+1}「${lv.name}」</b>`+f('過夜費',`levels.${i}.stay`,lv.stay)+f('每輪房屋稅',`levels.${i}.tax`,lv.tax||0,'元')+f('升級點數',`levels.${i}.up`,lv.up)+f('賣出價值',`levels.${i}.sell`,lv.sell)+'</div>';});
   h+='<div class="sub">五大關獎勵與扣款</div>';(S.settings.stages||[]).forEach((stage,index)=>{h+=`<div class="grp stage-config"><b>${stage.icon||'🏁'} ${esc(stage.name)}</b><p>${esc(stage.story||'')}</p>`+f('現金變動',`stages.${index}.cash`,stage.cash,'元',-1000000)+f('諂媚點變動',`stages.${index}.pts`,stage.pts,'點',-1000000)+'</div>';});
   return h+'<button class="btn sm green" id="bSaveCfg">儲存全部遊戲設定</button></div>';
@@ -2370,6 +2393,7 @@ function renderGame(){
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();
   const teamMomentFx=teamMomentFxHTML();
+  const teamSettlementFx=teamSettlementFxHTML();
   const battleEncounter=battleEncounterHTML();
   const battleDuel=battleDuelHTML();
   const battleResult=battleResultHTML();
@@ -2380,7 +2404,7 @@ function renderGame(){
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
   const roleLabel=privateViewer?'本隊觀眾':roleNames[App.role];
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleLabel)}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${landingReaction}${stageLandingFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}${stageNotice}`;
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleLabel)}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${teamSettlementFx}${landingReaction}${stageLandingFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}${stageNotice}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }

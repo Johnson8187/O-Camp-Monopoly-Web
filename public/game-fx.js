@@ -143,7 +143,7 @@ export function isPresentationTaskRelevant(task,{role='',teamId=null,state=null}
   if(!Number.isInteger(mine))return false;
   if(['phase','assignment','event','roll','landingReaction','stageLanding','upgrade','sell','attack','battleDuel','battleResult'].includes(task.type))return true;
   if(['purchase'].includes(task.type))return Number(task.team?.id)===mine;
-  if(['teamMoment','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
+  if(['teamMoment','teamSettlement','rank','teamTurn'].includes(task.type))return Number(task.team?.id??task.teamId)===mine;
   if(task.type==='battlePrompt')return Number(task.battle?.attackerId)===mine;
   return true;
 }

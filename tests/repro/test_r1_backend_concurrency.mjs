@@ -323,7 +323,8 @@ async function testActionDeduplication() {
 
   const initialState = G.freshState('DEDUP_TEST', 2);
   initialState.phase = 'shop';
-  initialState.teams[0].pts = 20;
+  const passCost = initialState.settings.buffs.pass.cost;
+  initialState.teams[0].pts = passCost + 8;
   initialState.teams[0].buffs.pass = 0;
 
   env.DB._dbStore.games.set('ROOM_REPRO_001', {
@@ -350,12 +351,12 @@ async function testActionDeduplication() {
 
   // First dispatch
   await room.webSocketMessage(teamWs, msg);
-  assert.equal(room.state.teams[0].pts, 17, '3 points deducted on first dispatch');
+  assert.equal(room.state.teams[0].pts, 8, 'Configured pass-card price deducted on first dispatch');
   assert.equal(room.state.teams[0].buffs.pass, 1, '1 pass card received');
 
   // Duplicate network retry dispatch with the identical actionId
   await room.webSocketMessage(teamWs, msg);
-  assert.equal(room.state.teams[0].pts, 17, 'Points not deducted again on retry');
+  assert.equal(room.state.teams[0].pts, 8, 'Points not deducted again on retry');
   assert.equal(room.state.teams[0].buffs.pass, 1, 'Duplicate pass card not granted');
 
   console.log('  ✔ VULN-BE-05 Successfully Patched: Action idempotency cache deduplicates network retries.');

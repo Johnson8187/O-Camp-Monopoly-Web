@@ -34,25 +34,26 @@ const TEAM_COLORS = ["#e23b3b","#3f86e0","#3fbf5a","#f2c12e","#9450d8",
 const LIGHT_FG = [3];
 
 const DEFAULTS = {
+  economyVersion:2,
   startCash:2000, lapBonus:300, taxAmount:200,
   casinoCost:150, casinoPayouts:[0,150,300,600],
-  blackDiscount:50, bankShare:50, round1Fraction:3,
+  blackDiscount:50, bankShare:25, round1Fraction:3,
   levels:[{name:"空地",stay:0,up:0,sell:200,tax:50},
-          {name:"商店",stay:300,up:6,sell:500,tax:100},
-          {name:"賭場",stay:800,up:12,sell:1000,tax:200}],
+          {name:"商店",stay:300,up:20,sell:500,tax:100},
+          {name:"賭場",stay:800,up:35,sell:1000,tax:200}],
   passRatio:20,
   market:{bubble:250,hot:150,flat:100,slump:70,crash:40},
   marketOrder:["bubble","hot","flat","slump","crash"],
   marketNames:{bubble:"泡沫",hot:"熱絡",flat:"平穩",slump:"低迷",crash:"崩盤"},
   attacks:{
-    quake:{name:"地震",cost:4,repair:300},
-    missile:{name:"飛彈",cost:3,repair:400},
-    typhoon:{name:"颱風",cost:4,repair:300,eyeBonus:200},
-    wildfire:{name:"野火",cost:3,repair:250},
+    quake:{name:"地震",cost:25,repair:350},
+    missile:{name:"飛彈",cost:22,repair:450},
+    typhoon:{name:"颱風",cost:22,repair:300,eyeBonus:0},
+    wildfire:{name:"野火",cost:18,repair:250},
   },
-  gambles:[{name:"紅包",cost:1},{name:"戳戳樂",cost:2},
-           {name:"樂透",cost:4},{name:"全押",cost:6}],
-  buffs:{pass:{name:"通行證",cost:3},reroll:{name:"重骰卡",cost:2},shield:{name:"防災卡",cost:4}},
+  gambles:[{name:"紅包",cost:5},{name:"戳戳樂",cost:10},
+           {name:"樂透",cost:15},{name:"全押",cost:25}],
+  buffs:{pass:{name:"通行證",cost:12},reroll:{name:"重骰卡",cost:10},shield:{name:"防災卡",cost:15}},
   stages:[
     {key:"night",name:"夜教",cash:500,pts:0,icon:"🌙",story:"在夜教時反殺警長成功，成功解救所有警察同胞，獲得蔡英文頒獎。"},
     {key:"land",name:"陸大",cash:-600,pts:0,icon:"🌾",story:"吹麵粉吹到關主頭上，關主很開心給你一拳。"},
@@ -81,6 +82,44 @@ const FATE_CARDS = [
 /* ---------- 工具 ---------- */
 const clone = o => JSON.parse(JSON.stringify(o));
 const money = n => "$" + Number(n).toLocaleString();
+
+// A transaction is recorded only while the Worker opens an action ledger.
+// Core rules remain independently testable when no ledger is active.
+function recordTransaction(s, transaction) {
+  if (!Array.isArray(s?._transactions)) return;
+  const entries=(transaction?.entries||[]).map(entry=>({
+    teamId:Number(entry.teamId),cashDelta:Number(entry.cashDelta)||0,ptsDelta:Number(entry.ptsDelta)||0,
+    reason:String(entry.reason||transaction.reason||"資源異動"),counterpartyTeamId:entry.counterpartyTeamId!==null&&entry.counterpartyTeamId!==undefined&&Number.isInteger(Number(entry.counterpartyTeamId))?Number(entry.counterpartyTeamId):null,
+  })).filter(entry=>Number.isInteger(entry.teamId)&&(entry.cashDelta||entry.ptsDelta));
+  const bankDelta=Number(transaction?.bankDelta)||0;
+  if(!entries.length&&!bankDelta)return;
+  s._transactions.push({
+    category:String(transaction.category||"other"),entries,bankDelta,
+    tileIndex:transaction.tileIndex!==null&&transaction.tileIndex!==undefined&&Number.isInteger(Number(transaction.tileIndex))?Number(transaction.tileIndex):null,
+    attackKind:transaction.attackKind?String(transaction.attackKind):null,
+  });
+}
+
+function creditCash(s,teamId,amount,reason,details={}){
+  const value=Math.max(0,Number(amount)||0),team=s.teams?.[teamId];if(!team||!value)return 0;
+  team.cash+=value;
+  recordTransaction(s,{...details,entries:[{teamId,cashDelta:value,reason,counterpartyTeamId:details.counterpartyTeamId}]});
+  return value;
+}
+
+function creditFromBank(s,teamId,amount,reason,details={}){
+  const value=Math.max(0,Math.min(Number(s.bank)||0,Number(amount)||0)),team=s.teams?.[teamId];if(!team||!value)return 0;
+  s.bank-=value;team.cash+=value;
+  recordTransaction(s,{...details,bankDelta:-value,entries:[{teamId,cashDelta:value,reason}]});
+  return value;
+}
+
+function changePoints(s,teamId,amount,reason,details={}){
+  const team=s.teams?.[teamId];if(!team)return 0;
+  const before=Number(team.pts)||0;team.pts=Math.max(0,before+(Number(amount)||0));const delta=team.pts-before;
+  if(delta)recordTransaction(s,{...details,entries:[{teamId,ptsDelta:delta,reason}]});
+  return delta;
+}
 
 function freshState(code, teamCount, names) {
   return {
@@ -125,7 +164,7 @@ function collectPropertyTaxes(s) {
     if (t.sold || t.baseIdx === null) return;
     const tax = propertyTax(s, t);
     if (tax > 0) {
-      const paid = pay(s, t.id, "bank", tax);
+      const paid = pay(s, t.id, "bank", tax,{category:"property_tax",fromReason:`第 ${s.round} 回合房屋稅`,tileIndex:t.baseIdx});
       if (paid > 0) {
         totalTax += paid;
         paidTeams.push(`${t.name} −${money(paid)}`);
@@ -150,7 +189,7 @@ function netWorth(s, t) {
 function ownerOf(s, idx) {
   return s.teams.find(t => t.baseIdx === idx && !t.sold) || null;
 }
-function pay(s, from, to, amt) {
+function pay(s, from, to, amt, details={}) {
   if (amt <= 0) return 0;
   const debtor = s.teams[from];
   if (!debtor) return 0;
@@ -160,6 +199,11 @@ function pay(s, from, to, amt) {
     s.bank += actualAmt;
   } else if (to !== null && s.teams[to]) {
     s.teams[to].cash += actualAmt;
+  }
+  if(actualAmt){
+    const entries=[{teamId:from,cashDelta:-actualAmt,reason:details.fromReason||details.reason||"支付款項",counterpartyTeamId:Number.isInteger(Number(to))?Number(to):null}];
+    if(Number.isInteger(Number(to))&&s.teams[to])entries.push({teamId:Number(to),cashDelta:actualAmt,reason:details.toReason||details.reason||"收到款項",counterpartyTeamId:from});
+    recordTransaction(s,{...details,entries,bankDelta:to==="bank"?actualAmt:0});
   }
   return actualAmt;
 }
@@ -194,7 +238,7 @@ function applyMove(s, ti, steps, rnd = Math.random, diceValues = null) {
   // 經過的格子（不含終點）
   for (let k = 1; k < steps; k++) {
     const p = (from + k) % N;
-    if (p === START_IDX) { t.cash += s.settings.lapBonus; notes.push(`經過起點 +${money(s.settings.lapBonus)}`); }
+    if (p === START_IDX) { creditCash(s,ti,s.settings.lapBonus,"經過起點獎勵",{category:"lap_bonus",tileIndex:p}); notes.push(`經過起點 +${money(s.settings.lapBonus)}`); }
     const own = ownerOf(s, p);
     if (own && own.id !== ti) {
       const amt = passFee(s, own);
@@ -203,15 +247,15 @@ function applyMove(s, ti, steps, rnd = Math.random, diceValues = null) {
           t.buffs.pass -= 1;
           notes.push(`通行證抵銷通行費 ${money(amt)}（剩餘 ${t.buffs.pass} 張）`);
         } else {
-          pay(s, ti, own.id, amt);
-          notes.push(`通行費 ${money(amt)} → ${own.name}`);
+          const paid=pay(s, ti, own.id, amt,{category:"pass_fee",tileIndex:p,fromReason:`支付 ${own.name} 通行費`,toReason:`${t.name} 經過本隊基地，收到通行費`});
+          notes.push(`通行費 ${money(paid)} → ${own.name}${paid<amt?'（現金不足）':''}`);
         }
       }
     }
   }
   // 終點
   const dest = (from + steps) % N;
-  if (dest === START_IDX && steps > 0) { t.cash += s.settings.lapBonus; notes.push(`停在起點 +${money(s.settings.lapBonus)}`); }
+  if (dest === START_IDX && steps > 0) { creditCash(s,ti,s.settings.lapBonus,"停在起點獎勵",{category:"lap_bonus",tileIndex:dest}); notes.push(`停在起點 +${money(s.settings.lapBonus)}`); }
   t.pos = dest;
 
   landEffect(s, ti, notes, rnd);
@@ -247,7 +291,7 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
     else notes.push("無主空地");
 
   } else if (kind === "tax") {
-    pay(s, ti, "bank", S.taxAmount); notes.push(`稅收 −${money(S.taxAmount)}`);
+    const paid=pay(s, ti, "bank", S.taxAmount,{category:"tax",tileIndex:t.pos,fromReason:"停在稅收格繳納稅金"}); notes.push(`稅收 −${money(paid)}${paid<S.taxAmount?'（現金不足）':''}`);
 
   } else if (kind === "fate") {
     notes.push("命運格：請抽取實體命運卡，結果由主持人調整");
@@ -258,23 +302,22 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
   } else if (kind === "casino") {
     // 賭資先進銀行池，獎金再從池中支付；池子不足則只能領到池中餘額
     const cost = Math.max(0, Math.min(t.cash, S.casinoCost));
-    t.cash -= cost;
-    s.bank += cost;
+    pay(s,ti,"bank",cost,{category:"casino_bet",tileIndex:t.pos,fromReason:"賭場下注"});
     const draw = S.casinoPayouts[Math.floor(rnd()*S.casinoPayouts.length)];
     const win = Math.min(draw, s.bank);
-    s.bank -= win; t.cash += win;
+    creditFromBank(s,ti,win,"賭場獎金",{category:"casino_prize",tileIndex:t.pos});
     notes.push(`賭場：押 ${money(cost)}，${win ? `拿回 ${money(win)}` : "全數落空"}${win < draw ? "（銀行餘額不足）" : ""}`);
 
   } else if (kind === "bank") {
     const take = Math.max(0, Math.round(s.bank * S.bankShare/100));
-    s.bank -= take; t.cash += take;
+    creditFromBank(s,ti,take,`銀行密道取得庫房 ${S.bankShare}%`,{category:"bank_tunnel",tileIndex:t.pos});
     notes.push(`銀行密道：幹走 ${money(take)}`);
 
   } else if (kind === "worm") {
     const other = WORM_IDX.find(i => i !== t.pos);
     if (other !== undefined) {
       if ((t.pos < START_IDX && other >= START_IDX) || (t.pos > other && (START_IDX > t.pos || START_IDX <= other))) {
-        t.cash += S.lapBonus;
+        creditCash(s,ti,S.lapBonus,"蟲洞躍遷經過起點獎勵",{category:"lap_bonus",tileIndex:START_IDX});
         notes.push(`蟲洞躍遷經過起點 +${money(S.lapBonus)}`);
       }
       t.pos = other;
@@ -294,9 +337,9 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
     if(!s.unlocked.includes(t.pos)||!stage){notes.push("關卡尚未解封");}
     else{
       const effects=[];
-      if(Number(stage.cash)>0){t.cash+=Number(stage.cash);effects.push(`現金 +${money(stage.cash)}`);}
-      else if(Number(stage.cash)<0){const paid=pay(s,ti,"bank",Math.abs(Number(stage.cash)));effects.push(`現金 −${money(paid)}`);}
-      if(Number(stage.pts)){const before=t.pts;t.pts=Math.max(0,t.pts+Number(stage.pts));const delta=t.pts-before;effects.push(`諂媚點 ${delta>=0?"+":""}${delta}`);}
+      if(Number(stage.cash)>0){creditCash(s,ti,Number(stage.cash),`完成「${stage.name}」獲得獎勵`,{category:"stage_reward",tileIndex:t.pos});effects.push(`現金 +${money(stage.cash)}`);}
+      else if(Number(stage.cash)<0){const paid=pay(s,ti,"bank",Math.abs(Number(stage.cash)),{category:"stage_penalty",tileIndex:t.pos,fromReason:`完成「${stage.name}」支付款項`});effects.push(`現金 −${money(paid)}`);}
+      if(Number(stage.pts)){const delta=changePoints(s,ti,Number(stage.pts),`完成「${stage.name}」點數變動`,{category:"stage_points",tileIndex:t.pos});effects.push(`諂媚點 ${delta>=0?"+":""}${delta}`);}
       notes.push(`${stage.name}：${effects.join("、")||"完成關卡"}`);
     }
   }
@@ -309,7 +352,7 @@ function resolvePendingBattle(s, ti, choice) {
   const attacker=s.teams[pending.attackerId],defender=s.teams[pending.defenderId];
   if(!attacker||!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
   if(choice==="pay"){
-    const paid=pay(s,attacker.id,defender.id,pending.amount);
+    const paid=pay(s,attacker.id,defender.id,pending.amount,{category:"stay_fee",tileIndex:pending.tileIndex,fromReason:`支付 ${defender.name} 過夜費`,toReason:`${attacker.name} 支付本隊過夜費`});
     s.pendingBattle=null;
     s.log.unshift(`${attacker.name} 選擇直接支付過夜費 ${money(paid)} → ${defender.name}`);
     return {ok:true,paid};
@@ -334,7 +377,7 @@ function adjudicateBattle(s, outcome) {
     return {ok:true,paid:0};
   }
   if(outcome==="defender"){
-    const paid=pay(s,attacker.id,defender.id,pending.amount);
+    const paid=pay(s,attacker.id,defender.id,pending.amount,{category:"battle_fee",tileIndex:pending.tileIndex,fromReason:`BATTLE 落敗，支付 ${defender.name} 過夜費`,toReason:`BATTLE 守住基地，收到 ${attacker.name} 過夜費`});
     s.pendingBattle=null;
     s.log.unshift(`BATTLE 裁決：${defender.name} 守住基地，${attacker.name} 支付 ${money(paid)}`);
     return {ok:true,paid};
@@ -353,7 +396,7 @@ function buyGamble(s, ti, gi) {
   if (!g) return {ok:false, msg:"找不到此抽獎項目"};
   const cost = costWithDiscount(s, t, g.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
-  t.pts -= cost; if (t.discount) t.discount = false;
+  changePoints(s,ti,-cost,`購買實體物品「${g.name}」`,{category:"physical_item"}); if (t.discount) t.discount = false;
   const itemKey=`g${gi}`;t.items=t.items||{};t.items[itemKey]=(t.items[itemKey]||0)+1;
   s.lastPurchase={seq:(s.lastPurchase?.seq||0)+1,team:ti,name:g.name,kind:"physical",itemKey,cost,count:t.items[itemKey]};
   s.log.unshift(`${t.name} 買了實體物品「${g.name}」（扣 ${cost} 點，背包共有 ${t.items[itemKey]} 個）`);
@@ -366,7 +409,7 @@ function buyBuff(s, ti, bk) {
   if (!b) return {ok:false, msg:"找不到此道具卡"};
   const cost = costWithDiscount(s, t, b.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
-  t.pts -= cost; t.buffs[bk] = (t.buffs[bk] || 0) + 1; if (t.discount) t.discount = false;
+  changePoints(s,ti,-cost,`購買增益卡「${b.name}」`,{category:"buff"}); t.buffs[bk] = (t.buffs[bk] || 0) + 1; if (t.discount) t.discount = false;
   s.lastPurchase={seq:(s.lastPurchase?.seq||0)+1,team:ti,name:b.name,kind:bk,cost,count:t.buffs[bk]};
   s.log.unshift(`${t.name} 取得「${b.name}」`);
   return {ok:true};
@@ -379,7 +422,7 @@ function upgradeBase(s, ti) {
   if (t.level >= s.settings.levels.length) return {ok:false, msg:"已達最高等級"};
   const need = s.settings.levels[t.level].up;
   if (t.pts < need) return {ok:false, msg:"諂媚之點不足"};
-  t.pts -= need; t.level += 1;
+  changePoints(s,ti,-need,`基地升級為「${s.settings.levels[t.level].name}」`,{category:"upgrade",tileIndex:t.baseIdx}); t.level += 1;
   s.log.unshift(`${t.name} 基地升級為「${s.settings.levels[t.level-1].name}」`);
   return {ok:true};
 }
@@ -387,7 +430,7 @@ function sellBase(s, ti) {
   const t = s.teams[ti];
   if (t.sold || t.baseIdx === null) return {ok:false, msg:"沒有可賣的基地"};
   const v = sellValue(s, t);
-  t.cash += v; t.sold = true; t.soldRound = s.round;
+  creditCash(s,ti,v,"出售基地所得",{category:"sell_base",tileIndex:t.baseIdx}); t.sold = true; t.soldRound = s.round;
   s.log.unshift(`${t.name} 賣出基地 +${money(v)}`);
   return {ok:true};
 }
@@ -397,7 +440,7 @@ function buyBackBase(s, ti) {
   if (s.round <= t.soldRound) return {ok:false, msg:"須繞完一圈才可買回"};
   const v = sellValue(s, t);
   if (t.cash < v) return {ok:false, msg:"現金不足"};
-  t.cash -= v; t.sold = false;
+  t.cash -= v;recordTransaction(s,{category:"buy_back",tileIndex:t.baseIdx,entries:[{teamId:ti,cashDelta:-v,reason:"買回基地"}]});t.sold = false;
   s.log.unshift(`${t.name} 買回基地 −${money(v)}`);
   return {ok:true};
 }
@@ -419,7 +462,7 @@ function playAttack(s, ti, kind, options = {}, rnd = Math.random) {
   if (s.attackUsage?.[useKey] || Number(t.attackRounds?.[kind]) === Number(s.round)) return {ok:false, msg:`「${A.name}」本回合已使用過`};
   const cost = costWithDiscount(s, t, A.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
-  t.pts -= cost; if (t.discount) t.discount = false;
+  changePoints(s,ti,-cost,`發動「${A.name}」`,{category:"attack_cost",attackKind:kind}); if (t.discount) t.discount = false;
   s.disasters += 1;
   let hit = [], msg = "", targetInfo = {}, shielded = [];
 
@@ -427,7 +470,7 @@ function playAttack(s, ti, kind, options = {}, rnd = Math.random) {
     const o = ownerOf(s, idx);
     if (!o) return;
     if (s.teams[o.id].buffs.shield > 0) { s.teams[o.id].buffs.shield -= 1; if(!shielded.includes(o.id))shielded.push(o.id); return; }
-    pay(s, o.id, "bank", amt);
+    pay(s, o.id, "bank", amt,{category:"attack_repair",attackKind:kind,tileIndex:idx,fromReason:`受到 ${t.name} 的「${A.name}」，支付修繕費`});
   };
 
   if (kind === "quake") {
@@ -443,7 +486,7 @@ function playAttack(s, ti, kind, options = {}, rnd = Math.random) {
     msg = `颱風眼第 ${ep+1} 格`;
     hit.forEach(i => {
       const o = ownerOf(s, i); if (!o) return;
-      if (eye.includes(i)) { s.teams[o.id].cash += A.eyeBonus; return; }
+      if (eye.includes(i)) { if(Number(A.eyeBonus)>0)creditCash(s,o.id,A.eyeBonus,"位於颱風眼安全區，獲得補助",{category:"typhoon_eye",attackKind:kind,tileIndex:i}); return; }
       damage(i, A.repair);
     });
 
@@ -455,10 +498,10 @@ function playAttack(s, ti, kind, options = {}, rnd = Math.random) {
 
   } else if (kind === "missile") {
     const targetId=Number(options?.targetTeamId),target=s.teams[targetId];
-    if(!Number.isInteger(targetId)||!target||targetId===ti||target.sold||target.baseIdx===null){t.pts+=cost;s.disasters-=1;return {ok:false,msg:"請選擇仍持有基地的其他隊伍"};}
+    if(!Number.isInteger(targetId)||!target||targetId===ti||target.sold||target.baseIdx===null){changePoints(s,ti,cost,`「${A.name}」未成功發動，退還點數`,{category:"attack_refund",attackKind:kind});s.disasters-=1;return {ok:false,msg:"請選擇仍持有基地的其他隊伍"};}
     msg = `鎖定 ${target.name}`;
     if (s.teams[target.id].buffs.shield > 0) { s.teams[target.id].buffs.shield -= 1; shielded.push(target.id); }
-    else pay(s, target.id, "bank", A.repair);
+    else pay(s, target.id, "bank", A.repair,{category:"attack_repair",attackKind:kind,tileIndex:target.baseIdx,fromReason:`受到 ${t.name} 的「${A.name}」，支付修繕費`});
     hit = target.baseIdx !== null ? [target.baseIdx] : [];
     targetInfo = { targetTeam: target.id, targetPos: target.pos, targetName: target.name };
   }
@@ -494,7 +537,7 @@ function nextPhase(s) {
     return s;
   }
   const d = s.disasters, th = s.settings.inflateThreshold;
-  s.market = d >= th+3 ? "bubble" : d > th ? "hot" : d === th ? "flat" : d >= Math.max(1,th-2) ? "slump" : "crash";
+  s.market = d >= th+3 ? "crash" : d > th ? "slump" : d === th ? "flat" : d >= Math.max(1,th-2) ? "hot" : "bubble";
   s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
   s.activeTeamId = null;
   s.teams.forEach(t => { t.rolled = false; t.lastRoll = null; t.lastDice = null; t.attackRounds = {}; t.jailedThisTurn = false; });
@@ -516,7 +559,7 @@ function rankBases(s){
     .sort((a,b)=>Number(Boolean(a.sold||a.baseIdx===null))-Number(Boolean(b.sold||b.baseIdx===null))||Number(b.level||0)-Number(a.level||0)||a.originalIndex-b.originalIndex);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
 })();
 
 

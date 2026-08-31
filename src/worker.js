@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.25.59';
+const APP_BUILD_VERSION = '2026.08.31.60';
 
 
 
@@ -525,6 +525,7 @@ async function closeGame(id,request,env){
 }
 export function normalizeGameState(state){
   const s=state&&typeof state==='object'?state:{};
+  delete s._transactions;
   s.receipts=Array.isArray(s.receipts)?s.receipts:[];
   s.receiptSeq=Number(s.receiptSeq)||0;
   if(!('activeTeamId' in s))s.activeTeamId=null;
@@ -533,6 +534,11 @@ export function normalizeGameState(state){
   if(!('ceremonyStep' in s))s.ceremonyStep=['settle','ended'].includes(s.phase)?5:0;
   else s.ceremonyStep=Math.max(0,Math.min(5,Math.floor(Number(s.ceremonyStep)||0)));
   s.settings=s.settings||G.clone(G.DEFAULTS);
+  if(Number(s.settings.economyVersion||0)<2){
+    const replace=(path,legacy,value)=>{const parts=path.split('.');let target=s.settings;for(let i=0;i<parts.length-1;i++){target=target?.[parts[i]];if(!target)return;}const key=parts.at(-1);if(Number(target[key])===legacy)target[key]=value;};
+    [['bankShare',50,25],['levels.1.up',6,20],['levels.2.up',12,35],['attacks.quake.cost',4,25],['attacks.quake.repair',300,350],['attacks.missile.cost',3,22],['attacks.missile.repair',400,450],['attacks.typhoon.cost',4,22],['attacks.typhoon.eyeBonus',200,0],['attacks.wildfire.cost',3,18],['gambles.0.cost',1,5],['gambles.1.cost',2,10],['gambles.2.cost',4,15],['gambles.3.cost',6,25],['buffs.pass.cost',3,12],['buffs.reroll.cost',2,10],['buffs.shield.cost',4,15]].forEach(args=>replace(...args));
+    s.settings.economyVersion=2;
+  }
   s.settings.stages=Array.isArray(s.settings.stages)?s.settings.stages:G.clone(G.DEFAULTS.stages);
   s.settings.stages=G.DEFAULTS.stages.map((fallback,index)=>({...fallback,...(s.settings.stages[index]||{})}));
   s.unlocked=Array.isArray(s.unlocked)?s.unlocked.filter(index=>G.STAGE_IDX.includes(Number(index))).map(Number):[];
@@ -639,32 +645,32 @@ function socketSend(ws,payload){
   try{ws.send(JSON.stringify(payload));return true;}catch{return false;}
 }
 
-function receiptReason(next,action,teamId){
-  const team=next.teams?.[teamId],purchase=next.lastPurchase;
-  if(['gamble','buff'].includes(action)&&Number(purchase?.team)===teamId)return `購買「${purchase.name||'道具'}」`;
-  if(action==='roll'||action==='testRoll'){const kind=G.TRACK[team?.pos]?.[0],stageIndex=kind==='stage'?G.STAGE_IDX.indexOf(team.pos):-1;return stageIndex>=0?`完成「${next.settings.stages?.[stageIndex]?.name||'關卡'}」`:'本隊移動結算';}
-  if(action==='reroll')return '使用重骰卡';
-  if(action==='attack')return Number(next.lastAttack?.team)===teamId?`發動「${next.lastAttack?.name||'特殊操作'}」`:'受到特殊操作影響';
-  if(action==='nextPhase'||action==='startGame')return '本回合房屋稅結算';
-  if(action==='resolveLanding'||action==='battle'||action==='resolveBattle')return '基地過夜費／BATTLE 結算';
-  if(action==='upgrade')return '基地升級';
-  if(action==='sell')return '出售基地';
-  if(action==='buyBack')return '買回基地';
-  if(action==='adjustCash'||action==='adjustPts')return '主持人調整本隊資源';
-  return '本隊資源異動';
-}
-
-function appendReceipts(previous,next,action){
+function appendReceipts(previous,next,action,actionId=''){
   next.receipts=Array.isArray(next.receipts)?next.receipts:[];
   next.receiptSeq=Number(next.receiptSeq)||0;
-  const createdAt=now();
-  (next.teams||[]).forEach((team,i)=>{
-    const before=previous?.teams?.[i];if(!before)return;
-    const cashDelta=Number(team.cash||0)-Number(before.cash||0),ptsDelta=Number(team.pts||0)-Number(before.pts||0);
-    if(!cashDelta&&!ptsDelta)return;
-    next.receipts.unshift({id:++next.receiptSeq,teamId:i,round:Number(next.round)||1,phase:next.phase,cashDelta,ptsDelta,beforeCash:Number(before.cash||0),afterCash:Number(team.cash||0),beforePts:Number(before.pts||0),afterPts:Number(team.pts||0),reason:receiptReason(next,action,i).slice(0,220),action,createdAt});
+  const transactions=Array.isArray(next._transactions)?next._transactions:[],createdAt=now();
+  const expectedCash=(next.teams||[]).map((team,i)=>Number(team.cash||0)-Number(previous?.teams?.[i]?.cash||0));
+  const expectedPts=(next.teams||[]).map((team,i)=>Number(team.pts||0)-Number(previous?.teams?.[i]?.pts||0));
+  const ledgerCash=(next.teams||[]).map(()=>0),ledgerPts=(next.teams||[]).map(()=>0);
+  let ledgerBank=0;
+  transactions.forEach(tx=>{ledgerBank+=Number(tx.bankDelta)||0;(tx.entries||[]).forEach(entry=>{const i=Number(entry.teamId);if(!Number.isInteger(i)||!next.teams?.[i])return;ledgerCash[i]+=Number(entry.cashDelta)||0;ledgerPts[i]+=Number(entry.ptsDelta)||0;});});
+  const expectedBank=Number(next.bank||0)-Number(previous?.bank||0);
+  const mismatch=expectedCash.some((delta,i)=>delta!==ledgerCash[i]||expectedPts[i]!==ledgerPts[i])||expectedBank!==ledgerBank;
+  if(mismatch)return `金流安全檢查未通過（${action}），本次操作已取消`;
+
+  const runningCash=(previous?.teams||[]).map(team=>Number(team.cash)||0),runningPts=(previous?.teams||[]).map(team=>Number(team.pts)||0);
+  const newReceipts=[];
+  transactions.forEach((tx,txIndex)=>{
+    const transactionId=`${actionId||`rev-${Number(next.rev||0)+1}`}-${txIndex+1}`;
+    (tx.entries||[]).forEach(entry=>{
+      const teamId=Number(entry.teamId),cashDelta=Number(entry.cashDelta)||0,ptsDelta=Number(entry.ptsDelta)||0;if(!next.teams?.[teamId]||(!cashDelta&&!ptsDelta))return;
+      const beforeCash=runningCash[teamId],beforePts=runningPts[teamId];runningCash[teamId]+=cashDelta;runningPts[teamId]+=ptsDelta;
+      newReceipts.push({id:++next.receiptSeq,transactionId,teamId,actorTeam:tx.actorTeam!==null&&tx.actorTeam!==undefined&&Number.isInteger(Number(tx.actorTeam))?Number(tx.actorTeam):null,counterpartyTeamId:entry.counterpartyTeamId!==null&&entry.counterpartyTeamId!==undefined&&Number.isInteger(Number(entry.counterpartyTeamId))?Number(entry.counterpartyTeamId):null,round:Number(next.round)||1,phase:next.phase,cashDelta,ptsDelta,beforeCash,afterCash:runningCash[teamId],beforePts,afterPts:runningPts[teamId],reason:String(entry.reason||'資源異動').slice(0,220),category:String(tx.category||'other'),tileIndex:tx.tileIndex!==null&&tx.tileIndex!==undefined&&Number.isInteger(Number(tx.tileIndex))?Number(tx.tileIndex):null,attackKind:tx.attackKind||null,action,createdAt});
+    });
   });
+  next.receipts=[...newReceipts.reverse(),...next.receipts];
   if(next.receipts.length>240)next.receipts=next.receipts.slice(0,240);
+  return null;
 }
 
 const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','testRoll','setPresetRoll','clearPresetRoll','resolveBattle','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
@@ -673,7 +679,7 @@ const TEAM_ADMIN_ACTIONS=new Set(['approveViewer','rejectViewer','removeViewer',
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack',...TEAM_ADMIN_ACTIONS]);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['resolveLanding','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
 const CONFIG_RANGES={lapBonus:[0,1000000],taxAmount:[0,1000000],casinoCost:[0,1000000],blackDiscount:[1,100],bankShare:[0,100],diceSides:[2,20],diceCount:[1,5],passRatio:[0,100]};
-function configRange(path){ if(CONFIG_RANGES[path])return CONFIG_RANGES[path];if(/^stages\.\d+\.(cash|pts)$/.test(path))return [-1000000,1000000];return /^(levels\.\d+\.(stay|up|sell|tax)|attacks\.(quake|missile|typhoon|wildfire)\.(cost|repair)|attacks\.typhoon\.eyeBonus|buffs\.(pass|reroll|shield)\.cost)$/.test(path)?[0,1000000]:null; }
+function configRange(path){ if(CONFIG_RANGES[path])return CONFIG_RANGES[path];if(/^stages\.\d+\.(cash|pts)$/.test(path))return [-1000000,1000000];return /^(levels\.\d+\.(stay|up|sell|tax)|attacks\.(quake|missile|typhoon|wildfire)\.(cost|repair)|attacks\.typhoon\.eyeBonus|buffs\.(pass|reroll|shield)\.cost|gambles\.\d+\.cost)$/.test(path)?[0,1000000]:null; }
 function updateConfig(settings,path,rawValue){
   const range=configRange(path),value=Number(rawValue);
   if(!range||!Number.isFinite(value)||value<range[0]||value>range[1])return '設定值超出允許範圍';
@@ -851,11 +857,15 @@ export class GameRoom {
     }
     try{
       const next=G.clone(this.state);
+      next._transactions=[];
       let viewerSessionToken='';const actionPayload={...(m.payload||{})};
       if(actor.role==='team'&&m.action==='approveViewer'){viewerSessionToken=randomHex(24);actionPayload.sessionTokenHash=await hashSecret(viewerSessionToken);}
       const result=this.applyAction(next,actor,m.action,actionPayload);
       if(result?.error)return fail(result.error);
-      appendReceipts(this.state,next,m.action);
+      const transactionActorTeam=['roll','testRoll'].includes(m.action)?Number(next.lastRoll?.team):m.action==='attack'?Number(next.lastAttack?.team):actor.teamId!==null&&actor.teamId!==undefined?Number(actor.teamId):null;
+      (next._transactions||[]).forEach(tx=>{tx.actorTeam=Number.isInteger(transactionActorTeam)?transactionActorTeam:null;});
+      const receiptError=appendReceipts(this.state,next,m.action,actionId);delete next._transactions;
+      if(receiptError)return fail(receiptError);
       next.rev=(this.state.rev||0)+1;
       await this.commit(next,actor,m.action,{...(m.payload||{}),actionId});
       if(m.action==='regenerateAccessCode')this.invalidateAccessCode(Number(m.payload?.teamId),String(m.payload?.kind||''));
@@ -921,7 +931,7 @@ export class GameRoom {
     if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.ceremonyStep=0;s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
     if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}
     if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle'){s.phase='roll';s.ceremonyStep=0;}s.log.unshift('主持人恢復了活動');return;}
-    if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};G.nextPhase(s);return;}
+    if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};const beforePhase=s.phase,beforeLog=s.log?.[0];G.nextPhase(s);if(s.log?.[0]===beforeLog)s.log.unshift(`主持人推進遊戲階段：${beforePhase} → ${s.phase}`);return;}
     if(action==='settleGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;s.phase='settle';s.ceremonyStep=0;s.log.unshift('🏆 活動進入最終頒獎典禮，等待主持人揭曉');return;}
     if(action==='setCeremonyStep'){if(!['settle','ended'].includes(s.phase))return {error:'目前不是頒獎典禮階段'};const step=Number(p.step);if(!Number.isInteger(step)||step<0||step>5)return {error:'頒獎典禮進度錯誤'};s.ceremonyStep=step;s.log.unshift(`頒獎典禮進度：${step}/5`);return;}
     if(action==='endGame'){if(s.phase==='ended')return {error:'活動已結束'};const wasSettling=s.phase==='settle';s.paused=false;s.phase='ended';if(!wasSettling)s.ceremonyStep=5;s.log.unshift('活動結束，歷史紀錄已保存');return;}
@@ -966,7 +976,7 @@ export class GameRoom {
     if(action==='resolveBattle'){const r=G.adjudicateBattle(s,String(p.outcome||''));return r.ok?undefined:{error:r.msg};}
     if(action==='unlock'){const i=Number(p.index),stageIndex=G.STAGE_IDX.indexOf(i),stage=s.settings.stages?.[stageIndex];if(stageIndex<0||!stage)return {error:'關卡格錯誤'};if(!s.unlocked.includes(i)){s.unlocked.push(i);s.stageNoticeSeq=Number(s.stageNoticeSeq||0)+1;s.stageNotices=[...(s.stageNotices||[]),{id:s.stageNoticeSeq,stageIndex,tileIndex:i,stage:G.clone(stage),createdAt:now()}].slice(-20);}s.log.unshift(`${stage.name}關卡解封（第 ${i+1} 格）`);return;}
     if(action==='regenerateAccessCode'){const i=Number(p.teamId),kind=String(p.kind||'');if(!s.teams[i]||!['team','viewer'].includes(kind))return {error:'登入代碼設定錯誤'};ensureTeamAccessCodes(s,s.teams.length);const key=kind==='team'?'teamCode':'viewerCode',used=new Set(s.accessCodes.map(entry=>entry[key]));let code='';do{code=randomAccessCode(kind==='team'?'T':'V');}while(used.has(code));s.accessCodes[i][key]=code;if(kind==='viewer')revokeTeamViewers(s,i);s.log.unshift(`主持人重新產生 ${s.teams[i].name} 的${kind==='team'?'隊輔':'觀眾'}代碼`);return;}
-    if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash')s.teams[i].cash+=amount;else s.teams[i].pts=Math.max(0,s.teams[i].pts+amount);s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}
+    if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash'){if(amount>=0)G.creditCash(s,i,amount,'主持人調整本隊現金',{category:'host_adjust'});else{const before=s.teams[i].cash;s.teams[i].cash+=amount;G.recordTransaction(s,{category:'host_adjust',entries:[{teamId:i,cashDelta:s.teams[i].cash-before,reason:'主持人調整本隊現金'}]});}}else G.changePoints(s,i,amount,'主持人調整本隊諂媚點數',{category:'host_adjust'});s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}
     if(action==='renameTeams'){if(!Array.isArray(p.names))return {error:'隊伍名稱格式錯誤'};s.teams.forEach((t,i)=>{const n=text(p.names[i],t.name).slice(0,30);if(n)t.name=n;});s.log.unshift('主持人更新了隊伍名稱');return;}
     if(action==='setConfig'){const path=String(p.path||''),error=updateConfig(s.settings,path,p.value);if(error)return {error};s.log.unshift(`主持人調整設定：${path}`);return;}
     if(action==='setConfigs'){if(!Array.isArray(p.entries)||p.entries.length<1||p.entries.length>50)return {error:'設定清單格式錯誤'};for(const entry of p.entries){const error=updateConfig(s.settings,String(entry?.path||''),entry?.value);if(error)return {error};}s.log.unshift(`主持人儲存遊戲設定（${p.entries.length} 項）`);return;}

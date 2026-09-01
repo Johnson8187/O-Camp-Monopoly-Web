@@ -132,7 +132,7 @@ function freshState(code, teamCount, names) {
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
     stageNotices:[], stageNoticeSeq:0,
-    settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null,
+    settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null, rollDiceCounts:{},
     receipts:[], receiptSeq:0, lastPurchase:null, viewers:[],
   };
 }
@@ -538,7 +538,7 @@ function nextPhase(s) {
   }
   const d = s.disasters, th = s.settings.inflateThreshold;
   s.market = d >= th+3 ? "crash" : d > th ? "slump" : d === th ? "flat" : d >= Math.max(1,th-2) ? "hot" : "bubble";
-  s.round += 1; s.disasters = 0; s.attackUsage = {}; s.phase = "market";
+  s.round += 1; s.disasters = 0; s.attackUsage = {}; s.rollDiceCounts = {}; s.phase = "market";
   s.activeTeamId = null;
   s.teams.forEach(t => { t.rolled = false; t.lastRoll = null; t.lastDice = null; t.attackRounds = {}; t.jailedThisTurn = false; });
   s.log.unshift(`── 第 ${s.round} 回合開始（房市：${s.settings.marketNames[s.market]}）──`);

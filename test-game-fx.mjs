@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, STAGE_PRESENTATIONS, stagePresentationFor } from './public/game-fx.js';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, STAGE_PRESENTATIONS, stagePresentationFor } from './public/game-fx.js';
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(CEREMONY_STEPS.length,6);
@@ -65,6 +65,11 @@ assert.equal(isPurchaseReceipt({teamId:1,action:'buff',ptsDelta:-5},{team:0,cost
 assert.deepEqual(movementPath(42,4,2,44),[43,0,1,2]);
 assert.deepEqual(movementPath(5,2,20,44),[6,7,20]);
 assert.deepEqual(movementPath(5,0,5,44),[]);
+assert.equal(movementStepDelay(8,4),520);
+assert.equal(movementStepDelay(15,2),440);
+assert.equal(movementStepDelay(15,7),360);
+assert.equal(movementStepDelay(24,12),260);
+assert.equal(movementStepDelay(24,22),460);
 assert.equal(pawnFacingForStep(['base',1,1],['base',2,1]),'right');
 assert.equal(pawnFacingForStep(['base',2,1],['base',1,1]),'left');
 assert.equal(pawnFacingForStep(['base',1,1],['base',1,0]),'back');

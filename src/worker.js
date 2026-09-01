@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.08.31.60';
+const APP_BUILD_VERSION = '2026.09.01.61';
 
 
 
@@ -551,6 +551,7 @@ export function normalizeGameState(state){
     sessionTokenHash:text(viewer.sessionTokenHash),requestedAt:text(viewer.requestedAt,now()),approvedAt:text(viewer.approvedAt),lastSeenAt:text(viewer.lastSeenAt),removedAt:text(viewer.removedAt),
   })).filter(viewer=>viewer.id&&viewer.name):[];
   s.presetRolls = s.presetRolls && typeof s.presetRolls === 'object' ? s.presetRolls : {};
+  s.rollDiceCounts = s.rollDiceCounts && typeof s.rollDiceCounts === 'object' ? s.rollDiceCounts : {};
   ensureTeamAccessCodes(s,(s.teams||[]).length);
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
   (s.teams||[]).forEach(t=>{
@@ -710,7 +711,7 @@ function safePublicEvent(state,eventType,actor,payload={}){
   if(eventType==='resumeGame')return '主持人恢復了活動';
   if(eventType==='nextPhase')return `遊戲進入「${state.phase}」階段`;
   if(eventType==='setMarket')return `本回合房市公布：${state.settings.marketNames?.[state.market]||state.market}`;
-  if(eventType==='allowRoll')return `主持人允許 ${state.teams?.[Number(payload.teamId)]?.name||'指定隊伍'} 擲骰`;
+  if(eventType==='allowRoll')return `主持人允許 ${state.teams?.[Number(payload.teamId)]?.name||'指定隊伍'} 使用 ${Number(payload.diceCount)||Number(state.rollDiceCounts?.[Number(payload.teamId)])||1} 顆骰子`;
   if(eventType==='resolveBattle')return '基地 BATTLE 已完成裁決';
   if(eventType==='settleGame')return '活動進入最終頒獎典禮';
   if(eventType==='setCeremonyStep')return '主持人推進了頒獎典禮';
@@ -912,7 +913,7 @@ export class GameRoom {
           dice = [total];
           delete s.presetRolls[i];
         } else {
-          const count=Math.max(1,Math.min(5,Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
+          const count=Math.max(1,Math.min(5,Number(s.rollDiceCounts?.[i])||Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
           dice=Array.from({length:count},()=>1+Math.floor(Math.random()*sides));
           total=dice.reduce((sum,n)=>sum+n,0);
         }
@@ -928,7 +929,7 @@ export class GameRoom {
       if(action==='buyBack'){const r=G.buyBackBase(s,i);return r.ok?undefined:{error:r.msg};}
     }
     if(action==='assignBases'){if(s.phase!=='setup')return {error:'遊戲開始後不能重新抽籤'};G.assignBases(s);return;}
-    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.ceremonyStep=0;s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
+    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.rollDiceCounts={};s.ceremonyStep=0;s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
     if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}
     if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle'){s.phase='roll';s.ceremonyStep=0;}s.log.unshift('主持人恢復了活動');return;}
     if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};const beforePhase=s.phase,beforeLog=s.log?.[0];G.nextPhase(s);if(s.log?.[0]===beforeLog)s.log.unshift(`主持人推進遊戲階段：${beforePhase} → ${s.phase}`);return;}
@@ -939,9 +940,10 @@ export class GameRoom {
     if(action==='allowRoll'){
       if(s.phase!=='roll')return {error:'目前不是擲骰階段'};
       if(s.pendingBattle)return {error:'請先完成基地付款或 BATTLE 裁決'};
-      const i=Number(p.teamId),t=s.teams[i];if(!Number.isInteger(i)||!t)return {error:'隊伍編號錯誤'};
+      const i=Number(p.teamId),t=s.teams[i],diceCount=Number(p.diceCount??s.settings.diceCount);if(!Number.isInteger(i)||!t)return {error:'隊伍編號錯誤'};
+      if(!Number.isInteger(diceCount)||diceCount<1||diceCount>5)return {error:'骰子顆數必須為 1～5 顆'};
       if(t.rolled||t.jail>0||t.jailedThisTurn)return {error:'這一隊本回合不能再擲骰'};
-      s.activeTeamId=i;s.log.unshift(`主持人允許 ${t.name} 擲骰`);return;
+      s.rollDiceCounts={...(s.rollDiceCounts||{}),[i]:diceCount};s.activeTeamId=i;s.log.unshift(`主持人允許 ${t.name} 使用 ${diceCount} 顆骰子`);return;
     }
     if(action==='setPresetRoll'){
       if(s.phase!=='roll'&&s.phase!=='setup')return {error:'目前不是擲骰或準備階段'};

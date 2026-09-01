@@ -3,15 +3,15 @@ const G = (function(){
 
 const TRACK = [
   ["black",5,0],["safe",6,0],["base",7,0],["tax",7,1],
-  ["stage",8,1],["fate",8,2],["base",9,2],["casino",9,3],
+  ["stage",8,1],["chance",8,2],["base",9,2],["casino",9,3],
   ["safe",10,3],["fate",10,4],["base",10,5],["stage",10,6],
   ["worm",10,7],["exch",10,8],["tax",9,8],["base",9,9],
-  ["safe",8,9],["base",7,9],["fate",7,8],["casino",6,8],
+  ["safe",8,9],["base",7,9],["chance",7,8],["casino",6,8],
   ["bank",6,7],["base",5,7],["black",4,7],["safe",4,8],
   ["stage",4,9],["safe",3,9],["casino",2,9],["safe",1,9],
   ["base",0,9],["tax",0,8],["fate",0,7],["start",0,6],
-  ["fate",0,5],["exch",1,5],["stage",2,5],["base",2,4],
-  ["fate",3,4],["worm",4,4],["base",5,4],["fate",6,4],
+  ["chance",0,5],["exch",1,5],["stage",2,5],["base",2,4],
+  ["fate",3,4],["worm",4,4],["base",5,4],["chance",6,4],
   ["stage",6,3],["base",6,2],["jail",5,2],["fate",5,1],
 ];
 const N = TRACK.length;
@@ -21,10 +21,10 @@ const STAGE_IDX = TRACK.map((t,i)=>t[0]==="stage"?i:-1).filter(i=>i>=0);
 const WORM_IDX = TRACK.map((t,i)=>t[0]==="worm"?i:-1).filter(i=>i>=0);
 
 const TILE = {
-  base:{n:"基地",bg:"#3fbf5a",fg:"#0f3d18"}, fate:{n:"命運",bg:"#f2c12e",fg:"#5a3d05"},
+  base:{n:"基地",bg:"#3fbf5a",fg:"#0f3d18"}, fate:{n:"命運",bg:"#9450d8",fg:"#ffffff"}, chance:{n:"機會",bg:"#f2c12e",fg:"#5a3d05"},
   tax:{n:"稅收",bg:"#3f86e0",fg:"#0b2c55"},  black:{n:"黑市",bg:"#6d72b0",fg:"#141033"},
   casino:{n:"賭場",bg:"#9450d8",fg:"#ffffff"},stage:{n:"關卡",bg:"#ffffff",fg:"#1f7a2e"},
-  worm:{n:"蟲洞",bg:"#2a0a0a",fg:"#f0908a"}, exch:{n:"房市中心",bg:"#57a3a3",fg:"#0d2e2e"},
+  worm:{n:"蟲洞",bg:"#2a0a0a",fg:"#f0908a"}, exch:{n:"情報局",bg:"#57a3a3",fg:"#0d2e2e"},
   jail:{n:"監獄",bg:"#5f5f5f",fg:"#ffffff"}, bank:{n:"銀行",bg:"#2bb0b0",fg:"#0a3838"},
   start:{n:"起點",bg:"#141414",fg:"#ffe14d"},safe:{n:"安全",bg:"#e4d8ad",fg:"#5a4d1f"},
 };
@@ -61,27 +61,77 @@ const DEFAULTS = {
     {key:"rpg",name:"RPG",cash:0,pts:10,icon:"⚔️",story:"獲得所有物資穿越回現代，並成為校園中的男神／女神。"},
     {key:"bbq",name:"烤肉",cash:2000,pts:0,icon:"🍖",story:"因為烤的肉太美味，獲得隔壁奶奶的挖角費。"},
   ],
-  battlesPerTeam:2, inflateThreshold:5, diceSides:6, diceCount:1,
+  battlesPerTeam:2, battleLossMultiplier:150, inflateThreshold:5, diceSides:6, diceCount:1,
 };
 
-const FATE_CARDS = [
-  {t:"關主心情好，發放獎金",cash:300,pts:0},
-  {t:"被抓到偷懶，罰款",cash:-200,pts:0},
-  {t:"諂媚成功，獲得點點",cash:0,pts:2},
-  {t:"營服洗壞了，賠償",cash:-150,pts:0},
-  {t:"撿到隊輔的零錢包",cash:250,pts:0},
-  {t:"團康表現優異，加碼",cash:400,pts:1},
-  {t:"遲到集合，扣款",cash:-250,pts:0},
-  {t:"幫忙搬器材，工資入袋",cash:200,pts:1},
-  {t:"手機沒電找不到人，罰款",cash:-100,pts:0},
-  {t:"夜教勇氣獎",cash:350,pts:0},
-  {t:"被關主吐槽，扣點點",cash:0,pts:-2},
-  {t:"隊呼喊得最大聲",cash:150,pts:1},
-];
+const CARD_REWARD_LEVELS = Object.freeze({
+  1:{success:400,failure:150},2:{success:600,failure:200},
+  3:{success:800,failure:250},4:{success:1000,failure:300},
+});
+const card=(id,name,task,difficulty)=>Object.freeze({id,name,task,difficulty,...CARD_REWARD_LEVELS[difficulty]});
+
+const FATE_CARDS = Object.freeze([
+  card(1,"伏地挺身","4 人接力完成 20 下伏地挺身。",2),
+  card(2,"原地旋轉","1 人蒙眼原地轉 5 圈，全隊只能用拍手聲引導回到指定位置。",3),
+  card(3,"深蹲挑戰","全隊依序深蹲、定格，再以單腳跳完成指定動作。",4),
+  card(4,"含水憋笑","兩兩含水對視 15 秒，過程中不能笑場。",1),
+  card(5,"單腳平衡","全隊單腳站立，依右、上、左、下同步拍手兩組。",2),
+  card(6,"圖形大挑戰","6 人合作排出指定圖形並完成拍照。",1),
+  card(7,"肢體傳聲筒","全隊用手指在背上傳遞三位數字，最後一人說出答案。",3),
+  card(8,"棒式撐體","4 人同時棒式撐體 20 秒。",2),
+  card(9,"假想運動會","5 人分別模仿不同球類運動，讓觀眾猜出全部項目。",3),
+  card(10,"極限靜止","7 人完成指定姿勢並維持 15 秒，不能移動或笑場。",2),
+  card(11,"開合跳唱歌","8 人邊做開合跳，邊接力唱完中英文生日快樂歌。",3),
+  card(12,"圖形大挑戰Ⅱ","全隊分組排出指定英文字母與雙人動作。",2),
+  card(13,"指定範圍原地踏步","全隊閉眼原地踏步 20 秒，結束時仍需留在指定圓圈內。",3),
+  card(14,"背對背","兩兩背對背坐下並站起，連續完成 3 次。",2),
+  card(15,"比手畫腳","1 人猜題，其餘隊員不出聲、同時用動作提示同一個詞。",1),
+  card(16,"人體波浪舞","全隊合作完成兩輪連續人體波浪。",1),
+  card(17,"憋氣訓練","全隊捏鼻憋氣 15 秒，再完成 5 次蹲下起立。",2),
+  card(18,"限時抬腿","5 人在 15 秒內各完成 20 下原地抬腿。",2),
+  card(19,"老師說","全隊進行 5 題老師說，至少 3 題全員零失誤。",3),
+  card(20,"反應力測試","全隊依口令做出相反的大小西瓜動作，所有人都要成功。",4),
+]);
+
+const CHANCE_CARDS = Object.freeze([
+  card(1,"金雞獨立","全隊單腳站立並維持指定姿勢 20 秒。",3),
+  card(2,"全體大合唱","20 秒內選歌，全隊同步唱完副歌 5 句。",2),
+  card(3,"盲眼大風吹","全隊閉眼轉 3 圈，不能說話，在 30 秒內牽手圍成一圈。",4),
+  card(4,"心有靈犀一條線","聽到題目後同時做動作，至少 5 人做出相同動作。",1),
+  card(5,"你學我猜","以動物走路動作接力傳遞，最後一人猜出動物。",2),
+  card(6,"模仿大挑戰","1 人模仿 3 種動物叫聲，其餘隊員全部猜中。",1),
+  card(7,"人體打字機","全隊接力說出「一起賭一把」並接續指定動作，不能中斷。",2),
+  card(8,"全員暈眩大作戰","全隊原地轉 5 圈後用屁股寫名字，過程中不能跌倒。",3),
+  card(9,"記憶大考驗","全隊進行超市記憶接龍，依序完整複誦並新增品項。",4),
+  card(10,"急速列車出發","全隊依快速節奏輪流回答同一主題，不能停頓或重複。",3),
+  card(11,"快問快答","由不同隊員連續回答 5 題宿營題目，過程中不能結巴。",3),
+  card(12,"全員倒著說","全隊在 10 秒內把指定 3～4 字詞語倒著說出來。",3),
+  card(13,"小隊無聲密碼","以眨眼傳遞兩位數密碼，最後一人用拍手還原，限時 2 分鐘。",4),
+  card(14,"小隊密碼解鎖","隊員同時比出 1～5 根手指，指定者在 30 秒內算出總和。",1),
+  card(15,"倫敦鐵橋垮下來","兩兩搭橋，隊尾單腳跳穿越並重組，依實體卡限時完成一輪。",4),
+  card(16,"水果大聲公挑戰","每人用生氣語氣大喊一種水果，全隊不能笑場。",2),
+  card(17,"大家好","全隊依節奏完成累加姓名口號，過程中不能中斷或喊錯。",3),
+  card(18,"全員同心節奏跳","全隊閉眼聽同一節奏同步起跳，5 次機會內成功。",3),
+  card(19,"小隊疊羅漢口令挑戰","依序報數，遇到 3 的倍數或含 3 的數字改拍手，全隊完成一輪。",3),
+  card(20,"假想全員密室逃脫","全隊在 10 秒內同步演出破解機關、開門與逃脫動作。",2),
+]);
+const CARD_DECKS = Object.freeze({fate:FATE_CARDS,chance:CHANCE_CARDS});
 
 /* ---------- 工具 ---------- */
 const clone = o => JSON.parse(JSON.stringify(o));
 const money = n => "$" + Number(n).toLocaleString();
+function cardById(kind,id){return CARD_DECKS[kind]?.find(item=>Number(item.id)===Number(id))||null;}
+function previewCards(s,kind,count=3){
+  const deck=CARD_DECKS[kind]||[],cursor=Math.max(0,Number(s?.cardCursors?.[kind])||0);
+  return Array.from({length:Math.min(Math.max(0,Number(count)||0),deck.length)},(_,offset)=>deck[(cursor+offset)%deck.length]);
+}
+function drawCard(s,kind){
+  const deck=CARD_DECKS[kind]||[];if(!deck.length)return null;
+  s.cardCursors={fate:0,chance:0,...(s.cardCursors||{})};
+  const cursor=Math.max(0,Number(s.cardCursors[kind])||0),picked=deck[cursor%deck.length];
+  s.cardCursors[kind]=(cursor+1)%deck.length;
+  return picked;
+}
 
 // A transaction is recorded only while the Worker opens an action ledger.
 // Core rules remain independently testable when no ledger is active.
@@ -128,11 +178,11 @@ function freshState(code, teamCount, names) {
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
-      buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false,
+      buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false, cardIntel:null,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
     stageNotices:[], stageNoticeSeq:0,
-    settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null, rollDiceCounts:{},
+    settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null, pendingCard:null, lastCardResult:null, cardCursors:{fate:0,chance:0}, cardSeq:0, rollDiceCounts:{},
     receipts:[], receiptSeq:0, lastPurchase:null, viewers:[],
   };
 }
@@ -293,8 +343,12 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
   } else if (kind === "tax") {
     const paid=pay(s, ti, "bank", S.taxAmount,{category:"tax",tileIndex:t.pos,fromReason:"停在稅收格繳納稅金"}); notes.push(`稅收 −${money(paid)}${paid<S.taxAmount?'（現金不足）':''}`);
 
-  } else if (kind === "fate") {
-    notes.push("命運格：請抽取實體命運卡，結果由主持人調整");
+  } else if (kind === "fate" || kind === "chance") {
+    const drawn=drawCard(s,kind),label=kind==="fate"?"命運":"機會";
+    if(drawn){
+      s.pendingBattle={kind:"card",attackerId:ti,defenderId:null,cardType:kind,cardId:drawn.id,tileIndex:t.pos,round:s.round,status:"awaiting_choice"};
+      notes.push(`${label}格：抽到「${drawn.name}」，請選擇接受挑戰或發動 BATTLE`);
+    }else notes.push(`${label}格：牌堆目前沒有可用卡片`);
 
   } else if (kind === "black") {
     t.discount = true; notes.push(`黑市：下次商店消費打 ${S.blackDiscount/10} 折`);
@@ -330,7 +384,8 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
     t.jail = 1; notes.push("滾進監獄，下回合停留");
 
   } else if (kind === "exch") {
-    notes.push("房市中心：查看本回合房產資訊");
+    t.cardIntel={round:s.round,revealedAtCursor:{...s.cardCursors},fate:previewCards(s,"fate",3).map(item=>item.id),chance:previewCards(s,"chance",3).map(item=>item.id)};
+    notes.push("情報局：已取得機會與命運牌堆各自接下來三張的情報");
 
   } else if (kind === "stage") {
     const stageIndex=STAGE_IDX.indexOf(t.pos),stage=S.stages?.[stageIndex];
@@ -346,11 +401,37 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
   return notes;
 }
 
-function resolvePendingBattle(s, ti, choice) {
+function queuePendingCard(s,pending,executorId,battleOutcome=null){
+  s.cardSeq=Number(s.cardSeq||0)+1;
+  s.pendingCard={seq:s.cardSeq,cardType:pending.cardType,cardId:pending.cardId,originalTeamId:pending.attackerId,executorId:Number(executorId),tileIndex:pending.tileIndex,round:pending.round,status:"awaiting_result",battleOutcome};
+  return s.pendingCard;
+}
+
+function resolvePendingBattle(s, ti, choice, options={}) {
   const pending=s.pendingBattle;
-  if(!pending||pending.attackerId!==ti)return {ok:false,msg:"目前沒有待處理的基地費用"};
-  const attacker=s.teams[pending.attackerId],defender=s.teams[pending.defenderId];
-  if(!attacker||!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
+  if(!pending||pending.attackerId!==ti)return {ok:false,msg:"目前沒有待處理的停留事件"};
+  const attacker=s.teams[pending.attackerId],isCard=pending.kind==="card";
+  if(!attacker){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
+  if(isCard){
+    const drawn=cardById(pending.cardType,pending.cardId),label=pending.cardType==="fate"?"命運":"機會";
+    if(!drawn){s.pendingBattle=null;return {ok:false,msg:"卡片資料不存在"};}
+    if(choice==="accept"||choice==="pay"){
+      queuePendingCard(s,pending,attacker.id);s.pendingBattle=null;
+      s.log.unshift(`${attacker.name} 接受${label}卡「${drawn.name}」挑戰，等待主持人判定結果`);
+      return {ok:true};
+    }
+    if(choice==="battle"){
+      if(attacker.battles<=0)return {ok:false,msg:"BATTLE 次數已用完"};
+      const targetId=Number(options?.targetTeamId),defender=s.teams[targetId];
+      if(!Number.isInteger(targetId)||!defender||targetId===attacker.id)return {ok:false,msg:"請選擇另一隊作為卡片 BATTLE 對手"};
+      attacker.battles-=1;pending.defenderId=targetId;pending.status="awaiting_host";
+      s.log.unshift(`${attacker.name} 發動${label}卡 BATTLE 挑戰 ${defender.name}，等待主持人裁決`);
+      return {ok:true};
+    }
+    return {ok:false,msg:"請選擇接受卡片挑戰或發動 BATTLE"};
+  }
+  const defender=s.teams[pending.defenderId];
+  if(!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
   if(choice==="pay"){
     const paid=pay(s,attacker.id,defender.id,pending.amount,{category:"stay_fee",tileIndex:pending.tileIndex,fromReason:`支付 ${defender.name} 過夜費`,toReason:`${attacker.name} 支付本隊過夜費`});
     s.pendingBattle=null;
@@ -371,18 +452,49 @@ function adjudicateBattle(s, outcome) {
   if(!pending||pending.status!=="awaiting_host")return {ok:false,msg:"目前沒有等待裁決的 BATTLE"};
   const attacker=s.teams[pending.attackerId],defender=s.teams[pending.defenderId];
   if(!attacker||!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
+  const isCard=pending.kind==="card";
+  if(isCard){
+    const drawn=cardById(pending.cardType,pending.cardId),label=pending.cardType==="fate"?"命運":"機會";
+    if(!drawn){s.pendingBattle=null;return {ok:false,msg:"卡片資料不存在"};}
+    if(outcome==="attacker"){
+      queuePendingCard(s,pending,defender.id,"attacker");s.pendingBattle=null;
+      s.log.unshift(`BATTLE 裁決：${attacker.name} 獲勝，${label}卡「${drawn.name}」轉交 ${defender.name} 執行`);
+      return {ok:true,executorId:defender.id};
+    }
+    if(outcome==="defender"){
+      queuePendingCard(s,pending,attacker.id,"defender");s.pendingBattle=null;
+      s.log.unshift(`BATTLE 裁決：${defender.name} 防守成功，${label}卡「${drawn.name}」仍由 ${attacker.name} 執行`);
+      return {ok:true,executorId:attacker.id};
+    }
+    return {ok:false,msg:"BATTLE 裁決結果錯誤"};
+  }
   if(outcome==="attacker"){
     s.pendingBattle=null;
     s.log.unshift(`BATTLE 裁決：${attacker.name} 獲勝，免付 ${money(pending.amount)} 過夜費`);
     return {ok:true,paid:0};
   }
   if(outcome==="defender"){
-    const paid=pay(s,attacker.id,defender.id,pending.amount,{category:"battle_fee",tileIndex:pending.tileIndex,fromReason:`BATTLE 落敗，支付 ${defender.name} 過夜費`,toReason:`BATTLE 守住基地，收到 ${attacker.name} 過夜費`});
+    const multiplier=Math.max(100,Number(s.settings.battleLossMultiplier)||150),penalty=Math.max(0,Math.round((pending.amount*multiplier/100)/50)*50);
+    const paid=pay(s,attacker.id,defender.id,penalty,{category:"battle_fee",tileIndex:pending.tileIndex,fromReason:`BATTLE 落敗，支付 ${defender.name} ${multiplier}% 過夜費`,toReason:`BATTLE 守住基地，收到 ${attacker.name} ${multiplier}% 過夜費`});
     s.pendingBattle=null;
-    s.log.unshift(`BATTLE 裁決：${defender.name} 守住基地，${attacker.name} 支付 ${money(paid)}`);
-    return {ok:true,paid};
+    s.log.unshift(`BATTLE 裁決：${defender.name} 守住基地，${attacker.name} 支付 ${multiplier}% 懲罰 ${money(paid)}`);
+    return {ok:true,paid,penalty,multiplier};
   }
   return {ok:false,msg:"BATTLE 裁決結果錯誤"};
+}
+
+function resolveCard(s,outcome){
+  const pending=s.pendingCard;
+  if(!pending||pending.status!=="awaiting_result")return {ok:false,msg:"目前沒有等待結算的機會／命運卡"};
+  if(!["success","failure"].includes(outcome))return {ok:false,msg:"卡片結果錯誤"};
+  const drawn=cardById(pending.cardType,pending.cardId),team=s.teams[pending.executorId],label=pending.cardType==="fate"?"命運":"機會";
+  if(!drawn||!team){s.pendingCard=null;return {ok:false,msg:"卡片或隊伍資料不存在"};}
+  const amount=Number(drawn[outcome])||0,resultLabel=outcome==="success"?"成功":"失敗安慰獎";
+  creditCash(s,team.id,amount,`${label}卡「${drawn.name}」${resultLabel}`,{category:`${pending.cardType}_card_${outcome}`,tileIndex:pending.tileIndex});
+  s.lastCardResult={seq:pending.seq,cardType:pending.cardType,cardId:pending.cardId,teamId:team.id,outcome,amount,round:s.round};
+  s.pendingCard=null;
+  s.log.unshift(`${team.name} 完成${label}卡「${drawn.name}」：${resultLabel} +${money(amount)}`);
+  return {ok:true,teamId:team.id,amount};
 }
 
 /* ---------- 商店 ---------- */
@@ -559,7 +671,7 @@ function rankBases(s){
     .sort((a,b)=>Number(Boolean(a.sold||a.baseIdx===null))-Number(Boolean(b.sold||b.baseIdx===null))||Number(b.level||0)-Number(a.level||0)||a.originalIndex-b.originalIndex);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,FATE_CARDS,PHASES,clone,money,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,CARD_REWARD_LEVELS,CARD_DECKS,FATE_CARDS,CHANCE_CARDS,PHASES,clone,money,cardById,previewCards,drawCard,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,resolveCard,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
 })();
 
 
@@ -567,6 +679,7 @@ return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,
 G.SPR = {
 base:["....oooo....","...oRRRRo...","..oRRRRRRo..",".oRRRRRRRRo.","oRRRRRRRRRRo","oooooooooooo",".owwwwwwwwo.",".owWWWWWWwo.",".owwddwwwwo.",".owwddwwGwo.",".owwddwwwwo.",".oooooooooo."],
 fate:["oooooooooooo","oyyyyyyyyyyo","oyyqqqqqqyyo","oyqqyyyyqqyo","oyyyyyyyqqyo","oyyyyyyqqyyo","oyyyyyqqyyyo","oyyyyqqyyyyo","oyyyyqqyyyyo","oyyyyyyyyyyo","oyyyyqqyyyyo","oooooooooooo"],
+chance:["oooooooooooo","occcccccccco","occwwwwwwcco","ocwwccccwwco","ocwwwwwwwwco","occccwwccccco","occccwwccccco","occcccccccco","occccwwccccco","occccwwccccco","occcccccccco","oooooooooooo"],
 bag:["....oooo....","...ottttto..","..obbbbbbbo.",".obbbBBbbbbo","obbbBBBBbbbo","obbbbssbbbbo","obbbsssssbbo","obbbbssbbbbo","obbbbssbbbbo","obbbsssssbbo",".obbbbbbbbo.","..oooooooo.."],
 casino:["oooooooooooo","owwwwwwwwwwo","owppwwwwppwo","owppwwwwppwo","owwwwwwwwwwo","owwwwppwwwwo","owwwwppwwwwo","owwwwwwwwwwo","owppwwwwppwo","owppwwwwppwo","owwwwwwwwwwo","oooooooooooo"],
 stage:[".....oo.....","....oBbo....","....oBbo....","....oBbo....","....oBbo....","....oBbo....","..oggggggo..","....ohho....","....ohho....","....oyyo....",".....oo.....","............"],
@@ -579,7 +692,8 @@ safe:[".oooooooooo.","osSSSSSSSSso","osssssssssso","ossssccsssso","ossssccsssso"
 };
 G.PAL = {
 base:{o:"#3a2a1a",R:"#d0473a",w:"#e6d4a8",W:"#f2e6c8",d:"#7a5230",G:"#5b8fc4"},
-fate:{o:"#3a2a1a",y:"#f2c12e",q:"#6b4a05"},
+  fate:{o:"#3a2a1a",y:"#f2c12e",q:"#6b4a05"},
+  chance:{o:"#3a2a1a",c:"#f2c12e",w:"#fffef5"},
 tax:{o:"#3a2a1a",t:"#8a6a2a",b:"#caa24e",B:"#e6c072",s:"#f5ead0"},
 black:{o:"#241a2e",t:"#2a2545",b:"#33305e",B:"#4a4680",s:"#f2c12e"},
 casino:{o:"#3a2a1a",w:"#f2ead2",p:"#b83232"},
@@ -591,6 +705,6 @@ bank:{o:"#3a2a1a",w:"#e6d8b0",c:"#b0a078"},
 start:{o:"#2b2118",p:"#7a5230",w:"#f2f2f2",k:"#222222"},
 safe:{o:"#2b2118",s:"#3fbf5a",S:"#63d67a",c:"#ffffff"}
 };
-G.SPRKEY = {base:"base",fate:"fate",tax:"bag",black:"bag",casino:"casino",stage:"stage",worm:"worm",exch:"exch",jail:"jail",bank:"bank",start:"start",safe:"safe"};
+G.SPRKEY = {base:"base",fate:"fate",chance:"chance",tax:"bag",black:"bag",casino:"casino",stage:"stage",worm:"worm",exch:"exch",jail:"jail",bank:"bank",start:"start",safe:"safe"};
 
 export { G };

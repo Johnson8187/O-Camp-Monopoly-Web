@@ -83,12 +83,17 @@ const attackerWin={pendingBattle:null,log:['BATTLE 裁決：紅隊 獲勝，免�
 const defenderWin={pendingBattle:null,log:['BATTLE 裁決：藍隊 守住基地，紅隊 支付 $800']};
 assert.deepEqual(battlePresentationTransition(battleFighting,attackerWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'attacker',message:attackerWin.log[0]});
 assert.deepEqual(battlePresentationTransition(battleFighting,defenderWin),{type:'battleResult',battle:battleFighting.pendingBattle,outcome:'defender',message:defenderWin.log[0]});
+const cardBattleFighting={pendingBattle:{kind:'card',attackerId:0,defenderId:1,cardType:'chance',cardId:3,tileIndex:5,round:2,status:'awaiting_host'},log:[]};
+const cardBattleDone={pendingBattle:null,pendingCard:{battleOutcome:'attacker'},log:['BATTLE 裁決：紅隊獲勝，機會卡轉交藍隊執行']};
+assert.deepEqual(battlePresentationTransition(cardBattleFighting,cardBattleDone),{type:'battleResult',battle:cardBattleFighting.pendingBattle,outcome:'attacker',message:cardBattleDone.log[0]});
 
 assert.equal(PAWN_SIGNATURES.length,10);
 assert.equal(landingReactionForTile('tax','稅收 −$200').kind,'tax');
 assert.equal(landingReactionForTile('worm','蟲洞傳送').pose,'warp');
 assert.equal(landingReactionForTile('base','回到自己的基地').kind,'home');
 assert.equal(landingReactionForTile('base','等待選擇付款或 BATTLE').kind,'rival-base');
+assert.equal(landingReactionForTile('chance','機會卡').kind,'chance');
+assert.equal(landingReactionForTile('exch','取得情報').kind,'intel');
 assert.deepEqual(attackCharacterTargets({team:0,targetTeam:2,hit:[10,20],shielded:[3]},[
   {id:0,baseIdx:10,pos:1},
   {id:1,baseIdx:20,pos:2},

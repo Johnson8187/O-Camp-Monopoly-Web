@@ -122,8 +122,11 @@ assert.equal(configurable.settings.attacks.quake.repair,888);
 assert.equal(configurable.settings.buffs.shield.cost,12);
 assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'stages.1.cash',value:-750}),undefined);
 assert.equal(configurable.settings.stages[1].cash,-750);
+assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'battleLossMultiplier',value:175}),undefined);
+assert.equal(configurable.settings.battleLossMultiplier,175);
 const legacyUnlocks=normalizeGameState({phase:'setup',teams:[],log:[],settings:G.clone(G.DEFAULTS)});
 assert.deepEqual(legacyUnlocks.unlocked,[]);
+assert.deepEqual(legacyUnlocks.cardCursors,{fate:0,chance:0});
 const stageControl=G.freshState('STAGE-CONTROL',2);
 assert.equal(configRoom.applyAction(stageControl,{role:'host',teamId:null},'unlock',{index:G.STAGE_IDX[0]}),undefined);
 assert.equal(stageControl.stageNotices.length,1);
@@ -151,6 +154,16 @@ legacyInventory.log.unshift(`${legacyInventory.teams[0].name} 買了「${legacyI
 legacyInventory.log.unshift(`${legacyInventory.teams[0].name} 買了「${legacyInventory.settings.gambles[0].name}」（扣 5 點，獎項由關主現場發放）`);
 normalizeGameState(legacyInventory);
 assert.equal(legacyInventory.teams[0].items.g0,2);
+
+const cardFlow=G.freshState('CARD-FLOW',3),cardFlowRoom=new GameRoom({storage:{}},{}),chanceTile=G.TRACK.findIndex(tile=>tile[0]==='chance');
+cardFlow.phase='roll';cardFlow.teams[0].pos=chanceTile;G.landEffect(cardFlow,0,[]);
+assert.equal(cardFlowRoom.applyAction(cardFlow,{role:'team',teamId:0},'resolveLanding',{choice:'battle',targetTeamId:2}),undefined);
+assert.equal(cardFlow.pendingBattle.defenderId,2);
+assert.equal(cardFlowRoom.applyAction(cardFlow,{role:'host',teamId:null},'resolveBattle',{outcome:'attacker'}),undefined);
+assert.equal(cardFlow.pendingCard.executorId,2);
+const cardReward=G.cardById(cardFlow.pendingCard.cardType,cardFlow.pendingCard.cardId).success,beforeCardReward=cardFlow.teams[2].cash;
+assert.equal(cardFlowRoom.applyAction(cardFlow,{role:'host',teamId:null},'resolveCard',{outcome:'success'}),undefined);
+assert.equal(cardFlow.teams[2].cash,beforeCardReward+cardReward);
 
 const settleState = G.freshState('SETTLE', 2);
 settleState.phase = 'roll';
@@ -223,6 +236,16 @@ function pendingSocket(){
   return {sent:[],closed:false,send(data){this.sent.push(JSON.parse(data));},close(){this.closed=true;},deserializeAttachment(){return attachment;},serializeAttachment(value){attachment=value;}};
 }
 
+const cardReceiptSockets=[],cardReceiptRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{},getWebSockets:()=>cardReceiptSockets},{});
+cardReceiptRoom.loaded=true;cardReceiptRoom.meta={id:'CARD-RECEIPT',name:'卡片收據測試',teamCount:2,hostTokenHash:'unused'};cardReceiptRoom.state=normalizeGameState(G.freshState('CARD-RECEIPT',2));cardReceiptRoom.state.phase='roll';cardReceiptRoom.state.teams[0].pos=G.TRACK.findIndex(tile=>tile[0]==='chance');G.landEffect(cardReceiptRoom.state,0,[]);cardReceiptRoom.commit=async next=>{cardReceiptRoom.state=next;};
+const cardTeamSocket=pendingSocket(),cardHostSocket=pendingSocket();cardTeamSocket.serializeAttachment({role:'team',teamId:0});cardHostSocket.serializeAttachment({role:'host',teamId:null});cardReceiptSockets.push(cardTeamSocket,cardHostSocket);
+await cardReceiptRoom.webSocketMessage(cardTeamSocket,JSON.stringify({type:'action',action:'resolveLanding',payload:{choice:'accept'},actionId:'card-accept-once'}));
+const cardCashBefore=cardReceiptRoom.state.teams[0].cash,cardSuccess=G.cardById(cardReceiptRoom.state.pendingCard.cardType,cardReceiptRoom.state.pendingCard.cardId).success;
+await cardReceiptRoom.webSocketMessage(cardHostSocket,JSON.stringify({type:'action',action:'resolveCard',payload:{outcome:'success'},actionId:'card-result-once'}));
+assert.equal(cardReceiptRoom.state.teams[0].cash,cardCashBefore+cardSuccess);assert.equal(cardReceiptRoom.state.receipts.filter(receipt=>receipt.action==='resolveCard').length,1);
+await cardReceiptRoom.webSocketMessage(cardHostSocket,JSON.stringify({type:'action',action:'resolveCard',payload:{outcome:'success'},actionId:'card-result-once'}));
+assert.equal(cardReceiptRoom.state.teams[0].cash,cardCashBefore+cardSuccess);assert.equal(cardReceiptRoom.state.receipts.filter(receipt=>receipt.action==='resolveCard').length,1);
+
 const unloadedRoom=new GameRoom({storage:{},getWebSockets:()=>[]},{});
 const earlyViewerClose=pendingSocket();
 earlyViewerClose.serializeAttachment({role:'viewer',teamId:0,viewerId:'viewer-before-load'});
@@ -276,18 +299,19 @@ assert.notEqual(duplicateCodes.accessCodes[0].viewerCode,duplicateCodes.accessCo
 
 const secrets=normalizeGameState(G.freshState('SECRETS',3));
 secrets.teams[0].cash=1111;secrets.teams[0].pts=11;secrets.teams[1].cash=2222;secrets.teams[1].pts=22;secrets.teams[2].cash=3333;secrets.teams[2].pts=33;
+secrets.teams[0].cardIntel={round:1,chance:[1,2,3],fate:[1,2,3]};secrets.cardCursors={chance:7,fate:9};
 secrets.receipts=[{id:1,teamId:0,cashDelta:111,afterCash:1111},{id:2,teamId:1,cashDelta:222,afterCash:2222}];
 secrets.viewers=[{id:'viewer-secret',teamId:0,name:'測試觀眾',status:'approved',sessionTokenHash:'NEVER-EXPOSE',requestedAt:'2026-08-25T00:00:00.000Z',approvedAt:'2026-08-25T00:01:00.000Z',lastSeenAt:'',removedAt:''}];
 secrets.log=['藍隊現金 +99999'];secrets.publicFeed=[{id:1,message:'藍隊完成移動'}];
 const publicProjection=projectStateForActor(secrets,{role:'viewer',teamId:null});
-assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);
+assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);assert.equal('cardCursors'in publicProjection,false);assert.equal(publicProjection.teams[0].cardIntel,null);
 const teamProjection=projectStateForActor(secrets,{role:'team',teamId:0});
-assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal(teamProjection.viewerRoster[0].name,'測試觀眾');assert.equal('sessionTokenHash'in teamProjection.viewerRoster[0],false);assert.equal('accessCodes'in teamProjection,false);
+assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal(teamProjection.viewerRoster[0].name,'測試觀眾');assert.equal('sessionTokenHash'in teamProjection.viewerRoster[0],false);assert.equal('accessCodes'in teamProjection,false);assert.deepEqual(teamProjection.teams[0].cardIntel.chance,[1,2,3]);assert.equal(teamProjection.teams[1].cardIntel,null);
 const viewerProjection=projectStateForActor(secrets,{role:'viewer',teamId:1});
 assert.equal(viewerProjection.teams[1].cash,null);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
 const approvedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(approvedProjection.teams[0].cash,1111);
 secrets.viewers[0].status='removed';const removedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(removedProjection.teams[0].cash,null);secrets.viewers[0].status='approved';
-const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);assert.equal('sessionTokenHash'in hostProjection.viewers[0],false);
+const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);assert.equal('sessionTokenHash'in hostProjection.viewers[0],false);assert.deepEqual(hostProjection.cardCursors,{chance:7,fate:9});
 secrets.phase='settle';secrets.ceremonyStep=3;const partialReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(partialReveal.ceremonyReveal.podium.length,3);assert.equal(partialReveal.teams.every(team=>team.cash===null),true);
 secrets.ceremonyStep=5;const fullReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(fullReveal.teams[2].cash,3333);assert.equal(fullReveal.teams[2].items,null);
 
@@ -355,12 +379,12 @@ testHostSocket.serializeAttachment({role:'host',teamId:null});
 const team0StartPos=testRollRoom.state.teams[0].pos;
 const team1StartPos=testRollRoom.state.teams[1].pos;
 
-// 1. Host testRoll specifies exact 5 steps
-await testRollRoom.webSocketMessage(testHostSocket,JSON.stringify({type:'action',action:'testRoll',payload:{teamId:0,steps:5},actionId:'test-roll-1'}));
+// 1. Host testRoll specifies exact 4 steps (lands on a non-blocking tile)
+await testRollRoom.webSocketMessage(testHostSocket,JSON.stringify({type:'action',action:'testRoll',payload:{teamId:0,steps:4},actionId:'test-roll-1'}));
 assert.equal(testHostSocket.sent.find(m=>m.type==='action_ok')?.actionId,'test-roll-1');
-assert.equal(testRollRoom.state.teams[0].pos,(team0StartPos+5)%G.N);
+assert.equal(testRollRoom.state.teams[0].pos,(team0StartPos+4)%G.N);
 assert.equal(testRollRoom.state.teams[0].rolled,true);
-assert.equal(testRollRoom.state.lastRoll.n,5);
+assert.equal(testRollRoom.state.lastRoll.n,4);
 
 // 2. Host setPresetRoll specifies team 1 to roll 8 steps on next turn
 testRollRoom.state.teams[1].rolled=false;

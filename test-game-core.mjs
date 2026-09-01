@@ -37,7 +37,24 @@ const fateCash = physicalFate.teams[0].cash;
 const fatePts = physicalFate.teams[0].pts;
 G.applyMove(physicalFate, 0, 1, () => 0, [1]);
 if (physicalFate.teams[0].cash !== fateCash || physicalFate.teams[0].pts !== fatePts) throw new Error('實體命運卡模式不應自動更動資源');
-if (!/實體命運卡/.test(physicalFate.lastRoll.note)) throw new Error('命運格應提示抽取實體命運卡');
+if (!physicalFate.pendingBattle || physicalFate.pendingBattle.kind !== 'card' || !/命運格/.test(physicalFate.lastRoll.note)) throw new Error('命運格應鎖定實體卡並等待隊伍選擇');
+if (!G.resolvePendingBattle(physicalFate,0,'accept').ok || !physicalFate.pendingCard) throw new Error('接受命運卡挑戰失敗');
+const acceptedCard=G.cardById(physicalFate.pendingCard.cardType,physicalFate.pendingCard.cardId),acceptedBefore=physicalFate.teams[0].cash;
+if (!G.resolveCard(physicalFate,'success').ok || physicalFate.teams[0].cash !== acceptedBefore + acceptedCard.success) throw new Error('命運卡成功獎金結算錯誤');
+
+if (G.TRACK.filter(tile=>tile[0]==='chance').length !== 4 || G.TRACK.filter(tile=>tile[0]==='fate').length !== 4) throw new Error('棋盤應平均配置四格機會與四格命運');
+const intelligence=G.freshState('intel-test',2),intelIndex=G.TRACK.findIndex(tile=>tile[0]==='exch');
+intelligence.teams[0].pos=intelIndex;G.landEffect(intelligence,0,[]);
+if (intelligence.teams[0].cardIntel.chance.join(',')!=='1,2,3' || intelligence.teams[0].cardIntel.fate.join(',')!=='1,2,3') throw new Error('情報局沒有保存兩個牌堆前三張');
+G.drawCard(intelligence,'chance');
+if (intelligence.teams[0].cardIntel.chance.join(',')!=='1,2,3' || G.previewCards(intelligence,'chance',3).map(card=>card.id).join(',')!=='2,3,4') throw new Error('情報應為快照，牌堆則需獨立推進');
+
+const cardBattle=G.freshState('card-battle-test',3),chanceIndex=G.TRACK.findIndex(tile=>tile[0]==='chance');
+cardBattle.teams[0].pos=chanceIndex;cardBattle.teams[0].battles=1;G.landEffect(cardBattle,0,[]);
+if (!G.resolvePendingBattle(cardBattle,0,'battle',{targetTeamId:2}).ok || cardBattle.teams[0].battles!==0) throw new Error('機會卡 BATTLE 發動或次數扣除錯誤');
+if (!G.adjudicateBattle(cardBattle,'attacker').ok || cardBattle.pendingCard?.executorId!==2) throw new Error('卡片 BATTLE 攻方獲勝時應由守方執行');
+const failedCard=G.cardById(cardBattle.pendingCard.cardType,cardBattle.pendingCard.cardId),targetBefore=cardBattle.teams[2].cash;
+if (!G.resolveCard(cardBattle,'failure').ok || cardBattle.teams[2].cash!==targetBefore+failedCard.failure) throw new Error('卡片失敗安慰獎結算錯誤');
 
 const multiDice = G.freshState('multi-dice-test', 2);
 G.applyMove(multiDice, 0, 7, () => 0, [3, 4]);
@@ -65,6 +82,14 @@ const cashBeforeBattle = adjudication.teams[0].cash;
 G.applyMove(adjudication, 0, 1, () => 0, [1]);
 if (!G.resolvePendingBattle(adjudication, 0, 'battle').ok || adjudication.teams[0].battles !== 0) throw new Error('BATTLE 發動或次數扣除失敗');
 if (!G.adjudicateBattle(adjudication, 'attacker').ok || adjudication.teams[0].cash !== cashBeforeBattle) throw new Error('攻方勝時應免除原過夜費');
+
+const battleLoss = G.freshState('battle-loss-multiplier-test', 2);
+battleLoss.round=2;battleLoss.teams[1].baseIdx=battleBase;battleLoss.teams[1].level=2;battleLoss.teams[0].pos=(battleBase-1+G.TRACK.length)%G.TRACK.length;battleLoss.teams[0].battles=1;
+const lossAttackerBefore=battleLoss.teams[0].cash,lossDefenderBefore=battleLoss.teams[1].cash;
+G.applyMove(battleLoss,0,1,()=>0,[1]);const baseFee=battleLoss.pendingBattle.amount;
+G.resolvePendingBattle(battleLoss,0,'battle');G.adjudicateBattle(battleLoss,'defender');
+const expectedPenalty=Math.round((baseFee*1.5)/50)*50;
+if (battleLoss.teams[0].cash!==lossAttackerBefore-expectedPenalty || battleLoss.teams[1].cash!==lossDefenderBefore+expectedPenalty) throw new Error('基地 BATTLE 敗方應支付四捨五入後的 1.5 倍過夜費');
 
 const persistentBuff = G.freshState('persistent-buff-test', 2);
 persistentBuff.teams[0].buffs.shield = 2;

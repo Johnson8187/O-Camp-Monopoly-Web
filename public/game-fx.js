@@ -80,7 +80,7 @@ export function battlePresentationTransition(previous,next){
   }
   if(before?.status==='awaiting_host'&&!after){
     const message=String(next?.log?.[0]||'');
-    const outcome=/獲勝，免付/.test(message)?'attacker':/守住基地/.test(message)?'defender':null;
+    const outcome=next?.pendingCard?.battleOutcome||(/獲勝，免付|獲勝，.+卡/.test(message)?'attacker':/守住基地|防守成功/.test(message)?'defender':null);
     if(outcome)return {type:'battleResult',battle:before,outcome,message};
   }
   return null;
@@ -89,13 +89,14 @@ export function battlePresentationTransition(previous,next){
 const LANDING_REACTIONS = {
   start:  {kind:'start',symbol:'🏁',title:'回到人生起點',pose:'celebrate',tone:'reward'},
   tax:    {kind:'tax',symbol:'💸',title:'人生帳單來襲',pose:'hit',tone:'loss'},
-  fate:   {kind:'fate',symbol:'🃏',title:'命運就在手中',pose:'ready',tone:'mystery'},
+  fate:   {kind:'fate',symbol:'🃏',title:'命運挑戰降臨',pose:'ready',tone:'mystery'},
+  chance: {kind:'chance',symbol:'✦',title:'抓住人生機會',pose:'ready',tone:'mystery'},
   black:  {kind:'black',symbol:'◆',title:'黑市交易開張',pose:'ready',tone:'item'},
   casino: {kind:'casino',symbol:'🎰',title:'人生豪賭時刻',pose:'battle',tone:'danger'},
   bank:   {kind:'bank',symbol:'💰',title:'找到銀行密道',pose:'celebrate',tone:'reward'},
   worm:   {kind:'worm',symbol:'◎',title:'穿越人生蟲洞',pose:'warp',tone:'mystery'},
   jail:   {kind:'jail',symbol:'⛓',title:'人生暫時受困',pose:'hit',tone:'loss'},
-  exch:   {kind:'market',symbol:'⌂',title:'房市情報更新',pose:'ready',tone:'info'},
+  exch:   {kind:'intel',symbol:'⌁',title:'情報局解密完成',pose:'ready',tone:'info'},
   stage:  {kind:'stage',symbol:'★',title:'抵達人生關卡',pose:'celebrate',tone:'reward'},
   safe:   {kind:'safe',symbol:'✓',title:'平安抵達',pose:'land',tone:'info'},
 };

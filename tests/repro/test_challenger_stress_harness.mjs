@@ -92,7 +92,7 @@ function createMockEnv(opts = {}) {
           }
           if (sql.includes('SELECT value FROM system_settings')) {
             const key = this._params[0] || 'idle_timeout_ms';
-            return { value: dbStore.settings.get(key) || '10800000' };
+            return { value: dbStore.settings.get(key) || '432000000' };
           }
           return null;
         },

@@ -81,6 +81,15 @@ assert.match(stylesSource,/\.team-persistent-layout \.team-tab-panel\{order:1\}/
 assert.match(stylesSource,/\.life-title-banner/);
 assert.match(stylesSource,/\.team-moment-card/);
 assert.doesNotMatch(appSource,/bProjector/);
+assert.match(appSource,/HEARTBEAT_INTERVAL_MS\s*=\s*12000/);
+assert.match(appSource,/STALE_CONNECTION_MS\s*=\s*24000/);
+assert.match(appSource,/type:'presence'/);
+assert.match(appSource,/weak-network-outbox/);
+assert.match(appSource,/incomingRev\s*<\s*currentRev/);
+assert.match(stylesSource,/\.connection-status\.degraded/);
+assert.match(appSource,/releaseNotesButton/);
+assert.match(appSource,/依 GitHub 版本紀錄整理/);
+assert.match(stylesSource,/\.release-notes-timeline/);
 
 const state=(phase,paused=false)=>({phase,paused});
 
@@ -96,6 +105,14 @@ assert.equal(teamActionError(state('roll'),'attack'),null);
 
 const configurable=G.freshState('CONFIG',2);
 const configRoom=new GameRoom({storage:{}},{});
+const openingTax=G.freshState('OPENING-TAX',2);
+G.assignBases(openingTax,()=>0);
+const openingCash=openingTax.teams.map(team=>team.cash),openingBank=openingTax.bank;
+assert.equal(configRoom.applyAction(openingTax,{role:'host',teamId:null},'startGame',{}),undefined);
+assert.equal(openingTax.round,1);
+assert.deepEqual(openingTax.teams.map(team=>team.cash),openingCash,'遊戲開始時不應收取第一回合房屋稅');
+assert.equal(openingTax.bank,openingBank,'第一回合開始時銀行不應收到房屋稅');
+assert.doesNotMatch(openingTax.receipts.map(receipt=>receipt.category).join(','),/property_tax/);
 assert.equal(configRoom.applyAction(configurable,{role:'host',teamId:null},'setConfig',{path:'attacks.quake.cost',value:9}),undefined);
 assert.equal(configurable.settings.attacks.quake.cost,9);
 const ceremony=G.freshState('CEREMONY',3);
@@ -188,6 +205,8 @@ assert.equal(configRoom.applyAction(rollPermissionState,{role:'team',teamId:0},'
 assert.equal(rollPermissionState.teams[0].lastDice.length,2);
 assert.equal(rollPermissionState.teams[0].lastDice.reduce((sum,n)=>sum+n,0),rollPermissionState.teams[0].lastRoll);
 assert.equal(rollPermissionState.activeTeamId,null);
+rollPermissionState.pendingBattle=null;
+rollPermissionState.pendingCard=null;
 assert.equal(configRoom.applyAction(rollPermissionState,{role:'host',teamId:null},'allowRoll',{teamId:1,diceCount:4}),undefined);
 assert.equal(configRoom.applyAction(rollPermissionState,{role:'team',teamId:1},'roll',{}),undefined);
 assert.equal(rollPermissionState.teams[1].lastDice.length,4);
@@ -261,6 +280,10 @@ await room.webSocketMessage(teamSocket,JSON.stringify({type:'hello',role:'team',
 assert.equal(teamSocket.closed,false);
 assert.equal(teamSocket.sent.at(-1).type,'hello_ok');
 assert.equal(teamSocket.sent.at(-1).meta.teamId,0);
+const presenceHostSocket=pendingSocket();presenceHostSocket.serializeAttachment({role:'host',teamId:null,lastSeenAt:Date.now()});roomSockets.push(presenceHostSocket);
+await room.webSocketMessage(teamSocket,JSON.stringify({type:'presence',quality:'live',lastRev:room.state.rev}));
+const presenceMessage=presenceHostSocket.sent.find(message=>message.type==='presence');
+assert.equal(presenceMessage.teams[0].teamId,0);assert.equal(presenceMessage.teams[0].deviceCount,1);assert.ok(presenceMessage.teams[0].lastSeenAt>0);
 assert.equal(await resolveAccessCode(room.state,'team',room.state.accessCodes[1].teamCode),1);
 const crossTeamSocket=pendingSocket();
 roomSockets.push(crossTeamSocket);
@@ -298,6 +321,7 @@ assert.notEqual(duplicateCodes.accessCodes[0].teamCode,duplicateCodes.accessCode
 assert.notEqual(duplicateCodes.accessCodes[0].viewerCode,duplicateCodes.accessCodes[1].viewerCode);
 
 const secrets=normalizeGameState(G.freshState('SECRETS',3));
+secrets.recentActions=[{id:'private-action-id',rev:1,at:Date.now(),actorRole:'team',actorTeam:0}];
 secrets.teams[0].cash=1111;secrets.teams[0].pts=11;secrets.teams[1].cash=2222;secrets.teams[1].pts=22;secrets.teams[2].cash=3333;secrets.teams[2].pts=33;
 secrets.teams[0].cardIntel={round:1,chance:[1,2,3],fate:[1,2,3]};secrets.cardCursors={chance:7,fate:9};
 secrets.receipts=[{id:1,teamId:0,cashDelta:111,afterCash:1111},{id:2,teamId:1,cashDelta:222,afterCash:2222}];
@@ -311,7 +335,7 @@ const viewerProjection=projectStateForActor(secrets,{role:'viewer',teamId:1});
 assert.equal(viewerProjection.teams[1].cash,null);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
 const approvedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(approvedProjection.teams[0].cash,1111);
 secrets.viewers[0].status='removed';const removedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(removedProjection.teams[0].cash,null);secrets.viewers[0].status='approved';
-const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);assert.equal('sessionTokenHash'in hostProjection.viewers[0],false);assert.deepEqual(hostProjection.cardCursors,{chance:7,fate:9});
+const hostProjection=projectStateForActor(secrets,{role:'host',teamId:null});assert.equal(hostProjection.teams[2].cash,3333);assert.equal(hostProjection.accessCodes.length,3);assert.equal('sessionTokenHash'in hostProjection.viewers[0],false);assert.deepEqual(hostProjection.cardCursors,{chance:7,fate:9});assert.equal('recentActions'in hostProjection,false);
 secrets.phase='settle';secrets.ceremonyStep=3;const partialReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(partialReveal.ceremonyReveal.podium.length,3);assert.equal(partialReveal.teams.every(team=>team.cash===null),true);
 secrets.ceremonyStep=5;const fullReveal=projectStateForActor(secrets,{role:'viewer',teamId:null});assert.equal(fullReveal.teams[2].cash,3333);assert.equal(fullReveal.teams[2].items,null);
 

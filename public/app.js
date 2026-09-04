@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.09.02.62';
-import { G } from './game-core.js?v=2026.09.02.62';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.02.62';
+const BUILD_VERSION = '2026.09.04.64';
+import { G } from './game-core.js?v=2026.09.04.64';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.04.64';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -42,19 +42,45 @@ const App = {
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
   highlight: [], cfg: false, history: [], lobbyTimer: null, homeIntroTimer:null,
   access: {host: '', team: '', viewer:'', dev: ''}, installPrompt: null,
-  pendingAction: null, pendingTimer: null, actionSeq: 0, updateReady: false, applyingUpdate: false,
+  pendingAction: null, pendingTimer: null, pendingExpiryTimer:null, actionSeq: 0, updateReady: false, applyingUpdate: false,
   sound: isSoundEnabled(), audioReady:false, radarFocus: null, _radarTimer: null,
   devTab: 'overview', devEventsFilter: { gameId: '', eventType: '', actorRole: '', search: '' }, devGamesFilter: { status: 'all', search: '' },
   fxQueue: [], isFxRunning: false,
   fx: {phase:null,event:null,attack:null,aftershock:null,upgrade:null,sell:null,purchase:null,teamMoment:null,teamSettlement:null,landingReaction:null,stageLanding:null,battlePrompt:null,battleDuel:null,battleResult:null,assignment:null,dice:null,camera:null,positions:{},timers:{},stepText:''},
   hostDrafts:{}, hostSection:'flow', hostTestMode:false, hostTestSteps:1, editingTeamName:null, receiptScope:'mine', leaving:false, leaveActionId:null, leaveTimer:null, battlePromptDone:null,
   viewerId:null, viewerSessionToken:'', viewerName:'', pendingViewer:null,
+  connectionState:'connecting',lastMessageAt:0,lastSyncAt:0,lastLatencyMs:null,pendingRecord:null,pendingWaiting:false,teamPresence:{},
 };
+
+const HEARTBEAT_INTERVAL_MS = 12000;
+const STALE_CONNECTION_MS = 24000;
+const CONNECTION_HANDSHAKE_TIMEOUT_MS = 15000;
+const PRESENCE_INTERVAL_MS = 60000;
+const PENDING_ACTION_TTL_MS = 2 * 60 * 1000;
+const OUTBOX_STORAGE_KEY = 'life:weak-network-outbox';
+const CLIENT_ID_STORAGE_KEY = 'life:connection-client-id';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫」把';
-function campFooterHTML(){ return `<footer class="camp-footer">© 2026 ${esc(CAMP_NAME)} 版權所有</footer>`; }
+const RELEASE_NOTES = [
+  {date:'2026.09.04',version:'v2026.09.04.64',title:'營區弱網強化與首回合免稅',items:['加入斷線偵測、安全補送與各隊連線品質提示','遊戲開始不再立刻收取房屋稅，第 2 回合起才依規則收取']},
+  {date:'2026.09.02',title:'情報局與卡片 BATTLE',items:['恢復機會、命運牌堆前三張情報','踩到機會與命運格也能選擇發動 BATTLE']},
+  {date:'2026.09.01',title:'現場擲骰與購買確認',items:['每隊可由主持人分配不同骰子顆數','購買商品前增加確認步驟，移動步數多時自動加速']},
+  {date:'2026.08.31',title:'金流與收據校正',items:['統一資金異動來源，修正重複或遺漏的收據與通知']},
+  {date:'2026.08.25',title:'五大關卡電影式演出',items:['夜教、陸大、水大、RPG、烤肉加入專屬像素場景與角色動畫','加入主持人測試步數與關卡提示']},
+  {date:'2026.08.24',title:'小隊資訊保密',items:['加入隊輔與觀眾獨立代碼、觀眾申請與名單管理','公開觀戰隱藏各隊資產，基地排行榜改以等級呈現']},
+  {date:'2026.08.22',title:'人生冒險與決戰系統',items:['像素角色取代棋子，加入角色動作、BATTLE 與頒獎台','完成背包、收據、主持人擲骰許可與行動裝置介面']},
+  {date:'2026.08.21',title:'3D 棋盤與大型特效',items:['加入 3D 骰子、跟隨移動鏡頭、基地升級與四大災害演出','建立動畫排隊機制、PWA 與多裝置同步改善']},
+  {date:'2026.08.20',title:'排行榜與特殊操作',items:['拆分現金、房產、總資產與諂媚點數','加入特殊操作限制、效果說明與即時觀戰強化']},
+  {date:'2026.08.19',title:'人生大富翁上線',items:['建立 Cloudflare Workers、Durable Object 即時連線與活動管理','完成主持人、隊輔、觀戰入口及像素風首頁']},
+];
+function campFooterHTML(showReleaseNotes=false){ return `<footer class="camp-footer"><div>© 2026 ${esc(CAMP_NAME)} 版權所有</div>${showReleaseNotes?`<button type="button" class="release-notes-link" id="releaseNotesButton">版本更新細報 · ${esc(BUILD_VERSION)}</button>`:''}</footer>`; }
+function showReleaseNotes(){
+  $('modalTitle').textContent='版本更新細報';
+  $('modalBody').innerHTML=`<section class="release-notes"><header><small>PROJECT JOURNAL</small><b>人生旅途持續進化中</b><span>依 GitHub 版本紀錄整理</span></header><div class="release-notes-timeline">${RELEASE_NOTES.map((entry,index)=>`<article class="release-note ${index===0?'latest':''}"><time>${esc(entry.date)}</time><div><small>${esc(entry.version||(index===0?BUILD_VERSION:'UPDATE'))}</small><h3>${esc(entry.title)}</h3><ul>${entry.items.map(item=>`<li>${esc(item)}</li>`).join('')}</ul></div></article>`).join('')}</div></section>`;
+  $('modal').style.display='flex';
+}
 function entryBackHomeHTML(){return `<button type="button" class="entry-back-home" data-entry-home><span>←</span><b>回首頁</b></button>`;}
 function bindEntryBackHome(){document.querySelectorAll('[data-entry-home]').forEach(button=>button.onclick=()=>go('/'));}
 const phaseNames = {setup:'準備中', lobby:'準備中', running:'進行中', market:'公布房市', sell:'出售基地', shop:'商店與道具', roll:'擲骰移動', settle:'最終結算', ended:'已結束', paused:'已暫停'};
@@ -982,53 +1008,132 @@ function socketURL(gameId){
   u.pathname = `/ws/${encodeURIComponent(gameId)}`; u.search = ''; return u.toString();
 }
 
+function connectionClientId(){
+  try{
+    let id=localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if(!id){id=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;localStorage.setItem(CLIENT_ID_STORAGE_KEY,id);}
+    return id;
+  }catch{return `${Date.now()}-${Math.random().toString(36).slice(2)}`;}
+}
+function setConnectionState(status){
+  App.connectionState=status;
+  App.connected=status==='live';
+  refreshConnectionUI();
+}
+function connectionPresentation(){
+  const status=App.connectionState||'connecting',lastContact=Math.max(Number(App.lastMessageAt)||0,Number(App.lastSyncAt)||0),age=lastContact?Math.max(0,Math.floor((Date.now()-lastContact)/1000)):null,pending=Boolean(App.pendingAction);
+  const map={live:['LIVE','即時','live'],syncing:['SYNC','同步中','syncing'],connecting:['LINK','連線中','connecting'],degraded:['WEAK','弱網補同步','degraded'],offline:['OFF','已離線','offline'],auth_failed:['LOCK','授權失效','auth-failed']};
+  const [short,label,className]=map[status]||map.connecting;
+  let detail='';
+  if(pending)detail=App.pendingWaiting?'操作仍在等待伺服器確認':'1 筆操作送出中';
+  else if(['degraded','offline'].includes(status))detail=age===null?'尚未取得最新狀態':`最後伺服器回應於 ${age} 秒前`;
+  else if(status==='syncing')detail='正在核對最新戰況';
+  return {short,label,className,detail};
+}
+function refreshConnectionUI(){
+  const view=connectionPresentation(),el=document.querySelector('.connection-status');
+  if(el){el.className=`status connection-status ${view.className}`;el.querySelector('b')?.replaceChildren(document.createTextNode(view.label));const detail=el.querySelector('small');if(detail){detail.textContent=view.detail;detail.hidden=!view.detail;}}
+  document.querySelectorAll('[data-presence-team]').forEach(node=>{const status=hostPresenceStatus(Number(node.dataset.presenceTeam));node.className=`host-team-status connection-${status.state}`;node.textContent=status.label;});
+  if(App.screen==='game'&&App.state){const existing=document.querySelector('.connection-recovery'),html=connectionBannerHTML();if(html){if(existing)existing.outerHTML=html;else document.querySelector('.game-topbar')?.insertAdjacentHTML('afterend',html);const retry=document.querySelector('#retryConnection');if(retry)retry.onclick=()=>{setConnectionState(navigator.onLine===false?'offline':'degraded');App.socket?.reconnectNow();};}else existing?.remove();}
+}
+function connectionBannerHTML(){
+  const view=connectionPresentation();if(view.className==='live'&&!view.detail)return '';
+  return `<div class="connection-recovery ${view.className}" role="status"><i></i><div><b>${esc(view.label)}</b><span>${esc(view.detail||'正在重新建立即時連線')}</span></div>${['degraded','offline'].includes(view.className)?'<button type="button" class="btn xs outline" id="retryConnection">立即重連</button>':''}</div>`;
+}
+function hostPresenceStatus(teamId){
+  const record=App.teamPresence?.[teamId],fallback=App.state?.teams?.[teamId]?.joined;
+  if(!record)return fallback?{state:'syncing',label:'◐ 等待健康回報'}:{state:'offline',label:'○ 未連線'};
+  if(!Number(record.deviceCount))return {state:'offline',label:'○ 已離線'};
+  const age=Math.max(0,Date.now()-Number(record.lastSeenAt||0)),devices=`${record.deviceCount} 裝置`;
+  if(age<=75000)return {state:'online',label:`● 即時 · ${devices}`};
+  if(age<=150000)return {state:'degraded',label:`▲ 訊號不穩 · ${devices}`};
+  return {state:'offline',label:`○ 逾時 · ${devices}`};
+}
+function hostOnlineTeamCount(){return (App.state?.teams||[]).filter((_,index)=>hostPresenceStatus(index).state==='online').length;}
+
+function persistPendingAction(){
+  try{if(App.pendingRecord)localStorage.setItem(OUTBOX_STORAGE_KEY,JSON.stringify(App.pendingRecord));else localStorage.removeItem(OUTBOX_STORAGE_KEY);}catch{}
+}
+function armPendingExpiry(record=App.pendingRecord){
+  clearTimeout(App.pendingExpiryTimer);App.pendingExpiryTimer=null;if(!record)return;
+  const remaining=PENDING_ACTION_TTL_MS-(Date.now()-Number(record.createdAt||0));
+  if(remaining<=0){clearPendingAction();render(true);toast('未確認操作已逾期，請查看最新狀態後重新操作',true);return;}
+  App.pendingExpiryTimer=setTimeout(()=>{if(App.pendingAction===record.actionId){clearPendingAction();render(true);toast('未確認操作已逾期，請查看最新狀態後重新操作',true);}},remaining);
+}
+function restorePendingAction(){
+  let record=null;try{record=JSON.parse(localStorage.getItem(OUTBOX_STORAGE_KEY)||'null');}catch{}
+  if(!record||record.gameId!==App.gameId||record.role!==App.role){if(record)try{localStorage.removeItem(OUTBOX_STORAGE_KEY);}catch{}return;}
+  if(Date.now()-Number(record.createdAt||0)>PENDING_ACTION_TTL_MS){try{localStorage.removeItem(OUTBOX_STORAGE_KEY);}catch{}toast('先前未確認的操作已逾期，請查看最新狀態後重新操作',true);return;}
+  App.pendingRecord=record;App.pendingAction=record.actionId;App.pendingActionType=record.action;App.pendingWaiting=true;App.busy=true;armPendingExpiry(record);
+}
+function trySendPendingAction(){
+  const record=App.pendingRecord;if(!record||!App.socket?.authenticated)return false;
+  if(Date.now()-Number(record.createdAt||0)>PENDING_ACTION_TTL_MS){armPendingExpiry(record);return false;}
+  if(record.lastAttemptAt&&Date.now()-record.lastAttemptAt<700)return false;
+  record.lastAttemptAt=Date.now();record.attempts=Number(record.attempts||0)+1;persistPendingAction();
+  const sent=App.socket.send({type:'action',action:record.action,payload:record.payload||{},actionId:record.actionId});
+  if(sent){App.pendingWaiting=false;refreshConnectionUI();}
+  return sent;
+}
+
 class LiveSocket {
-  constructor(gameId, role, token, teamId, accessToken='',identity={}){ this.gameId=gameId; this.role=role; this.token=token; this.teamId=teamId; this.accessToken=accessToken;this.identity=identity; this.ws=null;this.retryTimer=null;this.attempt=0;this.stopped=false;this.connecting=false; }
+  constructor(gameId, role, token, teamId, accessToken='',identity={}){ this.gameId=gameId; this.role=role; this.token=token; this.teamId=teamId; this.accessToken=accessToken;this.identity=identity; this.clientId=connectionClientId();this.ws=null;this.retryTimer=null;this.connectTimer=null;this.heartbeatTimer=null;this.healthTimer=null;this.presenceTimer=null;this.attempt=0;this.stopped=false;this.connecting=false;this.authenticated=false;this.pingSentAt=0; }
   connect(){
     if(this.stopped||this.connecting||this.ws?.readyState===WebSocket.OPEN)return;
+    if(navigator.onLine===false){setConnectionState('offline');return;}
     clearTimeout(this.retryTimer);this.retryTimer=null;this.connecting=true;
-    const ws = new WebSocket(socketURL(this.gameId));this.ws=ws;
-    ws.onopen = () => { if(ws!==this.ws)return;this.connecting=false;this.attempt=0;App.connected=true;render(true);const hello={type:'hello',role:this.role,token:this.token||'',accessToken:this.accessToken||''};if(this.role==='viewer_request')hello.viewerName=this.identity.viewerName||'';if(this.role==='viewer'&&this.identity.viewerId){hello.viewerId=this.identity.viewerId;hello.sessionToken=this.identity.viewerSessionToken||'';}this.send(hello); };
-    ws.onclose = (event) => { if(ws!==this.ws)return;this.connecting=false;App.connected=false;clearPendingAction();if(event.code===1008){this.stopped=true;if(this.role==='viewer_request'){clearPendingViewer();toast('觀眾代碼無效或已更新',true);}else{clearSession();clearAccess(this.role);toast(this.role==='team'?'隊輔代碼無效或已更新':'觀眾資格已失效',true);}setTimeout(()=>go(this.role==='team'?'/team':this.role==='viewer'||this.role==='viewer_request'?'/watch':'/'),250);return;}render(true);if(!this.stopped)this.scheduleReconnect(); };
-    ws.onerror = () => { if(ws!==this.ws)return;App.connected=false;render(true); };
+    setConnectionState(App.state?'degraded':'connecting');
+    const ws = new WebSocket(socketURL(this.gameId));this.ws=ws;clearTimeout(this.connectTimer);this.connectTimer=setTimeout(()=>{if(ws===this.ws&&!this.authenticated){setConnectionState('degraded');this.reconnectNow();}},CONNECTION_HANDSHAKE_TIMEOUT_MS);
+    ws.onopen = () => { if(ws!==this.ws)return;this.connecting=false;this.attempt=0;this.authenticated=false;setConnectionState('syncing');const hello={type:'hello',role:this.role,token:this.token||'',accessToken:this.accessToken||'',clientId:this.clientId,lastRev:Number(App.state?.rev)||0};if(this.role==='viewer_request')hello.viewerName=this.identity.viewerName||'';if(this.role==='viewer'&&this.identity.viewerId){hello.viewerId=this.identity.viewerId;hello.sessionToken=this.identity.viewerSessionToken||'';}this.sendRaw(JSON.stringify(hello)); };
+    ws.onclose = (event) => { if(ws!==this.ws)return;this.stopLoops();this.connecting=false;this.authenticated=false;if(event.code===1008){this.stopped=true;setConnectionState('auth_failed');if(this.role==='viewer_request'){clearPendingViewer();toast('觀眾代碼無效或已更新',true);}else{clearPendingAction();clearSession();clearAccess(this.role);toast(this.role==='team'?'隊輔代碼無效或已更新':'觀眾資格已失效',true);}setTimeout(()=>go(this.role==='team'?'/team':this.role==='viewer'||this.role==='viewer_request'?'/watch':'/'),250);return;}setConnectionState(navigator.onLine===false?'offline':'degraded');if(!this.stopped)this.scheduleReconnect(); };
+    ws.onerror = () => { if(ws!==this.ws)return;setConnectionState(navigator.onLine===false?'offline':'degraded'); };
     ws.onmessage = (e) => {
       if(ws!==this.ws)return;
+      if(e.data==='pong'){this.markMessage();if(this.pingSentAt)App.lastLatencyMs=Math.max(0,Date.now()-this.pingSentAt);return;}
       let m; try { m=JSON.parse(e.data); } catch { return; }
+      this.markMessage();
       if(m.type==='state'){
+        const currentRev=Number(App.state?.rev)||0,incomingRev=Number(m.state?.rev)||0;
+        if(incomingRev < currentRev)return;
         const previous=App.state;
         App.state=m.state;
         if(App.leaveActionId&&m.resolvedActionId===App.leaveActionId){finishTeamLeave();return;}
         if(App.pendingAction){
-          if(m.resolvedActionId === App.pendingAction || m.resolvedActionId === App.pendingActionId){
-            clearPendingAction();
-          } else if(App.role==='team' && App.teamId!==null){
-            const me=m.state.teams?.[App.teamId];
-            if(me?.rolled && (App.pendingActionType === 'roll' || App.pendingActionType === 'reroll')) clearPendingAction();
-          } else if((m.state.rev||0) > (previous?.rev||0)){
+          if(m.resolvedActionId === App.pendingAction){
             clearPendingAction();
           }
         }
-        processGameFx(previous,m.state);
+        const skipped=previous&&incomingRev>(Number(previous.rev)||0)+1;
+        if(skipped){resetGameFx();toast('已補同步至最新戰況');}else processGameFx(previous,m.state);
+        App.lastSyncAt=Date.now();setConnectionState('live');
         App.gameMeta={...App.gameMeta,status:m.status};
         render(true);
       }
-      else if(m.type==='hello_ok'){ App.connected=true;App.teamId=Number.isInteger(m.meta?.teamId)?m.meta.teamId:null;App.viewerId=m.meta?.viewerId||App.viewerId;App.viewerName=m.meta?.viewerName||App.viewerName;App.state=m.state; App.gameMeta={...App.gameMeta,...m.meta};clearPendingViewer(); saveSession(); render(true); }
-      else if(m.type==='viewer_pending'){App.connected=true;App.teamId=m.teamId;App.viewerId=m.viewerId;App.viewerName=m.viewerName;App.pendingViewer={gameId:this.gameId,accessToken:this.accessToken,viewerId:m.viewerId,viewerName:m.viewerName,teamId:m.teamId,teamName:m.teamName,gameName:m.gameName,status:'pending'};savePendingViewer();App.screen='viewer-waiting';render(true);}
+      else if(m.type==='hello_ok'){const previousRev=Number(App.state?.rev)||0,incomingRev=Number(m.state?.rev)||0;if(incomingRev<previousRev)return;this.authenticated=true;App.teamId=Number.isInteger(m.meta?.teamId)?m.meta.teamId:null;App.viewerId=m.meta?.viewerId||App.viewerId;App.viewerName=m.meta?.viewerName||App.viewerName;if(App.state&&incomingRev>previousRev)resetGameFx();App.state=m.state;App.lastSyncAt=Date.now();App.gameMeta={...App.gameMeta,...m.meta};clearPendingViewer();saveSession();this.startLoops();setConnectionState('live');trySendPendingAction();render(true);if(previousRev&&incomingRev>previousRev)toast('連線已恢復，戰況同步完成'); }
+      else if(m.type==='viewer_pending'){this.authenticated=true;App.teamId=m.teamId;App.viewerId=m.viewerId;App.viewerName=m.viewerName;App.pendingViewer={gameId:this.gameId,accessToken:this.accessToken,viewerId:m.viewerId,viewerName:m.viewerName,teamId:m.teamId,teamName:m.teamName,gameName:m.gameName,status:'pending'};savePendingViewer();App.screen='viewer-waiting';this.startLoops();setConnectionState('live');render(true);}
       else if(m.type==='viewer_approved'){App.viewerId=m.viewerId;App.viewerSessionToken=m.sessionToken;App.role='viewer';clearPendingViewer();this.stopped=true;const old=this.ws;this.ws=null;try{old?.close();}catch{}App.screen='game';App.socket=new LiveSocket(App.gameId,'viewer','',App.teamId,'',{viewerId:App.viewerId,viewerSessionToken:App.viewerSessionToken});App.socket.connect();render(true);}
       else if(m.type==='viewer_request_rejected'){toast(m.message||'觀戰申請無法建立',true);clearPendingViewer();this.close();setTimeout(()=>go('/watch'),350);}
       else if(m.type==='viewer_access_revoked'){toast(m.message||'觀眾資格已失效',true);clearSession();clearPendingViewer();this.close();setTimeout(()=>go('/watch'),300);}
-      else if(m.type==='action_ok'){if(App.leaveActionId&&m.actionId===App.leaveActionId){finishTeamLeave();return;}clearPendingAction();render(true); }
-      else if(m.type==='error'){ clearPendingAction();toast(m.error || '操作失敗', true);render(true); }
+      else if(m.type==='presence'){const receivedAt=Date.now(),serverTime=Number(m.serverTime)||receivedAt;App.teamPresence=Object.fromEntries((m.teams||[]).map(item=>[Number(item.teamId),{...item,lastSeenAt:receivedAt-Math.max(0,serverTime-Number(item.lastSeenAt||0))}]));refreshConnectionUI();if(App.role==='host'&&App.hostSection==='teams')render(true);}
+      else if(m.type==='action_ok'){if(App.leaveActionId&&m.actionId===App.leaveActionId){finishTeamLeave();return;}if(!App.pendingAction||m.actionId===App.pendingAction)clearPendingAction();render(true); }
+      else if(m.type==='error'){if(!App.pendingAction||!m.actionId||m.actionId===App.pendingAction)clearPendingAction();toast(m.error || '操作失敗', true);render(true); }
       else if(m.type==='kicked'){ toast(m.message || '你已被主持人踢出活動', true);clearSession();this.close();setTimeout(()=>setHome(),300); }
       else if(m.type==='credentials_changed'){toast(m.message||'登入代碼已更新',true);clearSession();clearPendingViewer();if(['team','viewer'].includes(this.role))clearAccess(this.role);this.close();setTimeout(()=>go(this.role==='team'?'/team':'/watch'),350);}
       else if(m.type==='notice'){ toast(m.message || ''); }
     };
 
   }
-  scheduleReconnect(){ if(this.stopped||this.retryTimer)return;const delay=Math.min(15000,1000*(2**Math.min(this.attempt++,4)))+Math.floor(Math.random()*500);this.retryTimer=setTimeout(()=>{this.retryTimer=null;this.connect();},delay); }
-  reconnectNow(){ if(this.stopped)return;clearTimeout(this.retryTimer);this.retryTimer=null;try{if(this.ws&&this.ws.readyState!==WebSocket.CLOSED)this.ws.close();}catch{}this.ws=null;this.connecting=false;this.connect(); }
-  send(message){ if(this.ws?.readyState===WebSocket.OPEN){this.ws.send(JSON.stringify(message));return true;}toast('連線尚未恢復，請稍候',true);return false; }
-  close(){ this.stopped=true;clearTimeout(this.retryTimer);this.retryTimer=null;const ws=this.ws;this.ws=null;try{ws?.close();}catch{} }
+  markMessage(){App.lastMessageAt=Date.now();if(this.authenticated&&App.connectionState!=='live')setConnectionState('live');}
+  startLoops(){this.stopLoops();App.lastMessageAt=Date.now();this.sendHeartbeat();this.sendPresence();this.heartbeatTimer=setInterval(()=>this.sendHeartbeat(),HEARTBEAT_INTERVAL_MS);this.presenceTimer=setInterval(()=>this.sendPresence(),PRESENCE_INTERVAL_MS);this.healthTimer=setInterval(()=>this.checkHealth(),2000);}
+  stopLoops(){clearTimeout(this.connectTimer);clearInterval(this.heartbeatTimer);clearInterval(this.healthTimer);clearInterval(this.presenceTimer);this.connectTimer=null;this.heartbeatTimer=this.healthTimer=this.presenceTimer=null;}
+  sendHeartbeat(){if(this.ws?.readyState!==WebSocket.OPEN)return;this.pingSentAt=Date.now();this.sendRaw('ping');}
+  sendPresence(){if(!this.authenticated||!['team','host'].includes(this.role))return;this.sendRaw(JSON.stringify({type:'presence',quality:App.connectionState,lastRev:Number(App.state?.rev)||0}));}
+  checkHealth(){refreshConnectionUI();if(navigator.onLine===false){setConnectionState('offline');return;}if(this.authenticated&&Date.now()-Number(App.lastMessageAt||0)>STALE_CONNECTION_MS){setConnectionState('degraded');this.reconnectNow();}}
+  scheduleReconnect(){ if(this.stopped||this.retryTimer||navigator.onLine===false)return;const delay=Math.min(10000,500*(2**Math.min(this.attempt++,5)))+Math.floor(Math.random()*350);this.retryTimer=setTimeout(()=>{this.retryTimer=null;this.connect();},delay); }
+  reconnectNow(){ if(this.stopped)return;clearTimeout(this.retryTimer);this.retryTimer=null;this.stopLoops();const old=this.ws;this.ws=null;this.authenticated=false;try{if(old&&old.readyState!==WebSocket.CLOSED)old.close();}catch{}this.connecting=false;this.connect(); }
+  sendRaw(data){if(this.ws?.readyState!==WebSocket.OPEN)return false;try{this.ws.send(data);return true;}catch{return false;}}
+  send(message){ if(!this.authenticated)return false;return this.sendRaw(JSON.stringify(message)); }
+  close(){ this.stopped=true;clearTimeout(this.retryTimer);this.retryTimer=null;this.stopLoops();const ws=this.ws;this.ws=null;this.authenticated=false;try{ws?.close();}catch{} }
 }
 
 function sprite(type,size){
@@ -1080,11 +1185,11 @@ function boardAftermathHTML(kind){
   return `<div class="board-aftermath board-wildfire">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div>`;
 }
 function routeEntry(){ const p=location.pathname.replace(/\/+$/,'')||'/'; return p==='/admin'?'admin':p==='/team'?'team':p==='/watch'?'watch':(p==='/dev'||p==='/developer')?'dev':'home'; }
-function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();clearTimeout(App.homeIntroTimer);App.connected=false;App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':path==='/watch'?'watch':(path==='/dev'||path==='/developer')?'dev':'home'; history.pushState({},'',path); render(true); }
-function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false; App.history=[]; render(true); }
+function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();clearTimeout(App.homeIntroTimer);App.connected=false;App.connectionState='connecting';App.screen='home'; App.entry=path==='/admin'?'admin':path==='/team'?'team':path==='/watch'?'watch':(path==='/dev'||path==='/developer')?'dev':'home'; history.pushState({},'',path); render(true); }
+function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false;App.connectionState='connecting';App.teamPresence={}; App.history=[]; render(true); }
 function entryURL(path){ return `${location.origin}${path}`; }
 function openGame(game, role, token='', teamId=null, accessToken='',identity={}){
-  clearInterval(App.lobbyTimer);clearPendingAction();resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId;App.viewerId=identity.viewerId||null;App.viewerSessionToken=identity.viewerSessionToken||'';App.viewerName=identity.viewerName||''; App.access[role]=accessToken||App.access[role]||''; App.screen=role==='viewer_request'?'viewer-waiting':'game'; App.tab=role==='host'?'host':'main'; App.state=null; App.connected=false;
+  clearInterval(App.lobbyTimer);clearPendingAction(false);resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId;App.viewerId=identity.viewerId||null;App.viewerSessionToken=identity.viewerSessionToken||'';App.viewerName=identity.viewerName||''; App.access[role]=accessToken||App.access[role]||''; App.screen=role==='viewer_request'?'viewer-waiting':'game'; App.tab=role==='host'?'host':'main'; App.state=null; App.connected=false;App.connectionState=navigator.onLine===false?'offline':'connecting';App.lastMessageAt=0;App.lastSyncAt=0;App.teamPresence={};restorePendingAction();
   if(role==='team'||role==='viewer')App.audioReady=SoundFX.unlockAudio();else App.audioReady=SoundFX.isAudioReady();
   preloadAttackArt();
   App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId,App.access[role],identity); App.socket.connect(); render(true);
@@ -1144,9 +1249,10 @@ function renderHome(){
       </nav>
       ${intro?`<div class="life-intro" aria-label="人生旅途開場"><div class="life-intro-road"><i></i><i></i><i></i><i></i><i></i></div><div class="life-intro-copy"><small>THE ROAD IS CALLING</small><strong>人生旅途即將啟程</strong><span>每一次選擇，都讓人生走向不同方向</span></div><div class="life-intro-actions"><button type="button" id="igniteLifeSound">🔊 點燃旅途音效</button><button type="button" id="skipLifeIntro">跳過開場</button></div></div>`:''}
     </section>
-    ${campFooterHTML()}
+    ${campFooterHTML(true)}
   </main>`;
   $('refreshLobby').onclick=refreshLobby;
+  $('releaseNotesButton').onclick=showReleaseNotes;
   bindHomeRoutes();
   if(intro){
     $('skipLifeIntro').onclick=()=>finishLifeIntro(true);
@@ -1746,8 +1852,8 @@ async function renderDevTools(container){
   container.innerHTML = '<div class="note">正在載入系統設定…</div>';
   const data = await devApi('/api/dev/overview');
   const doEnabled = Boolean(data.doEnabled);
-  const idleHours = data.idleTimeoutHours || 3;
-  const isPreset = [0.5, 1, 2, 3, 4, 6, 8, 12, 24].includes(idleHours);
+  const idleHours = data.idleTimeoutHours || 120;
+  const isPreset = [0.5, 1, 2, 3, 4, 6, 8, 12, 24, 72, 120, 168].includes(idleHours);
 
   container.innerHTML = `
     <div class="card">
@@ -1769,7 +1875,7 @@ async function renderDevTools(container){
       <div class="ch">★ 活動閒置自動關閉時間設定</div>
       <div class="cb">
         <p style="font-size:13px;line-height:1.6">
-          當活動無任何操作或隊伍離線達到設定時長後，系統將自動結束活動並儲存 D1 記錄，釋放伺服器資源。<br>
+          當活動長時間沒有有效遊戲操作時，系統才會自動結束並儲存 D1 記錄；連線心跳不會延長期限，無人使用時 DO 本身可正常休眠。<br>
           <b>目前設定：<span class="dev-badge gold">超過 ${idleHours} 小時</span></b>
         </p>
         <div class="row wrap" style="align-items:flex-end;margin-top:10px;gap:8px">
@@ -1779,12 +1885,15 @@ async function renderDevTools(container){
               <option value="0.5" ${idleHours===0.5?'selected':''}>0.5 小時（30 分鐘 - 測試用）</option>
               <option value="1" ${idleHours===1?'selected':''}>1 小時</option>
               <option value="2" ${idleHours===2?'selected':''}>2 小時</option>
-              <option value="3" ${idleHours===3?'selected':''}>3 小時（預設值）</option>
+              <option value="3" ${idleHours===3?'selected':''}>3 小時</option>
               <option value="4" ${idleHours===4?'selected':''}>4 小時</option>
               <option value="6" ${idleHours===6?'selected':''}>6 小時</option>
               <option value="8" ${idleHours===8?'selected':''}>8 小時</option>
               <option value="12" ${idleHours===12?'selected':''}>12 小時</option>
               <option value="24" ${idleHours===24?'selected':''}>24 小時</option>
+              <option value="72" ${idleHours===72?'selected':''}>3 天</option>
+              <option value="120" ${idleHours===120?'selected':''}>5 天（預設值）</option>
+              <option value="168" ${idleHours===168?'selected':''}>7 天</option>
               <option value="custom" ${!isPreset?'selected':''}>自訂小時數...</option>
             </select>
           </label>
@@ -2339,7 +2448,7 @@ function hostPanel(){
   h+=`<nav class="host-console-nav" aria-label="主持人工作區">${[['flow','🎮 流程'],['teams','👥 隊伍'],['rules','⚙️ 規則'],['history','🗂️ 紀錄']].map(([key,label])=>`<button class="host-section ${section===key?'on':''}" data-section="${key}">${label}</button>`).join('')}</nav>`;
   h+=`<div class="host-workspace" data-section="${section}">`;
   if(section==='flow'){
-    h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔連線</small><b>${S.teams.filter(t=>t.joined).length}/${S.teams.length} 隊</b></div></div>`;
+    h+=`<div class="host-status-grid"><div><small>目前階段</small><b>${esc(phaseNames[S.phase]||S.phase)}</b></div><div><small>房市倍率</small><b>${esc(marketName)} ×${(S.settings.market[S.market]||100)/100}</b></div><div><small>🏦 銀行庫房</small><b>${G.money(S.bank||0)}</b></div><div><small>現在操作</small><b>${active?esc(active.name):'尚未指定'}</b></div><div><small>隊輔健康連線</small><b>${hostOnlineTeamCount()}/${S.teams.length} 隊</b></div></div>`;
     if(['settle','ended'].includes(S.phase))h+=ceremonyControlDockHTML(ceremonyStep(S.ceremonyStep),true);
     if(fxStat)h+=`<div class="host-queue-alert"><span>⏳ ${esc(fxStat.text)}</span><button type="button" class="btn xs outline" id="bSkipFx">略過視覺</button></div>`;
     if(S.phase==='roll'){
@@ -2365,7 +2474,7 @@ function hostPanel(){
     if(S.phase!=='ended')h+=`<section class="host-work-card finish"><div class="host-work-title"><span>🏆 結算控制</span><small>活動尾聲才使用</small></div><div class="host-finish-actions">${S.phase==='settle'?'<button class="btn sm purple" id="bResume">↩ 返回遊戲</button>':'<button class="btn sm gold" id="bSettle">進行最終結算</button>'}<button class="btn sm dark" id="bEnd">結束並封存活動</button></div></section>`;
   }
   if(section==='teams'){
-    h+=`<div class="host-section-intro"><b>隊伍與裝置</b><span>在隊伍清單直接修改隊名、查看連線狀態並即時調整資源。</span></div><section class="host-work-card"><div class="host-work-title"><span>隊伍管理與即時調整</span><small>${S.teams.filter(t=>t.joined).length} 台在線 ｜ 輸入正數增加、負數扣除</small></div><div class="host-unified-team-list">${S.teams.map((t,i)=>{const editing=App.editingTeamName===i,draft=App.hostDrafts[`name:${i}`]??t.name;return `<div class="host-team-row ${editing?'editing':''}"><div class="host-team-head"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-team-main">${editing?`<div class="team-edit-input-row"><input class="team-name-edit" data-i="${i}" value="${esc(draft)}" maxlength="30" aria-label="修改第 ${i+1} 組隊名"><button type="button" class="team-name-save" data-i="${i}" title="儲存隊名">✓</button><button type="button" class="team-name-cancel" data-i="${i}" title="取消修改">×</button></div>`:`<div class="team-name-display"><b>${esc(t.name)}</b><button type="button" class="team-name-edit-button" data-i="${i}" title="修改隊名">✎</button><span class="host-team-status ${t.joined?'online':'offline'}">${t.joined?'● 已連線':'○ 未連線'}</span></div>`}<div class="host-team-wealth"><span>💰 ${G.money(t.cash)}</span><span>✨ ${t.pts} 點</span>${t.jail>0?`<span class="host-jail-tag">⛓️ 監獄 (${t.jail})</span>`:''}</div></div>${t.joined&&!editing?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div><div class="host-team-adjustments"><div class="ain"><input class="cash" data-i="${i}" type="number" inputmode="numeric" placeholder="現金 (+/-)"><button class="btn xs gold csgo" data-i="${i}">套用</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" inputmode="numeric" placeholder="點數 (+/-)"><button class="btn xs blue ptgo" data-i="${i}">套用</button></div></div></div>`;}).join('')}</div></section>`;
+    h+=`<div class="host-section-intro"><b>隊伍與裝置</b><span>在隊伍清單直接修改隊名、查看連線健康並即時調整資源。</span></div><section class="host-work-card"><div class="host-work-title"><span>隊伍管理與即時調整</span><small>${hostOnlineTeamCount()} 隊健康在線 ｜ 輸入正數增加、負數扣除</small></div><div class="host-unified-team-list">${S.teams.map((t,i)=>{const editing=App.editingTeamName===i,draft=App.hostDrafts[`name:${i}`]??t.name,presence=hostPresenceStatus(i);return `<div class="host-team-row ${editing?'editing':''}"><div class="host-team-head"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-team-main">${editing?`<div class="team-edit-input-row"><input class="team-name-edit" data-i="${i}" value="${esc(draft)}" maxlength="30" aria-label="修改第 ${i+1} 組隊名"><button type="button" class="team-name-save" data-i="${i}" title="儲存隊名">✓</button><button type="button" class="team-name-cancel" data-i="${i}" title="取消修改">×</button></div>`:`<div class="team-name-display"><b>${esc(t.name)}</b><button type="button" class="team-name-edit-button" data-i="${i}" title="修改隊名">✎</button><span class="host-team-status connection-${presence.state}" data-presence-team="${i}">${esc(presence.label)}</span></div>`}<div class="host-team-wealth"><span>💰 ${G.money(t.cash)}</span><span>✨ ${t.pts} 點</span>${t.jail>0?`<span class="host-jail-tag">⛓️ 監獄 (${t.jail})</span>`:''}</div></div>${t.joined&&!editing?`<button class="btn xs dark kick" data-i="${i}">踢出</button>`:''}</div><div class="host-team-adjustments"><div class="ain"><input class="cash" data-i="${i}" type="number" inputmode="numeric" placeholder="現金 (+/-)"><button class="btn xs gold csgo" data-i="${i}">套用</button></div><div class="ain"><input class="pts" data-i="${i}" type="number" inputmode="numeric" placeholder="點數 (+/-)"><button class="btn xs blue ptgo" data-i="${i}">套用</button></div></div></div>`;}).join('')}</div></section>`;
     h+=hostAccessCodeGridHTML(S);
   }
   if(section==='rules')h+=`<div class="host-section-intro"><b>遊戲規則與數值</b><span>所有設定會在按下儲存後一次驗證套用。</span></div><div class="host-rules-panel">${cfgHTML()}</div>`;
@@ -2433,19 +2542,22 @@ function renderGame(){
   const nav=tabs.length?`<div class="game-head"><div class="row tabs">${tabs.map(([k,n])=>`<button class="tg tb ${App.tab===k?'on':''}" data-k="${k}">${n}</button>`).join('')}</div></div>`:'';
   const turnBanner=App.role==='team'?activeTurnHTML():'';
   const roleLabel=privateViewer?'本隊觀眾':roleNames[App.role];
-  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleLabel)}</span><span class="status ${App.connected?'':'off'}" aria-live="polite"><i class="status-dot"></i>${App.connected?'LIVE':'連線中'}</span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${teamSettlementFx}${landingReaction}${stageLandingFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}${stageNotice}`;
+  const connection=connectionPresentation();
+  $('app').innerHTML=`<div class="bar game-topbar"><div><span class="code2">${esc(App.gameMeta?.name||S.code)}</span><br><span class="ph">${esc(S.paused?'已暫停':(phaseNames[S.phase]||S.phase))} · 第 ${S.round} 回合</span></div><div class="connection-row"><button type="button" class="btn-sound-toggle ${App.sound?'':'muted'}" id="bSound" title="切換音效">${App.sound?'🔊 ON':'🔇 OFF'}</button><span class="role-pill">${esc(roleLabel)}</span><span class="status connection-status ${connection.className}" aria-live="polite"><i class="status-dot"></i><span><b>${esc(connection.label)}</b><small ${connection.detail?'':'hidden'}>${esc(connection.detail)}</small></span></span><button class="btn xs ink" id="leaveGame">離開</button></div></div>${connectionBannerHTML()}${teamStatusHTML()}${turnBanner}${phaseTrack}${nav}${body}${App.role==='viewer'?'':campFooterHTML()}${audioWake}${eventFx}${phaseFx}${diceFx}${purchaseFx}${teamMomentFx}${teamSettlementFx}${landingReaction}${stageLandingFx}${battleEncounter}${battleDuel}${battleResult}${assignmentFx}${attackFx}${stageNotice}`;
 
   restoreHostDrafts();bindGame(); fitBoard();
 }
 
-function clearPendingAction(){ clearTimeout(App.pendingTimer);App.pendingTimer=null;App.pendingAction=null;App.pendingActionType=null;App.busy=false; }
+function clearPendingAction(removeStored=true){ clearTimeout(App.pendingTimer);clearTimeout(App.pendingExpiryTimer);App.pendingTimer=null;App.pendingExpiryTimer=null;App.pendingAction=null;App.pendingActionType=null;App.pendingRecord=null;App.pendingWaiting=false;App.busy=false;if(removeStored)persistPendingAction(); }
 function send(action,payload={},options={}){
   if(App.busy){toast('上一個操作仍在處理中');return;}
-  if(!App.socket){toast('尚未連線',true);return;}
-  const actionId=`${Date.now()}-${++App.actionSeq}`;
-  if(!App.socket.send({type:'action',action,payload,actionId}))return;
-  App.pendingAction=actionId;App.pendingActionType=action;App.busy=true;if(!options.preserveView)render(true);
-  App.pendingTimer=setTimeout(()=>{if(App.pendingAction===actionId){clearPendingAction();render(true);toast('操作已完成或逾時，已恢復控制',true);}},4500);
+  if(!App.socket){toast('尚未進入即時連線',true);return;}
+  const actionId=`${connectionClientId()}:${Date.now()}:${++App.actionSeq}`;
+  App.pendingRecord={gameId:App.gameId,role:App.role,actionId,action,payload,createdAt:Date.now(),lastAttemptAt:0,attempts:0};
+  App.pendingAction=actionId;App.pendingActionType=action;App.pendingWaiting=false;App.busy=true;persistPendingAction();armPendingExpiry(App.pendingRecord);
+  const sent=trySendPendingAction();if(!sent){App.pendingWaiting=true;setConnectionState(navigator.onLine===false?'offline':'degraded');toast('網路不穩，操作已保留並會在連線恢復後安全補送');}
+  if(!options.preserveView)render(true);else refreshConnectionUI();
+  App.pendingTimer=setTimeout(()=>{if(App.pendingAction===actionId){App.pendingWaiting=true;refreshConnectionUI();render(true);toast('伺服器尚未確認，請勿重複操作；系統會自動補送',true);}},4500);
 }
 
 function finishTeamLeave(){
@@ -2490,6 +2602,7 @@ function bindGame(){
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{const tab=b.dataset.k;if(!switchTeamPanel(tab)){App.tab=tab;render(true);}});
   document.querySelectorAll('.receipt-scope').forEach(b=>b.onclick=()=>{App.receiptScope=b.dataset.scope==='all'?'all':'mine';if(!switchTeamPanel('receipts'))render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？'))requestLeaveGame();});
+  bind('retryConnection',()=>{setConnectionState(navigator.onLine===false?'offline':'degraded');App.socket?.reconnectNow();});
   bind('bSound',()=>{App.sound=toggleSound();if(App.sound)App.audioReady=SoundFX.unlockAudio();render(true);toast(App.sound?'🔊 音效已開啟':'🔇 音效已靜音');});
   bind('bAudioWake',()=>{App.audioReady=SoundFX.unlockAudio();if(App.audioReady)SoundFX.playFestivalIntro();render(true);toast(App.audioReady?'♪ 像素音效已啟動':'瀏覽器仍阻擋音效，請再點一次',!App.audioReady);});
   bind('replayStageFanfare',()=>{App.audioReady=SoundFX.unlockAudio();SoundFX.playStageFanfare();toast('♪ 夜教頒獎奏樂！');});
@@ -2574,7 +2687,7 @@ function bindGame(){
     document.querySelectorAll('.csgo').forEach(b=>b.onclick=()=>{const input=document.querySelector(`.cash[data-i="${b.dataset.i}"]`),v=Number(input.value);if(Number.isFinite(v)){delete App.hostDrafts[`cash:${b.dataset.i}`];input.value='';send('adjustCash',{teamId:Number(b.dataset.i),amount:v},{preserveView:true});}});document.querySelectorAll('.ptgo').forEach(b=>b.onclick=()=>{const input=document.querySelector(`.pts[data-i="${b.dataset.i}"]`),v=Number(input.value);if(Number.isFinite(v)){delete App.hostDrafts[`pts:${b.dataset.i}`];input.value='';send('adjustPts',{teamId:Number(b.dataset.i),amount:v},{preserveView:true});}});
     bind('bSaveCfg',()=>{const entries=[...document.querySelectorAll('.cfg')].map(inp=>({path:inp.dataset.p,value:Number(inp.value)}));Object.keys(App.hostDrafts).filter(k=>k.startsWith('cfg:')).forEach(k=>delete App.hostDrafts[k]);send('setConfigs',{entries});});
   }
-  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bSound'))b.disabled=true;});
+  if(App.busy)document.querySelectorAll('#app button').forEach(b=>{if(!b.matches('.tb,#leaveGame,#bSound,#retryConnection'))b.disabled=true;});
 }
 async function loadHistory(){
   try{const auth=App.token||App.access.host;const data=await api(`/api/games/${encodeURIComponent(App.gameId)}/history`,{headers:{Authorization:`Bearer ${auth}`}});App.history=data.events||[];const box=$('historyBox');if(box)box.innerHTML=`<div class="history-item">共 ${App.history.length} 筆事件（台灣時間 UTC+8）</div>`+App.history.slice(0,80).map(e=>`<div class="history-item">${esc(formatTWTime(e.createdAt))}　${esc(e.actorRole)}${e.actorTeam!==null&&e.actorTeam!==undefined?'／第 '+(e.actorTeam+1)+' 組':''}<br>${esc(e.eventType)}：${esc(e.message||'')}</div>`).join('');}catch(e){toast('歷史紀錄讀取失敗：'+e.message,true);}
@@ -2608,7 +2721,9 @@ if(document.readyState==='loading'){
 }
 window.addEventListener('popstate',()=>{App.socket?.close();App.socket=null;clearPendingAction();resetGameFx();App.connected=false;App.entry=routeEntry();App.screen='home';render(true);});
 window.addEventListener('resize',fitBoard);window.addEventListener('orientationchange',()=>setTimeout(fitBoard,300));
-window.addEventListener('online',()=>App.socket?.reconnectNow());
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!App.connected)App.socket?.reconnectNow();});
+window.addEventListener('online',()=>{setConnectionState('degraded');App.socket?.reconnectNow();});
+window.addEventListener('offline',()=>setConnectionState('offline'));
+window.addEventListener('focus',()=>{if(App.socket&&(!App.connected||Date.now()-Number(App.lastMessageAt||0)>STALE_CONNECTION_MS))App.socket.reconnectNow();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&App.socket&&(!App.connected||Date.now()-Number(App.lastMessageAt||0)>STALE_CONNECTION_MS))App.socket.reconnectNow();});
 
 

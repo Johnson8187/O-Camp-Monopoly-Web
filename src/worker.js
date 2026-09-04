@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.09.02.62';
+const APP_BUILD_VERSION = '2026.09.04.64';
 
 
 
@@ -30,7 +30,9 @@ async function verifyAccessCode(value, expected){return Boolean(value&&expected&
 function statusOf(state){ return state.phase==='ended'?'ended':state.phase==='settle'?'settle':state.paused?'paused':state.phase==='setup'?'lobby':'running'; }
 
 function getRoom(env,id){ return env.GAME_ROOMS.get(env.GAME_ROOMS.idFromName(id)); }
-const DEFAULT_IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 24 * 60 * 60 * 1000;
+const MAX_RECENT_ACTIONS = 300;
+const PASSIVE_ACTIVITY_EVENTS = new Set(['teamJoin','teamLeave','viewerOnline','viewerRequest']);
 
 export async function getIdleTimeoutMs(env){
   try{
@@ -528,6 +530,8 @@ export function normalizeGameState(state){
   delete s._transactions;
   s.receipts=Array.isArray(s.receipts)?s.receipts:[];
   s.receiptSeq=Number(s.receiptSeq)||0;
+  s.gameplayActivityAt=Math.max(0,Number(s.gameplayActivityAt)||0);
+  s.recentActions=Array.isArray(s.recentActions)?s.recentActions.filter(item=>item&&text(item.id)).slice(0,MAX_RECENT_ACTIONS).map(item=>({id:text(item.id).slice(0,80),rev:Math.max(0,Number(item.rev)||0),at:Math.max(0,Number(item.at)||0),actorRole:text(item.actorRole).slice(0,20),actorTeam:Number.isInteger(Number(item.actorTeam))?Number(item.actorTeam):null})):[];
   if(!('activeTeamId' in s))s.activeTeamId=null;
   if(!('pendingBattle' in s))s.pendingBattle=null;
   if(!('pendingCard' in s))s.pendingCard=null;
@@ -631,6 +635,8 @@ function redactTeam(team){
 export function projectStateForActor(fullState,actor={role:'viewer',teamId:null},onlineViewerIds=new Set()){
   const projected=G.clone(fullState),role=actor?.role||'viewer',teamId=Number.isInteger(actor?.teamId)?actor.teamId:null;
   if(role==='dev'||role==='system')return projected;
+  delete projected.recentActions;
+  delete projected.gameplayActivityAt;
   if(role==='host'){projected.viewers=(projected.viewers||[]).map(viewer=>publicViewerRecord(viewer,onlineViewerIds.has(viewer.id)));return projected;}
   const reveal=publicCeremonyReveal(fullState),resultsPublic=reveal.full;
   projected.ceremonyReveal=reveal;
@@ -652,6 +658,12 @@ export function projectStateForActor(fullState,actor={role:'viewer',teamId:null}
 
 function socketSend(ws,payload){
   try{ws.send(JSON.stringify(payload));return true;}catch{return false;}
+}
+
+function rememberProcessedAction(state,actionId,rev,actor={}){
+  if(!actionId)return;
+  const id=text(actionId).slice(0,80);
+  state.recentActions=[{id,rev:Number(rev)||0,at:Date.now(),actorRole:text(actor.role).slice(0,20),actorTeam:Number.isInteger(Number(actor.teamId))?Number(actor.teamId):null},...(state.recentActions||[]).filter(item=>item.id!==id)].slice(0,MAX_RECENT_ACTIONS);
 }
 
 function appendReceipts(previous,next,action,actionId=''){
@@ -736,6 +748,11 @@ export class GameRoom {
     this.actionQueue = Promise.resolve();
     this.processedActions = new Map();
     this.viewerRequestCooldown = new Map();
+    try{
+      if(this.ctx.setWebSocketAutoResponse&&globalThis.WebSocketRequestResponsePair){
+        this.ctx.setWebSocketAutoResponse(new globalThis.WebSocketRequestResponsePair('ping','pong'));
+      }
+    }catch{}
   }
   async load(){
     await this.ctx.blockConcurrencyWhile(async()=>{
@@ -747,11 +764,15 @@ export class GameRoom {
       const row=await this.env.DB.prepare('SELECT id,name,status,team_count,host_token_hash,state_json,updated_at FROM games WHERE id=?').bind(this.gameId).first();
       if(!row) throw new Error('找不到活動');
       this.meta={id:row.id,name:row.name,status:row.status,teamCount:row.team_count,hostTokenHash:row.host_token_hash};
-      const source=cached||JSON.parse(row.state_json||'{}'),hadCodes=Array.isArray(source.accessCodes)&&source.accessCodes.length===row.team_count&&source.accessCodes.every(validAccessEntry),hadViewers=Array.isArray(source.viewers);
+      let dbState={};try{dbState=JSON.parse(row.state_json||'{}');}catch{}
+      const cachedRev=Number(cached?.rev)||0,dbRev=Number(dbState?.rev)||0;
+      const source=cached&&cachedRev>=dbRev?cached:dbState,hadCodes=Array.isArray(source.accessCodes)&&source.accessCodes.length===row.team_count&&source.accessCodes.every(validAccessEntry),hadViewers=Array.isArray(source.viewers);
       this.state=normalizeGameState(source); this.loaded=true;
-      const dbActivity=Date.parse(row.updated_at)||Date.now();
-      this.lastActivityAt=Math.max(storedActivity,dbActivity);
-      if(!cached||!hadCodes||!hadViewers) await this.ctx.storage.put('state',this.state);
+      this.processedActions=new Map((this.state.recentActions||[]).map(item=>[item.id,{rev:item.rev,time:item.at}]));
+      const dbActivity=Date.parse(row.updated_at)||Date.now(),stateActivity=Number(this.state.gameplayActivityAt)||0;
+      this.lastActivityAt=Math.max(storedActivity,stateActivity)||(dbActivity);
+      this.state.gameplayActivityAt=this.lastActivityAt;
+      if(!cached||dbRev>cachedRev||!hadCodes||!hadViewers) await this.ctx.storage.put('state',this.state);
       if((!hadCodes||!hadViewers)&&this.env.DB?.prepare)await this.env.DB.prepare('UPDATE games SET state_json=? WHERE id=?').bind(JSON.stringify(this.state),this.gameId).run();
       await this.ctx.storage.put('gameId',this.gameId);
       await this.ctx.storage.put('lastActivityAt',this.lastActivityAt);
@@ -768,7 +789,7 @@ export class GameRoom {
     if(this.state?.phase==='ended') return;
     const row=await this.env.DB.prepare('SELECT status,updated_at FROM games WHERE id=?').bind(this.meta.id).first();
     if(!row || row.status==='ended') return;
-    const last=Date.parse(row.updated_at)||this.lastActivityAt||Date.now();
+    const last=this.lastActivityAt||Date.parse(row.updated_at)||Date.now();
     const timeout=await getIdleTimeoutMs(this.env); const elapsed=Date.now()-last;
     if(elapsed < timeout){
       this.lastActivityAt=last; await this.ctx.storage.put('lastActivityAt',last); await this.armIdleAlarm(); return;
@@ -805,7 +826,9 @@ export class GameRoom {
   }
   async _handleMessageSafe(ws,message){
     await this.load();
-    let m;try{m=JSON.parse(typeof message==='string'?message:new TextDecoder().decode(message));}catch{return socketSend(ws,{type:'error',error:'訊息格式錯誤'});}
+    const rawMessage=typeof message==='string'?message:new TextDecoder().decode(message);
+    if(rawMessage==='ping'){try{ws.send('pong');}catch{}return;}
+    let m;try{m=JSON.parse(rawMessage);}catch{return socketSend(ws,{type:'error',error:'訊息格式錯誤'});}
     let actor=ws.deserializeAttachment?.()||{role:'pending',teamId:null};
     if(actor.role==='pending'){
       if(m.type!=='hello') return socketSend(ws,{type:'error',error:'請先完成登入'});
@@ -823,31 +846,40 @@ export class GameRoom {
         const archived=next.viewers.filter(item=>Number(item.teamId)===teamId&&['rejected','removed'].includes(item.status)).sort((a,b)=>String(b.removedAt||b.requestedAt).localeCompare(String(a.removedAt||a.requestedAt)));
         if(archived.length>60){const removeIds=new Set(archived.slice(60).map(item=>item.id));next.viewers=next.viewers.filter(item=>!removeIds.has(item.id));}
         next.log.unshift(`${next.teams[teamId].name} 收到具名觀眾申請`);next.rev=(this.state.rev||0)+1;
-        actor={role:'viewer_pending',teamId,viewerId:viewer.id};ws.serializeAttachment(actor);await this.commit(next,actor,'viewerRequest',{viewerId:viewer.id});
+        actor=this.withPresence({role:'viewer_pending',teamId,viewerId:viewer.id},m);ws.serializeAttachment(actor);await this.commit(next,actor,'viewerRequest',{viewerId:viewer.id});
         socketSend(ws,{type:'viewer_pending',viewerId:viewer.id,viewerName:viewer.name,teamId,teamName:this.state.teams[teamId]?.name,gameId:this.meta.id,gameName:this.meta.name});return;
       }
       if(role==='viewer'&&m.viewerId&&m.sessionToken){
         viewer=(this.state.viewers||[]).find(item=>item.id===text(m.viewerId)&&item.status==='approved');
         if(!viewer||!(await verifySecret(m.sessionToken,viewer.sessionTokenHash))){ws.close(1008,'觀眾資格已失效');return;}
-        teamId=Number(viewer.teamId);actor={role:'viewer',teamId,viewerId:viewer.id};ws.serializeAttachment(actor);
+        teamId=Number(viewer.teamId);actor=this.withPresence({role:'viewer',teamId,viewerId:viewer.id},m);ws.serializeAttachment(actor);
         const next=G.clone(this.state),saved=next.viewers.find(item=>item.id===viewer.id);if(saved)saved.lastSeenAt=now();next.rev=(this.state.rev||0)+1;await this.commit(next,actor,'viewerOnline',{viewerId:viewer.id});
-      }else if(role==='viewer'&&!m.viewerId&&!m.sessionToken){actor={role:'viewer',teamId:null};ws.serializeAttachment(actor);
+      }else if(role==='viewer'&&!m.viewerId&&!m.sessionToken){actor=this.withPresence({role:'viewer',teamId:null},m);ws.serializeAttachment(actor);
       }else if(role==='host'){
-        const ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);if(!ok){ws.close(1008,'授權失敗');return;}actor={role:'host',teamId:null};ws.serializeAttachment(actor);
+        const ok=(this.env.ADMIN_PASSWORD_HASH&&await verifySecret(m.accessToken,this.env.ADMIN_PASSWORD_HASH))||await verifySecret(m.token,this.meta.hostTokenHash);if(!ok){ws.close(1008,'授權失敗');return;}actor=this.withPresence({role:'host',teamId:null},m);ws.serializeAttachment(actor);
       }else if(role==='team'){
-        teamId=await resolveAccessCode(this.state,'team',m.accessToken);if(teamId===null){ws.close(1008,'代碼無效或已更新');return;}actor={role:'team',teamId};ws.serializeAttachment(actor);
+        teamId=await resolveAccessCode(this.state,'team',m.accessToken);if(teamId===null){ws.close(1008,'代碼無效或已更新');return;}actor=this.withPresence({role:'team',teamId},m);ws.serializeAttachment(actor);
         if(this.state.teams[teamId]&&!this.state.teams[teamId].joined){this.kickedTeams.delete(teamId);const next=G.clone(this.state);next.teams[teamId].joined=true;next.log.unshift(`${next.teams[teamId].name} 已加入活動`);await this.commit(next,actor,'teamJoin',{});}
       }else{ws.close(1008,'授權失敗');return;}
       socketSend(ws,{type:'hello_ok',state:projectStateForActor(this.state,actor,this.onlineViewerIds()),meta:{id:this.meta.id,name:this.meta.name,status:statusOf(this.state),teamCount:this.meta.teamCount,teamId:actor.teamId,viewerId:actor.viewerId||null,viewerName:viewer?.name||null}});
+      if(actor.role==='host')socketSend(ws,{type:'presence',teams:this.teamPresence(),serverTime:Date.now()});
+      if(actor.role==='team')this.broadcastPresence();
       return;
     }
     if(m.type==='ping') return socketSend(ws,{type:'pong'});
+    if(m.type==='presence'){
+      actor={...actor,lastSeenAt:Date.now(),quality:['live','degraded','offline'].includes(m.quality)?m.quality:'live',lastRev:Math.max(0,Number(m.lastRev)||0)};
+      ws.serializeAttachment(actor);
+      if(actor.role==='team')this.broadcastPresence();
+      return socketSend(ws,{type:'presence_ok',serverTime:Date.now()});
+    }
     if(m.type!=='action') return;
     const actionId=text(m.actionId).slice(0,80);
     const fail=error=>socketSend(ws,{type:'error',error,actionId});
 
-    if(actionId && this.processedActions.has(actionId)){
-      const cached = this.processedActions.get(actionId);
+    const durableAction=actionId&&(this.processedActions.get(actionId)||(this.state.recentActions||[]).find(item=>item.id===actionId));
+    if(durableAction){
+      const cached = durableAction;
       return socketSend(ws,{type:'action_ok',actionId,rev:cached.rev});
     }
 
@@ -855,7 +887,7 @@ export class GameRoom {
       const teamId=Number(m.payload?.teamId);
       if(!Number.isInteger(teamId)||!this.state.teams[teamId]) return fail('隊伍編號錯誤');
       this.kickTeam(teamId);
-      const next=G.clone(this.state); next.teams[teamId].joined=false; next.log.unshift(`${next.teams[teamId].name} 已被主持人踢出，即時連線已關閉`); next.rev=(this.state.rev||0)+1;
+      const next=G.clone(this.state); next.teams[teamId].joined=false; next.log.unshift(`${next.teams[teamId].name} 已被主持人踢出，即時連線已關閉`); next.rev=(this.state.rev||0)+1;rememberProcessedAction(next,actionId,next.rev,actor);
       await this.commit(next,actor,'kickTeam',{teamId,actionId});
       if(actionId){ this.processedActions.set(actionId, {rev:next.rev, time:Date.now()}); }
       socketSend(ws,{type:'action_ok',actionId,rev:next.rev});
@@ -877,6 +909,7 @@ export class GameRoom {
       const receiptError=appendReceipts(this.state,next,m.action,actionId);delete next._transactions;
       if(receiptError)return fail(receiptError);
       next.rev=(this.state.rev||0)+1;
+      rememberProcessedAction(next,actionId,next.rev,actor);
       await this.commit(next,actor,m.action,{...(m.payload||{}),actionId});
       if(m.action==='regenerateAccessCode')this.invalidateAccessCode(Number(m.payload?.teamId),String(m.payload?.kind||''));
       if(m.action==='regenerateOwnViewerCode')this.invalidateAccessCode(actor.teamId,'viewer');
@@ -938,7 +971,7 @@ export class GameRoom {
       if(action==='buyBack'){const r=G.buyBackBase(s,i);return r.ok?undefined:{error:r.msg};}
     }
     if(action==='assignBases'){if(s.phase!=='setup')return {error:'遊戲開始後不能重新抽籤'};G.assignBases(s);return;}
-    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.rollDiceCounts={};s.ceremonyStep=0;s.pendingBattle=null;s.pendingCard=null;s.cardCursors={fate:0,chance:0};s.teams.forEach(team=>{team.cardIntel=null;});s.log.unshift('遊戲開始，第 1 回合');G.collectPropertyTaxes(s);return;}
+    if(action==='startGame'){if(s.phase!=='setup')return {error:'遊戲已開始或已結束'};if(s.teams.some(t=>t.baseIdx===null))return {error:'請先抽籤分配基地'};s.paused=false;s.phase='market';s.round=1;s.activeTeamId=null;s.rollDiceCounts={};s.ceremonyStep=0;s.pendingBattle=null;s.pendingCard=null;s.cardCursors={fate:0,chance:0};s.teams.forEach(team=>{team.cardIntel=null;});s.log.unshift('遊戲開始，第 1 回合（首回合免房屋稅）');return;}
     if(action==='pauseGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=true;s.log.unshift('主持人暫停了活動');return;}
     if(action==='resumeGame'){if(s.phase==='ended')return {error:'活動已結束'};s.paused=false;if(s.phase==='settle'){s.phase='roll';s.ceremonyStep=0;}s.log.unshift('主持人恢復了活動');return;}
     if(action==='nextPhase'){if(s.phase==='ended')return {error:'活動已結束'};if(s.paused)return {error:'活動目前已暫停，請先恢復活動'};if(s.pendingBattle||s.pendingCard)return {error:'請先完成停留事件、BATTLE 或卡片結算'};const beforePhase=s.phase,beforeLog=s.log?.[0];G.nextPhase(s);if(s.log?.[0]===beforeLog)s.log.unshift(`主持人推進遊戲階段：${beforePhase} → ${s.phase}`);return;}
@@ -1005,7 +1038,9 @@ export class GameRoom {
     const prevActivity=this.lastActivityAt;
     const status=statusOf(next);
     const timestamp=now();
-    const activityAt=Date.parse(timestamp)||Date.now();
+    const timestampMs=Date.parse(timestamp)||Date.now();
+    const activityAt=PASSIVE_ACTIVITY_EVENTS.has(eventType)?(this.lastActivityAt||timestampMs):timestampMs;
+    next.gameplayActivityAt=activityAt;
     const message=String(next.log?.[0]||eventType);
 
     if(this.env.DB && typeof this.env.DB.batch === 'function'){
@@ -1022,9 +1057,9 @@ export class GameRoom {
       }
     }
     this.state=next;
-    if(this.ctx.storage?.put) await this.ctx.storage.put('state',next);
+    if(this.ctx.storage?.put)try{await this.ctx.storage.put('state',next);}catch(error){console.error('DO state cache write failed; D1 remains authoritative',error);}
     this.lastActivityAt=activityAt;
-    if(this.ctx.storage?.put) await this.ctx.storage.put('lastActivityAt',activityAt);
+    if(this.ctx.storage?.put)try{await this.ctx.storage.put('lastActivityAt',activityAt);}catch(error){console.error('DO activity cache write failed',error);}
     if(status==='ended'){ if(this.ctx.storage?.deleteAlarm) await this.ctx.storage.deleteAlarm(); }
     else { await this.armIdleAlarm(); }
     if(this.meta) this.meta.status=status;
@@ -1032,12 +1067,20 @@ export class GameRoom {
   }
   kickTeam(teamId){ this.kickedTeams.add(teamId); for(const ws of this.ctx.getWebSockets()){ const a=ws.deserializeAttachment?.(); if(a?.role==='team'&&a.teamId===teamId){ try{ws.send(JSON.stringify({type:'kicked',message:'主持人已將你踢出活動'}));ws.close(4003,'kicked');}catch{} } } }
   onlineViewerIds(){return new Set((this.ctx.getWebSockets?.()||[]).map(ws=>ws.deserializeAttachment?.()).filter(actor=>actor?.role==='viewer'&&actor.viewerId).map(actor=>actor.viewerId));}
+  withPresence(actor,message={}){const timestamp=Date.now();return {...actor,clientId:text(message.clientId).slice(0,80),connectedAt:timestamp,lastSeenAt:timestamp,quality:'live',lastRev:Math.max(0,Number(message.lastRev)||0)};}
+  teamPresence(exclude=null){
+    const grouped=new Map();
+    for(const ws of this.ctx.getWebSockets?.()||[]){if(ws===exclude)continue;const actor=ws.deserializeAttachment?.();if(actor?.role!=='team'||!Number.isInteger(Number(actor.teamId)))continue;const teamId=Number(actor.teamId),record=grouped.get(teamId)||{teamId,deviceCount:0,lastSeenAt:0};record.deviceCount+=1;record.lastSeenAt=Math.max(record.lastSeenAt,Number(actor.lastSeenAt)||Number(actor.connectedAt)||0);grouped.set(teamId,record);}
+    return [...grouped.values()].sort((a,b)=>a.teamId-b.teamId);
+  }
+  broadcastPresence(exclude=null){const payload={type:'presence',teams:this.teamPresence(exclude),serverTime:Date.now()};for(const socket of this.ctx.getWebSockets?.()||[]){const actor=socket.deserializeAttachment?.();if(actor?.role==='host')socketSend(socket,payload);}}
   approveViewerSession(viewerId,sessionToken){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();if(actor?.role==='viewer_pending'&&actor.viewerId===viewerId){socketSend(ws,{type:'viewer_approved',viewerId,sessionToken});}}}
   invalidateViewer(viewerId,message){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();if(actor?.viewerId===viewerId){try{socketSend(ws,{type:'viewer_access_revoked',message});ws.close(4006,'viewer-access-revoked');}catch{}}}}
   invalidateAccessCode(teamId,kind){for(const ws of this.ctx.getWebSockets()){const actor=ws.deserializeAttachment?.();const affected=kind==='team'?actor?.role==='team'&&actor.teamId===teamId:['viewer','viewer_pending'].includes(actor?.role)&&actor.teamId===teamId;if(affected){try{socketSend(ws,{type:'credentials_changed',message:'登入代碼已更新，請使用新代碼重新登入'});ws.close(4005,'credentials-changed');}catch{}}}}
   broadcast(message){const online=this.onlineViewerIds();for(const ws of this.ctx.getWebSockets()){try{const actor=ws.deserializeAttachment?.()||{role:'pending',teamId:null};if(actor.role==='pending'||actor.role==='viewer_pending')continue;const payload=message?.type==='state'?{...message,state:projectStateForActor(message.state,actor,online)}:message;ws.send(JSON.stringify(payload));}catch{}}}
   async webSocketClose(ws){
     const actor=ws.deserializeAttachment?.();
+    if(actor?.role==='team')this.broadcastPresence(ws);
     if(actor?.role==='viewer'&&actor.viewerId){if(this.loaded&&this.state)this.broadcast({type:'state',state:this.state,status:statusOf(this.state)});return;}
     if(!actor || actor.role!=='team' || this.kickedTeams.has(actor.teamId) || !this.loaded || this.state?.phase==='ended' || !this.state?.teams?.[actor.teamId]?.joined) return;
     const stillConnected=this.ctx.getWebSockets().some(other=>other!==ws&&other.deserializeAttachment?.()?.role==='team'&&other.deserializeAttachment?.()?.teamId===actor.teamId);

@@ -96,7 +96,7 @@ WebSocket 端點由前端自動使用同一個 Worker 網址的 `/ws/{活動識�
 - **SQL 控制台**：直接在瀏覽器執行 D1 SQL 查詢與除錯。
 - **系統維護**：批次清理過期活動紀錄與資料表健康檢查。
 
-活動建立時，Worker 會為對應的 `GameRoom` Durable Object 設定 alarm。建立活動、有效遊戲動作、主持人控制與隊伍連線狀態變更都會刷新 `games.updated_at`；若連續 `IDLE_TIMEOUT_MS` 沒有活動，alarm 會重新讀取 D1 確認時間，提交 `idleTimeout` 系統事件、標記活動為 ended、廣播結束狀態並關閉 WebSocket。正式設定為 `10800000` 毫秒，也就是 3 小時；這個機制不依賴瀏覽器分頁或前端計時器。
+活動建立時，Worker 會為對應的 `GameRoom` Durable Object 設定 alarm。有效遊戲動作與主持人控制會刷新遊戲活動時間；連線心跳與 presence 不會延長期限。若連續 `IDLE_TIMEOUT_MS` 沒有遊戲操作，alarm 會提交 `idleTimeout` 系統事件、標記活動為 ended、廣播結束狀態並關閉 WebSocket。正式設定為 `432000000` 毫秒，也就是 5 天，足以讓同一場活動跨三天使用；沒有裝置連線時 DO 可休眠，不會持續消耗運算時間。
 
 ## 5. PWA 與快取更新
 

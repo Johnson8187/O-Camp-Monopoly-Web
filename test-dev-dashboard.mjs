@@ -214,7 +214,7 @@ const settingsGetRes = await worker.fetch(new Request('https://example.test/api/
 assert.equal(settingsGetRes.status, 200);
 const settingsData = await settingsGetRes.json();
 assert.equal(settingsData.doEnabled, true);
-assert.equal(settingsData.idleTimeoutHours, 3, '預設閒置時間應為 3 小時');
+assert.equal(settingsData.idleTimeoutHours, 120, '預設閒置時間應為 5 天（120 小時）');
 
 // Test adjusting idleTimeoutHours via API
 const timeoutPostRes = await worker.fetch(new Request('https://example.test/api/dev/settings', {

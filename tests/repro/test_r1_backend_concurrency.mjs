@@ -81,7 +81,7 @@ function createMockEnv(opts = {}) {
           }
           if (sql.includes('SELECT value FROM system_settings')) {
             const key = this._params[0] || 'idle_timeout_ms';
-            return { value: dbStore.settings.get(key) || '10800000' };
+            return { value: dbStore.settings.get(key) || '432000000' };
           }
           return null;
         },
@@ -362,11 +362,50 @@ async function testActionDeduplication() {
   console.log('  ✔ VULN-BE-05 Successfully Patched: Action idempotency cache deduplicates network retries.');
 }
 
+async function testActionDeduplicationAcrossHibernation() {
+  console.log('\n[TEST 1.5] Verifying Durable Action Idempotency Across DO Hibernation...');
+
+  const env = createMockEnv();
+  const ctx = createMockDOContext();
+  const initialState = G.freshState('DURABLE_DEDUP_TEST', 2);
+  initialState.phase = 'shop';
+  initialState.teams[0].pts = 30;
+  env.DB._dbStore.games.set('ROOM_REPRO_001', {
+    id: 'ROOM_REPRO_001', name: '休眠重送測試', status: 'running', teamCount: 2,
+    hostTokenHash: ADMIN_HASH, state: initialState
+  });
+
+  const action = JSON.stringify({
+    type: 'action', action: 'buff', payload: { kind: 'pass' }, actionId: 'durable-client-action-001'
+  });
+  const firstRoom = new GameRoom(ctx, env);
+  await firstRoom.load();
+  const firstSocket = createMockSocket('team', 0);
+  ctx.acceptWebSocket(firstSocket);
+  await firstRoom.webSocketMessage(firstSocket, action);
+  const pointsAfterFirstDispatch = firstRoom.state.teams[0].pts;
+  assert.equal(firstRoom.state.teams[0].buffs.pass, 1);
+  assert.ok(firstRoom.state.recentActions.some(item => item.id === 'durable-client-action-001'));
+
+  // A new class instance simulates Cloudflare recreating the DO after hibernation.
+  const restoredRoom = new GameRoom(ctx, env);
+  await restoredRoom.load();
+  const retrySocket = createMockSocket('team', 0);
+  ctx.acceptWebSocket(retrySocket);
+  await restoredRoom.webSocketMessage(retrySocket, action);
+  assert.equal(restoredRoom.state.teams[0].pts, pointsAfterFirstDispatch, 'Retry after hibernation must not charge points twice');
+  assert.equal(restoredRoom.state.teams[0].buffs.pass, 1, 'Retry after hibernation must not grant a second card');
+  assert.ok(retrySocket.sent.some(message => message.type === 'action_ok' && message.actionId === 'durable-client-action-001'));
+
+  console.log('  ✔ Durable action IDs survive DO recreation and remain idempotent.');
+}
+
 export async function runBackendConcurrencyTests() {
   await testConcurrentActionQueue();
   await testStateRollbackOnD1Failure();
   await testD1QueryCaching();
   await testActionDeduplication();
+  await testActionDeduplicationAcrossHibernation();
   console.log('\n✔ All Suite 1 Backend Concurrency Verification Tests Passed!\n');
 }
 

@@ -182,7 +182,7 @@ function freshState(code, teamCount, names) {
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
     stageNotices:[], stageNoticeSeq:0,
-    settings: clone(DEFAULTS), lastRoll:null, activeTeamId:null, pendingBattle:null, pendingCard:null, lastCardResult:null, cardCursors:{fate:0,chance:0}, cardSeq:0, rollDiceCounts:{},
+    settings: clone(DEFAULTS), lastRoll:null, lastForeclosure:null, lastJailBattle:null, activeTeamId:null, pendingBattle:null, pendingCard:null, lastCardResult:null, cardCursors:{fate:0,chance:0}, cardSeq:0, rollDiceCounts:{},
     receipts:[], receiptSeq:0, lastPurchase:null, viewers:[],
   };
 }
@@ -269,20 +269,39 @@ function assignBases(s, rnd = Math.random) {
   return s;
 }
 
+function applyJailForeclosure(s, ti) {
+  const t=s.teams[ti];
+  if(!t)return {outcome:"no_team",detail:"逃漏稅稽查資料錯誤"};
+  const fromLevel=Math.max(1,Number(t.level)||1),baseIdx=t.baseIdx;
+  t.jail=0;
+  t.jailedThisTurn=false;
+  let outcome="no_property",toLevel=fromLevel,detail="逃漏稅被抓到，但名下已無可抵押房產";
+  if(!t.sold&&baseIdx!==null&&baseIdx!==undefined){
+    if(fromLevel>1){
+      toLevel=fromLevel-1;
+      t.level=toLevel;
+      outcome="downgrade";
+      detail=`逃漏稅被抓到，房產遭降級抵押：LV${fromLevel} → LV${toLevel}`;
+    }else{
+      t.sold=true;
+      t.soldRound=s.round;
+      outcome="foreclosed";
+      detail="逃漏稅被抓到，LV1 基地遭法院查封法拍（不返還現金）";
+    }
+  }
+  s.lastForeclosure={seq:(s.lastForeclosure?.seq||0)+1,team:ti,baseIdx,tileIndex:t.pos,round:s.round,fromLevel,toLevel,outcome,sold:Boolean(t.sold)};
+  return {outcome,detail,fromLevel,toLevel,baseIdx};
+}
+
+function recordJailBattle(s,ti,outcome,foreclosure=null){
+  s.lastJailBattle={seq:(s.lastJailBattle?.seq||0)+1,team:ti,round:s.round,outcome,foreclosure:foreclosure?{outcome:foreclosure.outcome,fromLevel:foreclosure.fromLevel,toLevel:foreclosure.toLevel,baseIdx:foreclosure.baseIdx}:null};
+  return s.lastJailBattle;
+}
+
 /* ---------- 移動 ---------- */
 function applyMove(s, ti, steps, rnd = Math.random, diceValues = null) {
   const t = s.teams[ti];
   const notes = [];
-  if (t.jail > 0 || t.jailedThisTurn) {
-    if (t.jail > 0) t.jail -= 1;
-    t.rolled = true;
-    t.lastRoll = 0;
-    t.lastDice = [];
-    t.jailedThisTurn = false;
-    s.lastRoll = {seq:(s.lastRoll?.seq || 0)+1, team:ti, n:0, dice:[], from:t.pos, landPos:t.pos, targetPos:t.pos, note:"在監獄服刑，本回合暫停擲骰"};
-    s.log.unshift(`${t.name} 在監獄服刑，暫停本回合行動`);
-    return s;
-  }
   const from = t.pos;
 
   // 經過的格子（不含終點）
@@ -381,7 +400,12 @@ function landEffect(s, ti, notes = [], rnd = Math.random) {
     }
 
   } else if (kind === "jail") {
-    t.jail = 1; notes.push("滾進監獄，下回合停留");
+    if(!t.sold&&t.baseIdx!==null&&t.baseIdx!==undefined){
+      s.pendingBattle={kind:"jail",attackerId:ti,defenderId:null,tileIndex:t.pos,round:s.round,status:"awaiting_choice"};
+      notes.push("逃漏稅稽查：等待選擇接受法拍，或消耗一次 BATTLE 挑戰主持人");
+    }else{
+      const foreclosure=applyJailForeclosure(s,ti);recordJailBattle(s,ti,"no_property",foreclosure);notes.push(foreclosure.detail);
+    }
 
   } else if (kind === "exch") {
     t.cardIntel={round:s.round,revealedAtCursor:{...s.cardCursors},fate:previewCards(s,"fate",3).map(item=>item.id),chance:previewCards(s,"chance",3).map(item=>item.id)};
@@ -410,8 +434,24 @@ function queuePendingCard(s,pending,executorId,battleOutcome=null){
 function resolvePendingBattle(s, ti, choice, options={}) {
   const pending=s.pendingBattle;
   if(!pending||pending.attackerId!==ti)return {ok:false,msg:"目前沒有待處理的停留事件"};
-  const attacker=s.teams[pending.attackerId],isCard=pending.kind==="card";
+  const attacker=s.teams[pending.attackerId],isCard=pending.kind==="card",isJail=pending.kind==="jail";
   if(!attacker){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
+  if(isJail){
+    if(choice==="accept"||choice==="pay"){
+      const foreclosure=applyJailForeclosure(s,attacker.id);s.pendingBattle=null;
+      recordJailBattle(s,attacker.id,"accepted",foreclosure);
+      s.log.unshift(`${attacker.name} 接受逃漏稅處分：${foreclosure.detail}`);
+      return {ok:true,foreclosure};
+    }
+    if(choice==="battle"){
+      if(attacker.battles<=0)return {ok:false,msg:"BATTLE 次數已用完，只能接受法拍"};
+      attacker.battles-=1;pending.status="awaiting_host";
+      recordJailBattle(s,attacker.id,"challenging");
+      s.log.unshift(`${attacker.name} 消耗一次 BATTLE 挑戰主持人，爭取撤銷逃漏稅法拍`);
+      return {ok:true};
+    }
+    return {ok:false,msg:"請選擇接受法拍或挑戰主持人"};
+  }
   if(isCard){
     const drawn=cardById(pending.cardType,pending.cardId),label=pending.cardType==="fate"?"命運":"機會";
     if(!drawn){s.pendingBattle=null;return {ok:false,msg:"卡片資料不存在"};}
@@ -450,9 +490,25 @@ function resolvePendingBattle(s, ti, choice, options={}) {
 function adjudicateBattle(s, outcome) {
   const pending=s.pendingBattle;
   if(!pending||pending.status!=="awaiting_host")return {ok:false,msg:"目前沒有等待裁決的 BATTLE"};
-  const attacker=s.teams[pending.attackerId],defender=s.teams[pending.defenderId];
-  if(!attacker||!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
-  const isCard=pending.kind==="card";
+  const attacker=s.teams[pending.attackerId],isCard=pending.kind==="card",isJail=pending.kind==="jail";
+  if(!attacker){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
+  if(isJail){
+    if(outcome==="attacker"){
+      s.pendingBattle=null;
+      recordJailBattle(s,attacker.id,"escaped");
+      s.log.unshift(`BATTLE 裁決：${attacker.name} 挑戰主持人成功，逃過追查並撤銷法拍`);
+      return {ok:true,escaped:true};
+    }
+    if(outcome==="defender"){
+      const foreclosure=applyJailForeclosure(s,attacker.id);s.pendingBattle=null;
+      recordJailBattle(s,attacker.id,"foreclosed",foreclosure);
+      s.log.unshift(`BATTLE 裁決：主持人防守成功，${attacker.name} 執行逃漏稅法拍：${foreclosure.detail}`);
+      return {ok:true,foreclosure};
+    }
+    return {ok:false,msg:"BATTLE 裁決結果錯誤"};
+  }
+  const defender=s.teams[pending.defenderId];
+  if(!defender){s.pendingBattle=null;return {ok:false,msg:"BATTLE 隊伍資料不存在"};}
   if(isCard){
     const drawn=cardById(pending.cardType,pending.cardId),label=pending.cardType==="fate"?"命運":"機會";
     if(!drawn){s.pendingBattle=null;return {ok:false,msg:"卡片資料不存在"};}
@@ -634,17 +690,7 @@ function nextPhase(s) {
     s.phase = PHASES[i+1];
     s.activeTeamId = null;
     if (s.phase === "roll") {
-      s.teams.forEach(t => {
-        if (t.jail > 0) {
-          t.jail -= 1;
-          t.rolled = true;
-          t.lastRoll = 0;
-          t.jailedThisTurn = true;
-          s.log.unshift(`${t.name} 在監獄服刑，本回合暫停擲骰`);
-        } else {
-          t.jailedThisTurn = false;
-        }
-      });
+      s.teams.forEach(t => {t.jail=0;t.jailedThisTurn=false;});
     }
     return s;
   }
@@ -671,7 +717,7 @@ function rankBases(s){
     .sort((a,b)=>Number(Boolean(a.sold||a.baseIdx===null))-Number(Boolean(b.sold||b.baseIdx===null))||Number(b.level||0)-Number(a.level||0)||a.originalIndex-b.originalIndex);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,CARD_REWARD_LEVELS,CARD_DECKS,FATE_CARDS,CHANCE_CARDS,PHASES,clone,money,cardById,previewCards,drawCard,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,resolveCard,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,CARD_REWARD_LEVELS,CARD_DECKS,FATE_CARDS,CHANCE_CARDS,PHASES,clone,money,cardById,previewCards,drawCard,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyJailForeclosure,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,resolveCard,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
 })();
 
 

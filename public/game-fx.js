@@ -80,7 +80,8 @@ export function battlePresentationTransition(previous,next){
   }
   if(before?.status==='awaiting_host'&&!after){
     const message=String(next?.log?.[0]||'');
-    const outcome=next?.pendingCard?.battleOutcome||(/獲勝，免付|獲勝，.+卡/.test(message)?'attacker':/守住基地|防守成功/.test(message)?'defender':null);
+    const jailOutcome=before.kind==='jail'?(next?.lastJailBattle?.outcome==='escaped'?'attacker':next?.lastJailBattle?.outcome==='foreclosed'?'defender':null):null;
+    const outcome=jailOutcome||next?.pendingCard?.battleOutcome||(/獲勝，免付|獲勝，.+卡|挑戰主持人成功|逃過追查/.test(message)?'attacker':/守住基地|防守成功/.test(message)?'defender':null);
     if(outcome)return {type:'battleResult',battle:before,outcome,message};
   }
   return null;
@@ -95,7 +96,7 @@ const LANDING_REACTIONS = {
   casino: {kind:'casino',symbol:'🎰',title:'人生豪賭時刻',pose:'battle',tone:'danger'},
   bank:   {kind:'bank',symbol:'💰',title:'找到銀行密道',pose:'celebrate',tone:'reward'},
   worm:   {kind:'worm',symbol:'◎',title:'穿越人生蟲洞',pose:'warp',tone:'mystery'},
-  jail:   {kind:'jail',symbol:'⛓',title:'人生暫時受困',pose:'hit',tone:'loss'},
+  jail:   {kind:'jail',symbol:'查',title:'逃漏稅稽查',pose:'hit',tone:'loss'},
   exch:   {kind:'intel',symbol:'⌁',title:'情報局解密完成',pose:'ready',tone:'info'},
   stage:  {kind:'stage',symbol:'★',title:'抵達人生關卡',pose:'celebrate',tone:'reward'},
   safe:   {kind:'safe',symbol:'✓',title:'平安抵達',pose:'land',tone:'info'},
@@ -687,7 +688,7 @@ export function renderTileGarrison(teamsOnTile = [], { meId = null, activeTeamId
   // Mode A: Single Team Hero
   if (count === 1) {
     const t = teamsOnTile[0];
-    const isJailed = Number(t.jail || 0) > 0 || tilePos === 42;
+    const isJailed = Number(t.jail || 0) > 0;
     const isShielded = Number(t.buffs?.shield || 0) > 0;
     const isLeader = hasLeader && Number(leaderId) === Number(t.id);
     const isMe = hasMe && Number(meId) === Number(t.id);
@@ -709,7 +710,7 @@ export function renderTileGarrison(teamsOnTile = [], { meId = null, activeTeamId
     });
 
     const pawnsHTML = sorted.map((t, idx) => {
-      const isJailed = Number(t.jail || 0) > 0 || tilePos === 42;
+      const isJailed = Number(t.jail || 0) > 0;
       const isShielded = Number(t.buffs?.shield || 0) > 0;
       const isLeader = hasLeader && Number(leaderId) === Number(t.id);
       const isMe = hasMe && Number(meId) === Number(t.id);
@@ -731,7 +732,7 @@ export function renderTileGarrison(teamsOnTile = [], { meId = null, activeTeamId
     || teamsOnTile[0];
 
   const others = teamsOnTile.filter(t => t.id !== primaryTeam.id);
-  const isJailed = Number(primaryTeam.jail || 0) > 0 || tilePos === 42;
+  const isJailed = Number(primaryTeam.jail || 0) > 0;
   const isShielded = Number(primaryTeam.buffs?.shield || 0) > 0;
   const isLeader = hasLeader && Number(leaderId) === Number(primaryTeam.id);
   const isMe = hasMe && Number(meId) === Number(primaryTeam.id);

@@ -114,26 +114,29 @@ function testOptimisticActionUnlockRace() {
 }
 
 // -----------------------------------------------------------------------------
-// TEST 3.3: Zero-Step Jail Roll Preserved (VULN-FE-04 -> FIXED)
+// TEST 3.3: Jail Decision Defers Foreclosure Until Accepted
 // -----------------------------------------------------------------------------
-function testZeroStepJailRollCoercion() {
-  console.log('\n[TEST 3.3] Verifying Zero-Step Roll Value Preservation (VULN-FE-04)...');
+function testImmediateJailForeclosure() {
+  console.log('\n[TEST 3.3] Verifying Deferred Jail Foreclosure Decision...');
 
-  const previous = { teams: [{ id: 0, name: '第 1 組', pos: 42, jail: 1 }] };
-  const next = {
-    lastRoll: { seq: 10, team: 0, n: 0, from: 42, landPos: 42, targetPos: 42 },
-    teams: [{ id: 0, name: '第 1 組', pos: 42, jail: 0 }]
-  };
+  const state=G.freshState('jail-foreclosure-repro',2);
+  const jailIndex=G.TRACK.findIndex(tile=>tile[0]==='jail');
+  state.round=2;
+  state.phase='roll';
+  state.teams[0].baseIdx=G.BASE_IDX[0];
+  state.teams[0].level=2;
+  state.teams[0].pos=jailIndex;
+  const cashBefore=state.teams[0].cash;
+  G.landEffect(state,0,[]);
 
-  const beforePos = next.lastRoll.from ?? previous.teams[0].pos;
-  const rollVal = next.lastRoll.n !== undefined && next.lastRoll.n !== null ? Number(next.lastRoll.n) : 1;
-  const targetPos = next.lastRoll.targetPos ?? next.teams[0].pos;
-  const willEnqueue = (rollVal > 0 || beforePos !== targetPos);
-
-  console.log(`  next.lastRoll.n: 0 -> parsed rollVal: ${rollVal}, willEnqueue: ${willEnqueue}`);
-  assert.equal(rollVal, 0, 'rollVal must be 0 for zero-step move');
-  assert.equal(willEnqueue, false, 'No false step roll animation enqueued for stationary jail round');
-  console.log('  ✔ VULN-FE-04 Successfully Patched: Zero-step roll is not coerced into 1 step.');
+  assert.equal(state.teams[0].level,2,'Jail must not punish before the team decides');
+  assert.equal(state.pendingBattle?.kind,'jail','Jail opens a host BATTLE decision');
+  G.resolvePendingBattle(state,0,'accept');
+  assert.equal(state.teams[0].level,1,'Accepting applies the one-level penalty');
+  assert.equal(state.teams[0].cash,cashBefore,'Foreclosure does not refund cash');
+  assert.equal(state.teams[0].jail,0,'No one-turn detention remains');
+  assert.equal(state.lastForeclosure?.outcome,'downgrade','Foreclosure result is synchronized in state');
+  console.log('  ✔ Jail now waits for the host BATTLE decision and keeps the next turn available.');
 }
 
 // -----------------------------------------------------------------------------
@@ -224,7 +227,7 @@ function testMissileReticleTile0Glitch() {
 export function runFrontendQueueFxTests() {
   testQueueHeadOfLineBlocking();
   testOptimisticActionUnlockRace();
-  testZeroStepJailRollCoercion();
+  testImmediateJailForeclosure();
   testEventLogDiffingCollision();
   testMissileReticleTile0Glitch();
   console.log('\n✔ All Suite 3 Frontend UI, FX & Queue Verification Tests Passed!\n');

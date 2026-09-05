@@ -16,6 +16,45 @@ const firstTeam = assets.teams[0];
 if (G.propertyValue(assets,firstTeam) !== G.sellValue(assets,firstTeam)) throw new Error('房產價值拆分錯誤');
 if (G.netWorth(assets,firstTeam) !== firstTeam.cash + G.propertyValue(assets,firstTeam)) throw new Error('總資產計算錯誤');
 
+const jailIndex = G.TRACK.findIndex(tile => tile[0] === 'jail');
+for (const [level, expectedLevel, expectedSold, expectedOutcome] of [[3,2,false,'downgrade'],[2,1,false,'downgrade'],[1,1,true,'foreclosed']]) {
+  const foreclosure = G.freshState(`foreclosure-lv${level}`, 2);
+  foreclosure.round = 3;
+  foreclosure.teams[0].baseIdx = G.BASE_IDX[0];
+  foreclosure.teams[0].level = level;
+  foreclosure.teams[0].pos = jailIndex;
+  const cashBefore = foreclosure.teams[0].cash;
+  const result=G.applyJailForeclosure(foreclosure,0);
+  if (foreclosure.teams[0].level !== expectedLevel || foreclosure.teams[0].sold !== expectedSold) throw new Error(`監獄法拍處分錯誤：LV${level}`);
+  if (foreclosure.teams[0].cash !== cashBefore) throw new Error(`監獄法拍不得返還現金：LV${level}`);
+  if (foreclosure.teams[0].jail !== 0 || foreclosure.teams[0].jailedThisTurn) throw new Error('監獄不得再扣留隊伍一回合');
+  if (foreclosure.lastForeclosure?.outcome !== expectedOutcome || !/逃漏稅/.test(result.detail)) throw new Error(`監獄法拍紀錄錯誤：LV${level}`);
+  if (expectedSold && foreclosure.teams[0].soldRound !== foreclosure.round) throw new Error('法拍後必須沿用繞圈後買回規則');
+}
+const jailBattleWin=G.freshState('jail-battle-win',2);
+jailBattleWin.round=3;jailBattleWin.phase='roll';jailBattleWin.teams[0].baseIdx=G.BASE_IDX[0];jailBattleWin.teams[0].level=1;jailBattleWin.teams[0].pos=jailIndex;
+const winCash=jailBattleWin.teams[0].cash,winBattles=jailBattleWin.teams[0].battles;
+G.landEffect(jailBattleWin,0,[]);
+if(jailBattleWin.pendingBattle?.kind!=='jail'||jailBattleWin.teams[0].sold)throw new Error('踩監獄後應先等待選擇，不能立即法拍');
+if(!G.resolvePendingBattle(jailBattleWin,0,'battle').ok||jailBattleWin.teams[0].battles!==winBattles-1)throw new Error('監獄挑戰主持人應扣除一次 BATTLE 額度');
+if(!G.adjudicateBattle(jailBattleWin,'attacker').ok||jailBattleWin.teams[0].sold||jailBattleWin.teams[0].cash!==winCash||jailBattleWin.lastForeclosure)throw new Error('監獄 BATTLE 獲勝應完全免除法拍處分');
+const jailBattleLoss=G.freshState('jail-battle-loss',2);
+jailBattleLoss.round=3;jailBattleLoss.phase='roll';jailBattleLoss.teams[0].baseIdx=G.BASE_IDX[0];jailBattleLoss.teams[0].level=1;jailBattleLoss.teams[0].pos=jailIndex;
+G.landEffect(jailBattleLoss,0,[]);G.resolvePendingBattle(jailBattleLoss,0,'battle');
+if(!G.adjudicateBattle(jailBattleLoss,'defender').ok||!jailBattleLoss.teams[0].sold||jailBattleLoss.lastForeclosure?.outcome!=='foreclosed')throw new Error('監獄 BATTLE 落敗應執行原法拍處分');
+const jailAccept=G.freshState('jail-accept',2);
+jailAccept.round=3;jailAccept.teams[0].baseIdx=G.BASE_IDX[0];jailAccept.teams[0].level=3;jailAccept.teams[0].pos=jailIndex;
+G.landEffect(jailAccept,0,[]);
+if(!G.resolvePendingBattle(jailAccept,0,'accept').ok||jailAccept.teams[0].level!==2||jailAccept.pendingBattle)throw new Error('接受監獄處分應立即降低一級並結束等待');
+const jailNoQuota=G.freshState('jail-no-quota',2);
+jailNoQuota.teams[0].baseIdx=G.BASE_IDX[0];jailNoQuota.teams[0].pos=jailIndex;jailNoQuota.teams[0].battles=0;G.landEffect(jailNoQuota,0,[]);
+if(G.resolvePendingBattle(jailNoQuota,0,'battle').ok||!jailNoQuota.pendingBattle||jailNoQuota.teams[0].sold)throw new Error('BATTLE 額度不足時不得挑戰，也不能提前法拍');
+const noPropertyForeclosure = G.freshState('foreclosure-none', 2);
+noPropertyForeclosure.teams[0].pos = jailIndex;
+const noPropertyCash = noPropertyForeclosure.teams[0].cash;
+G.landEffect(noPropertyForeclosure, 0, []);
+if (noPropertyForeclosure.pendingBattle || noPropertyForeclosure.lastForeclosure?.outcome !== 'no_property' || noPropertyForeclosure.teams[0].cash !== noPropertyCash) throw new Error('無房產者踩監獄不應進入 BATTLE 或產生額外處分');
+
 const attacks = G.freshState('attack-limit-test', 3);
 G.assignBases(attacks,()=>0);
 attacks.phase = 'roll';

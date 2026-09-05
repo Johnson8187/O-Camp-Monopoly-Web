@@ -60,7 +60,7 @@ const matrix = [
 
   // Suite 2: Core Rules
   { id: 'VULN-CORE-01', name: 'Insolvent Negative Cash & Unbacked Fiat Creation', sev: 'CRITICAL', file: 'src/game-core.js:115-120', status: suite2Passed ? '✔ REPRODUCED' : 'FAILED' },
-  { id: 'VULN-CORE-02', name: 'Double Jail Decrement & Reroll Jailbreak Exploit', sev: 'HIGH', file: 'src/game-core.js:360-368', status: suite2Passed ? '✔ REPRODUCED' : 'FAILED' },
+  { id: 'VULN-CORE-02', name: 'Jail Foreclosure / No-Detention Regression', sev: 'HIGH', file: 'src/game-core.js', status: suite2Passed ? '✔ VERIFIED' : 'FAILED' },
   { id: 'VULN-CORE-03', name: 'Unchecked Base Upgrade on Unassigned Base (pts loss)', sev: 'HIGH', file: 'src/game-core.js:253-262', status: suite2Passed ? '✔ REPRODUCED' : 'FAILED' },
   { id: 'VULN-CORE-04', name: 'Uncaught TypeError on Invalid Shop/Buff Indices', sev: 'HIGH', file: 'src/game-core.js:237-252', status: suite2Passed ? '✔ REPRODUCED' : 'FAILED' },
   { id: 'VULN-CORE-05', name: 'Pass Buff Multi-Toll Unlimited Waiver Exploit', sev: 'MEDIUM', file: 'src/game-core.js:145-168', status: suite2Passed ? '✔ REPRODUCED' : 'FAILED' },
@@ -70,7 +70,7 @@ const matrix = [
   // Suite 3: Frontend Queue & FX
   { id: 'VULN-FE-01', name: 'FIFO Animation Queue Head-of-Line Blocking Host', sev: 'CRITICAL', file: 'public/app.js:184-236', status: suite3Passed ? '✔ REPRODUCED' : 'FAILED' },
   { id: 'VULN-FE-02', name: 'Optimistic Action Unlock on Broadcast Rev Increment', sev: 'CRITICAL', file: 'public/app.js:650-657', status: suite3Passed ? '✔ REPRODUCED' : 'FAILED' },
-  { id: 'VULN-FE-04', name: 'Zero-Step Jail Roll Coercion (0 || 1) Visual Glitch', sev: 'HIGH', file: 'public/app.js:585,594', status: suite3Passed ? '✔ REPRODUCED' : 'FAILED' },
+  { id: 'VULN-FE-04', name: 'Jail Foreclosure UI State Regression', sev: 'HIGH', file: 'public/app.js', status: suite3Passed ? '✔ VERIFIED' : 'FAILED' },
   { id: 'VULN-FE-05', name: 'Event Log Diffing Collision Drops Consecutive Logs', sev: 'HIGH', file: 'public/app.js:602-613', status: suite3Passed ? '✔ REPRODUCED' : 'FAILED' },
   { id: 'VULN-FE-06', name: 'Missile Reticle Referencing Null Aftershock (Tile 0)', sev: 'MEDIUM', file: 'public/app.js:689-708', status: suite3Passed ? '✔ REPRODUCED' : 'FAILED' }
 ];

@@ -52,30 +52,36 @@ function testInsolventNegativeCash() {
 }
 
 // -----------------------------------------------------------------------------
-// TEST 2.2: Double Jail Decrement & Reroll Card Jailbreak Exploit (VULN-CORE-02 -> FIXED)
+// TEST 2.2: Jail Host BATTLE Replaces Turn Detention (RULE-CORE-02 -> FIXED)
 // -----------------------------------------------------------------------------
 function testJailRerollJailbreak() {
-  console.log('\n[TEST 2.2] Verifying Jail State Enforcement & Jailbreak Prevention (VULN-CORE-02)...');
+  console.log('\n[TEST 2.2] Verifying Jail Host BATTLE Without Turn Detention (RULE-CORE-02)...');
 
   const s = G.freshState('JAIL_REROLL_TEST', 2);
-  s.teams[0].pos = 42; // In Jail
-  s.teams[0].jail = 1; // 1 round sentence
-  s.teams[0].buffs.reroll = 1;
+  const jailIndex=G.TRACK.findIndex(tile=>tile[0]==='jail');
+  s.teams[0].pos = jailIndex;
+  s.teams[0].baseIdx=G.BASE_IDX[0];
+  s.teams[0].level=1;
+  const cashBefore=s.teams[0].cash;
+  const battleBefore=s.teams[0].battles;
+  G.landEffect(s,0,[]);
+  assert.equal(s.pendingBattle?.kind,'jail','Jail waits for the team decision');
+  assert.equal(G.resolvePendingBattle(s,0,'battle').ok,true,'Team can challenge the host');
+  assert.equal(s.teams[0].battles,battleBefore-1,'Host challenge consumes one BATTLE quota');
+  assert.equal(G.adjudicateBattle(s,'attacker').ok,true,'Host can award the win to the team');
+  assert.equal(s.teams[0].sold,false,'Winning team keeps the LV1 property');
+  assert.equal(s.teams[0].cash,cashBefore,'Jail host BATTLE does not change cash');
+  assert.equal(s.teams[0].jail,0,'No jail sentence remains');
   s.phase = 'market';
 
-  // Phase transition: market -> sell -> shop -> roll
   G.nextPhase(s); // sell
   G.nextPhase(s); // shop
-  G.nextPhase(s); // roll (Round 2 begins)
+  G.nextPhase(s); // roll
 
-  console.log(`  Upon entering roll phase: Team 0 jail = ${s.teams[0].jail}, rolled = ${s.teams[0].rolled}, jailedThisTurn = ${s.teams[0].jailedThisTurn}`);
-  assert.equal(s.teams[0].jailedThisTurn, true, 'jailedThisTurn set to true during roll transition');
-
-  // Attempt move
+  assert.equal(s.teams[0].rolled,false,'Winning team still receives its next roll');
   G.applyMove(s, 0, 4, () => 0);
-  console.log(`  Team 0 attempted move. Final position: Tile ${s.teams[0].pos}`);
-  assert.equal(s.teams[0].pos, 42, 'Team 0 must remain in jail on Tile 42');
-  console.log('  ✔ VULN-CORE-02 Successfully Patched: Jail sentence strictly enforced.');
+  assert.equal(s.teams[0].pos,(jailIndex+4)%G.N,'Team moves normally on the next roll');
+  console.log('  ✔ RULE-CORE-02 Successfully Patched: Host BATTLE can cancel foreclosure with no detention.');
 }
 
 // -----------------------------------------------------------------------------

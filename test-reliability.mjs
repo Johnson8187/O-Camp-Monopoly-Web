@@ -290,6 +290,18 @@ await cardReceiptRoom.webSocketMessage(cardTeamSocket,JSON.stringify({type:'acti
 const cardCashBefore=cardReceiptRoom.state.teams[0].cash,cardSuccess=G.cardById(cardReceiptRoom.state.pendingCard.cardType,cardReceiptRoom.state.pendingCard.cardId).success;
 await cardReceiptRoom.webSocketMessage(cardHostSocket,JSON.stringify({type:'action',action:'resolveCard',payload:{outcome:'success'},actionId:'card-result-once'}));
 assert.equal(cardReceiptRoom.state.teams[0].cash,cardCashBefore+cardSuccess);assert.equal(cardReceiptRoom.state.receipts.filter(receipt=>receipt.action==='resolveCard').length,1);
+
+const lootReceiptSockets=[],lootReceiptRoom=new GameRoom({blockConcurrencyWhile:fn=>fn(),storage:{},getWebSockets:()=>lootReceiptSockets},{});
+lootReceiptRoom.loaded=true;lootReceiptRoom.meta={id:'LOOT-RECEIPT',name:'實體兌換收據測試',teamCount:2,hostTokenHash:'unused'};lootReceiptRoom.state=normalizeGameState(G.freshState('LOOT-RECEIPT',2));lootReceiptRoom.state.teams[0].items.g3=2;lootReceiptRoom.commit=async next=>{lootReceiptRoom.state=next;};
+const lootHostSocket=pendingSocket();lootHostSocket.serializeAttachment({role:'host',teamId:null});lootReceiptSockets.push(lootHostSocket);
+const zeroLootCash=lootReceiptRoom.state.teams[0].cash;
+await lootReceiptRoom.webSocketMessage(lootHostSocket,JSON.stringify({type:'action',action:'redeemPhysical',payload:{teamId:0,itemIndex:3,reward:0},actionId:'loot-zero-once'}));
+const zeroLootReceipt=lootReceiptRoom.state.receipts.find(receipt=>receipt.action==='redeemPhysical');
+assert.equal(lootReceiptRoom.state.teams[0].cash,zeroLootCash);assert.equal(lootReceiptRoom.state.teams[0].items.g3,1);assert.equal(zeroLootReceipt.cashDelta,0);assert.equal(zeroLootReceipt.displayCash,true);assert.equal(zeroLootReceipt.category,'physical_redeem');assert.match(zeroLootReceipt.reason,/未中獎/);
+await lootReceiptRoom.webSocketMessage(lootHostSocket,JSON.stringify({type:'action',action:'redeemPhysical',payload:{teamId:0,itemIndex:3,reward:1500},actionId:'loot-win-once'}));
+assert.equal(lootReceiptRoom.state.teams[0].cash,zeroLootCash+1500);assert.equal(lootReceiptRoom.state.teams[0].items.g3,0);assert.equal(lootReceiptRoom.state.receipts.filter(receipt=>receipt.action==='redeemPhysical').length,2);
+await lootReceiptRoom.webSocketMessage(lootHostSocket,JSON.stringify({type:'action',action:'redeemPhysical',payload:{teamId:0,itemIndex:3,reward:1500},actionId:'loot-win-once'}));
+assert.equal(lootReceiptRoom.state.teams[0].cash,zeroLootCash+1500);assert.equal(lootReceiptRoom.state.receipts.filter(receipt=>receipt.action==='redeemPhysical').length,2);
 await cardReceiptRoom.webSocketMessage(cardHostSocket,JSON.stringify({type:'action',action:'resolveCard',payload:{outcome:'success'},actionId:'card-result-once'}));
 assert.equal(cardReceiptRoom.state.teams[0].cash,cardCashBefore+cardSuccess);assert.equal(cardReceiptRoom.state.receipts.filter(receipt=>receipt.action==='resolveCard').length,1);
 
@@ -351,14 +363,15 @@ assert.notEqual(duplicateCodes.accessCodes[0].viewerCode,duplicateCodes.accessCo
 const secrets=normalizeGameState(G.freshState('SECRETS',3));
 secrets.recentActions=[{id:'private-action-id',rev:1,at:Date.now(),actorRole:'team',actorTeam:0}];
 secrets.teams[0].cash=1111;secrets.teams[0].pts=11;secrets.teams[1].cash=2222;secrets.teams[1].pts=22;secrets.teams[2].cash=3333;secrets.teams[2].pts=33;
+secrets.teams[0].itemPurchases={g3:1};secrets.teams[0].physicalPurchaseRound=2;
 secrets.teams[0].cardIntel={round:1,chance:[1,2,3],fate:[1,2,3]};secrets.cardCursors={chance:7,fate:9};
 secrets.receipts=[{id:1,teamId:0,cashDelta:111,afterCash:1111},{id:2,teamId:1,cashDelta:222,afterCash:2222}];
 secrets.viewers=[{id:'viewer-secret',teamId:0,name:'測試觀眾',status:'approved',sessionTokenHash:'NEVER-EXPOSE',requestedAt:'2026-08-25T00:00:00.000Z',approvedAt:'2026-08-25T00:01:00.000Z',lastSeenAt:'',removedAt:''}];
 secrets.log=['藍隊現金 +99999'];secrets.publicFeed=[{id:1,message:'藍隊完成移動'}];
 const publicProjection=projectStateForActor(secrets,{role:'viewer',teamId:null});
-assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);assert.equal('cardCursors'in publicProjection,false);assert.equal(publicProjection.teams[0].cardIntel,null);
+assert.equal(publicProjection.teams[0].cash,null);assert.equal(publicProjection.teams[1].pts,null);assert.deepEqual(publicProjection.receipts,[]);assert.deepEqual(publicProjection.log,['藍隊完成移動']);assert.equal('accessCodes'in publicProjection,false);assert.equal('cardCursors'in publicProjection,false);assert.equal(publicProjection.teams[0].cardIntel,null);assert.equal(publicProjection.teams[0].itemPurchases,null);assert.equal(publicProjection.teams[0].physicalPurchaseRound,null);
 const teamProjection=projectStateForActor(secrets,{role:'team',teamId:0});
-assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal(teamProjection.viewerRoster[0].name,'測試觀眾');assert.equal('sessionTokenHash'in teamProjection.viewerRoster[0],false);assert.equal('accessCodes'in teamProjection,false);assert.deepEqual(teamProjection.teams[0].cardIntel.chance,[1,2,3]);assert.equal(teamProjection.teams[1].cardIntel,null);
+assert.equal(teamProjection.teams[0].cash,1111);assert.equal(teamProjection.teams[1].cash,null);assert.equal(teamProjection.receipts.length,1);assert.equal(teamProjection.myViewerCode,secrets.accessCodes[0].viewerCode);assert.equal(teamProjection.viewerRoster[0].name,'測試觀眾');assert.equal('sessionTokenHash'in teamProjection.viewerRoster[0],false);assert.equal('accessCodes'in teamProjection,false);assert.deepEqual(teamProjection.teams[0].cardIntel.chance,[1,2,3]);assert.equal(teamProjection.teams[1].cardIntel,null);assert.equal(teamProjection.teams[0].itemPurchases.g3,1);assert.equal(teamProjection.teams[1].itemPurchases,null);
 const viewerProjection=projectStateForActor(secrets,{role:'viewer',teamId:1});
 assert.equal(viewerProjection.teams[1].cash,null);assert.equal(viewerProjection.teams[0].cash,null);assert.equal(viewerProjection.myViewerCode,null);
 const approvedProjection=projectStateForActor(secrets,{role:'viewer',teamId:0,viewerId:'viewer-secret'});assert.equal(approvedProjection.teams[0].cash,1111);

@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, PAWN_ARCHETYPES, PAWN_SIGNATURES, pawnSpriteSVG, renderPawnSprite, renderTileGarrison, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, STAGE_PRESENTATIONS, stagePresentationFor } from './public/game-fx.js';
+
+const appSource=readFileSync(new URL('./public/app.js',import.meta.url),'utf8');
+const stylesSource=readFileSync(new URL('./public/styles.css',import.meta.url),'utf8');
+assert.match(appSource,/function hostPhysicalRedemptionHTML/);
+assert.match(appSource,/send\('redeemPhysical'/);
+assert.match(appSource,/每隊每回合最多買一件實體物品/);
+assert.match(appSource,/displayCash/);
+assert.match(stylesSource,/\.loot-redemption-item/);
+assert.match(stylesSource,/\.receipt-item\.neutral/);
 
 assert.equal(typeof SoundFX, 'object');
 assert.equal(CEREMONY_STEPS.length,6);

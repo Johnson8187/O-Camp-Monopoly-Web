@@ -34,7 +34,7 @@ const TEAM_COLORS = ["#e23b3b","#3f86e0","#3fbf5a","#f2c12e","#9450d8",
 const LIGHT_FG = [3];
 
 const DEFAULTS = {
-  economyVersion:2,
+  economyVersion:3,
   startCash:2000, lapBonus:300, taxAmount:200,
   casinoCost:150, casinoPayouts:[0,150,300,600],
   blackDiscount:50, bankShare:25, round1Fraction:3,
@@ -51,8 +51,12 @@ const DEFAULTS = {
     typhoon:{name:"颱風",cost:22,repair:300,eyeBonus:0},
     wildfire:{name:"野火",cost:18,repair:250},
   },
-  gambles:[{name:"紅包",cost:5},{name:"戳戳樂",cost:10},
-           {name:"樂透",cost:15},{name:"全押",cost:25}],
+  gambles:[
+    {name:"紅包",cost:5,rewards:[50,50,50,50,100,100,100,100,200,200]},
+    {name:"戳戳樂",cost:10,rewards:[0,0,100,100,100,200,200,200,400,700]},
+    {name:"樂透",cost:15,rewards:[0,0,0,100,100,300,300,600,700,900]},
+    {name:"全押",cost:25,rewards:[0,0,0,0,0,500,750,1000,1250,1500],maxPerGame:1},
+  ],
   buffs:{pass:{name:"通行證",cost:12},reroll:{name:"重骰卡",cost:10},shield:{name:"防災卡",cost:15}},
   stages:[
     {key:"night",name:"夜教",cash:500,pts:0,icon:"🌙",story:"在夜教時反殺警長成功，成功解救所有警察同胞，獲得蔡英文頒獎。"},
@@ -65,8 +69,8 @@ const DEFAULTS = {
 };
 
 const CARD_REWARD_LEVELS = Object.freeze({
-  1:{success:400,failure:150},2:{success:600,failure:200},
-  3:{success:800,failure:250},4:{success:1000,failure:300},
+  1:{success:350,failure:100},2:{success:500,failure:150},
+  3:{success:700,failure:200},4:{success:950,failure:250},
 });
 const card=(id,name,task,difficulty)=>Object.freeze({id,name,task,difficulty,...CARD_REWARD_LEVELS[difficulty]});
 
@@ -87,7 +91,7 @@ const FATE_CARDS = Object.freeze([
   card(14,"背對背","兩兩背對背坐下並站起，連續完成 3 次。",2),
   card(15,"比手畫腳","1 人猜題，其餘隊員不出聲、同時用動作提示同一個詞。",1),
   card(16,"人體波浪舞","全隊合作完成兩輪連續人體波浪。",1),
-  card(17,"憋氣訓練","全隊捏鼻憋氣 15 秒，再完成 5 次蹲下起立。",2),
+  card(17,"定格訓練","全隊完成 5 次蹲下起立後，維持指定姿勢 15 秒。",2),
   card(18,"限時抬腿","5 人在 15 秒內各完成 20 下原地抬腿。",2),
   card(19,"老師說","全隊進行 5 題老師說，至少 3 題全員零失誤。",3),
   card(20,"反應力測試","全隊依口令做出相反的大小西瓜動作，所有人都要成功。",4),
@@ -96,19 +100,19 @@ const FATE_CARDS = Object.freeze([
 const CHANCE_CARDS = Object.freeze([
   card(1,"金雞獨立","全隊單腳站立並維持指定姿勢 20 秒。",3),
   card(2,"全體大合唱","20 秒內選歌，全隊同步唱完副歌 5 句。",2),
-  card(3,"盲眼大風吹","全隊閉眼轉 3 圈，不能說話，在 30 秒內牽手圍成一圈。",4),
+  card(3,"盲眼大風吹","全隊閉眼、禁止跑動，在工作人員保護下於 30 秒內牽手圍成一圈。",4),
   card(4,"心有靈犀一條線","聽到題目後同時做動作，至少 5 人做出相同動作。",1),
   card(5,"你學我猜","以動物走路動作接力傳遞，最後一人猜出動物。",2),
   card(6,"模仿大挑戰","1 人模仿 3 種動物叫聲，其餘隊員全部猜中。",1),
   card(7,"人體打字機","全隊接力說出「一起賭一把」並接續指定動作，不能中斷。",2),
-  card(8,"全員暈眩大作戰","全隊原地轉 5 圈後用屁股寫名字，過程中不能跌倒。",3),
+  card(8,"全員暈眩大作戰","全隊原地轉 3 圈後用屁股寫名字，過程中不能跌倒。",3),
   card(9,"記憶大考驗","全隊進行超市記憶接龍，依序完整複誦並新增品項。",4),
   card(10,"急速列車出發","全隊依快速節奏輪流回答同一主題，不能停頓或重複。",3),
   card(11,"快問快答","由不同隊員連續回答 5 題宿營題目，過程中不能結巴。",3),
   card(12,"全員倒著說","全隊在 10 秒內把指定 3～4 字詞語倒著說出來。",3),
   card(13,"小隊無聲密碼","以眨眼傳遞兩位數密碼，最後一人用拍手還原，限時 2 分鐘。",4),
   card(14,"小隊密碼解鎖","隊員同時比出 1～5 根手指，指定者在 30 秒內算出總和。",1),
-  card(15,"倫敦鐵橋垮下來","兩兩搭橋，隊尾單腳跳穿越並重組，依實體卡限時完成一輪。",4),
+  card(15,"倫敦鐵橋垮下來","兩兩搭橋，隊尾單腳跳穿越並重組，全隊在 60 秒內完成一輪。",4),
   card(16,"水果大聲公挑戰","每人用生氣語氣大喊一種水果，全隊不能笑場。",2),
   card(17,"大家好","全隊依節奏完成累加姓名口號，過程中不能中斷或喊錯。",3),
   card(18,"全員同心節奏跳","全隊閉眼聽同一節奏同步起跳，5 次機會內成功。",3),
@@ -137,14 +141,16 @@ function drawCard(s,kind){
 // Core rules remain independently testable when no ledger is active.
 function recordTransaction(s, transaction) {
   if (!Array.isArray(s?._transactions)) return;
+  const allowZero=Boolean(transaction?.allowZero);
   const entries=(transaction?.entries||[]).map(entry=>({
     teamId:Number(entry.teamId),cashDelta:Number(entry.cashDelta)||0,ptsDelta:Number(entry.ptsDelta)||0,
     reason:String(entry.reason||transaction.reason||"資源異動"),counterpartyTeamId:entry.counterpartyTeamId!==null&&entry.counterpartyTeamId!==undefined&&Number.isInteger(Number(entry.counterpartyTeamId))?Number(entry.counterpartyTeamId):null,
-  })).filter(entry=>Number.isInteger(entry.teamId)&&(entry.cashDelta||entry.ptsDelta));
+    displayCash:Boolean(entry.displayCash),
+  })).filter(entry=>Number.isInteger(entry.teamId)&&(entry.cashDelta||entry.ptsDelta||allowZero||entry.displayCash));
   const bankDelta=Number(transaction?.bankDelta)||0;
   if(!entries.length&&!bankDelta)return;
   s._transactions.push({
-    category:String(transaction.category||"other"),entries,bankDelta,
+    category:String(transaction.category||"other"),entries,bankDelta,allowZero,
     tileIndex:transaction.tileIndex!==null&&transaction.tileIndex!==undefined&&Number.isInteger(Number(transaction.tileIndex))?Number(transaction.tileIndex):null,
     attackKind:transaction.attackKind?String(transaction.attackKind):null,
   });
@@ -178,11 +184,11 @@ function freshState(code, teamCount, names) {
       id:i, name:(names && names[i]) || `第 ${i+1} 組`, color:TEAM_COLORS[i%TEAM_COLORS.length],
       cash:DEFAULTS.startCash, pts:0, pos:START_IDX, baseIdx:null, level:1,
       jail:0, jailedThisTurn:false, battles:DEFAULTS.battlesPerTeam, sold:false, soldRound:0,
-      buffs:{pass:0,reroll:0,shield:0}, items:{}, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false, cardIntel:null,
+      buffs:{pass:0,reroll:0,shield:0}, items:{}, itemPurchases:{}, physicalPurchaseRound:0, attackRounds:{}, discount:false, rolled:false, lastRoll:null, lastDice:null, joined:false, cardIntel:null,
     })),
     bank:0, market:"flat", disasters:0, unlocked:[], attackUsage:{}, log:[], publicFeed:[], ceremonyStep:0,
     stageNotices:[], stageNoticeSeq:0,
-    settings: clone(DEFAULTS), lastRoll:null, lastForeclosure:null, lastJailBattle:null, activeTeamId:null, pendingBattle:null, pendingCard:null, lastCardResult:null, cardCursors:{fate:0,chance:0}, cardSeq:0, rollDiceCounts:{},
+    settings: clone(DEFAULTS), lastRoll:null, lastForeclosure:null, lastJailBattle:null, lastRedemption:null, activeTeamId:null, pendingBattle:null, pendingCard:null, lastCardResult:null, cardCursors:{fate:0,chance:0}, cardSeq:0, rollDiceCounts:{},
     receipts:[], receiptSeq:0, lastPurchase:null, viewers:[],
   };
 }
@@ -562,13 +568,29 @@ function buyGamble(s, ti, gi) {
   if (!t) return {ok:false, msg:"隊伍不存在"};
   const g = s.settings.gambles?.[gi];
   if (!g) return {ok:false, msg:"找不到此抽獎項目"};
+  const itemKey=`g${gi}`;t.itemPurchases=t.itemPurchases||{};
+  if (Number(t.physicalPurchaseRound) === Number(s.round)) return {ok:false, msg:"每隊每回合最多購買一件實體物品"};
+  if (Number(g.maxPerGame)>0 && Number(t.itemPurchases[itemKey]||0)>=Number(g.maxPerGame)) return {ok:false, msg:`「${g.name}」每隊整場最多購買 ${g.maxPerGame} 次`};
   const cost = costWithDiscount(s, t, g.cost);
   if (t.pts < cost) return {ok:false, msg:"諂媚之點不足"};
   changePoints(s,ti,-cost,`購買實體物品「${g.name}」`,{category:"physical_item"}); if (t.discount) t.discount = false;
-  const itemKey=`g${gi}`;t.items=t.items||{};t.items[itemKey]=(t.items[itemKey]||0)+1;
+  t.items=t.items||{};t.items[itemKey]=(t.items[itemKey]||0)+1;t.itemPurchases[itemKey]=(t.itemPurchases[itemKey]||0)+1;t.physicalPurchaseRound=Number(s.round)||1;
   s.lastPurchase={seq:(s.lastPurchase?.seq||0)+1,team:ti,name:g.name,kind:"physical",itemKey,cost,count:t.items[itemKey]};
   s.log.unshift(`${t.name} 買了實體物品「${g.name}」（扣 ${cost} 點，背包共有 ${t.items[itemKey]} 個）`);
   return {ok:true};
+}
+function redeemPhysicalItem(s, ti, gi, reward) {
+  const t=s.teams?.[ti],g=s.settings.gambles?.[gi],itemKey=`g${gi}`,value=Number(reward);
+  if(!t)return {ok:false,msg:"隊伍不存在"};
+  if(!g)return {ok:false,msg:"找不到此實體物品"};
+  if(!Number.isInteger(value)||value<0||!(g.rewards||[]).some(amount=>Number(amount)===value))return {ok:false,msg:"兌換獎金不在此物品的核准獎池內"};
+  if(Number(t.items?.[itemKey]||0)<=0)return {ok:false,msg:`${t.name} 的背包沒有「${g.name}」`};
+  t.items[itemKey]-=1;t.cash+=value;
+  const reason=value>0?`兌換實體物品「${g.name}」獲得 ${money(value)}`:`兌換實體物品「${g.name}」未中獎`;
+  recordTransaction(s,{category:"physical_redeem",allowZero:true,entries:[{teamId:ti,cashDelta:value,displayCash:true,reason}]});
+  s.lastRedemption={seq:(s.lastRedemption?.seq||0)+1,team:ti,itemIndex:gi,itemKey,name:g.name,reward:value,remaining:t.items[itemKey],round:Number(s.round)||1};
+  s.log.unshift(`${t.name} ${reason}（背包剩餘 ${t.items[itemKey]} 個）`);
+  return {ok:true,reward:value,remaining:t.items[itemKey]};
 }
 function buyBuff(s, ti, bk) {
   const t = s.teams[ti];
@@ -717,7 +739,7 @@ function rankBases(s){
     .sort((a,b)=>Number(Boolean(a.sold||a.baseIdx===null))-Number(Boolean(b.sold||b.baseIdx===null))||Number(b.level||0)-Number(a.level||0)||a.originalIndex-b.originalIndex);
 }
 
-return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,CARD_REWARD_LEVELS,CARD_DECKS,FATE_CARDS,CHANCE_CARDS,PHASES,clone,money,cardById,previewCards,drawCard,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyJailForeclosure,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,resolveCard,buyGamble,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
+return {TRACK,N,START_IDX,BASE_IDX,STAGE_IDX,WORM_IDX,TILE,TEAM_COLORS,LIGHT_FG,DEFAULTS,CARD_REWARD_LEVELS,CARD_DECKS,FATE_CARDS,CHANCE_CARDS,PHASES,clone,money,cardById,previewCards,drawCard,freshState,stayFee,passFee,sellValue,propertyValue,propertyTax,collectPropertyTaxes,netWorth,ownerOf,assignBases,applyJailForeclosure,applyMove,landEffect,resolvePendingBattle,adjudicateBattle,resolveCard,buyGamble,redeemPhysicalItem,buyBuff,upgradeBase,sellBase,buyBackBase,playAttack,nextPhase,tilesInSquare,costWithDiscount,rankTeams,rankBases,recordTransaction,creditCash,changePoints};
 })();
 
 

@@ -137,9 +137,26 @@ G.nextPhase(persistentBuff);
 if (persistentBuff.teams[0].buffs.shield !== 2) throw new Error('未使用的增益卡應跨回合保留');
 
 const physicalInventory = G.freshState('physical-inventory-test', 2);
-physicalInventory.teams[0].pts = 20;
-if (!G.buyGamble(physicalInventory, 0, 1).ok || !G.buyGamble(physicalInventory, 0, 1).ok) throw new Error('實體物品購買失敗');
-if (physicalInventory.teams[0].items.g1 !== 2 || physicalInventory.lastPurchase.kind !== 'physical' || physicalInventory.lastPurchase.count !== 2) throw new Error('實體物品沒有正確放入背包並累加數量');
+physicalInventory.teams[0].pts = 100;
+if (!G.buyGamble(physicalInventory, 0, 1).ok) throw new Error('實體物品購買失敗');
+const repeatedPhysical=G.buyGamble(physicalInventory,0,0);
+if(repeatedPhysical.ok||!/每回合最多/.test(repeatedPhysical.msg)||physicalInventory.teams[0].items.g1!==1)throw new Error('實體物品每回合購買限制失效');
+physicalInventory.round=2;
+if(!G.buyGamble(physicalInventory,0,1).ok||physicalInventory.teams[0].items.g1!==2||physicalInventory.lastPurchase.kind!=='physical'||physicalInventory.lastPurchase.count!==2)throw new Error('下一回合應可再次購買實體物品');
+physicalInventory._transactions=[];
+const cashBeforeRedeem=physicalInventory.teams[0].cash;
+if(!G.redeemPhysicalItem(physicalInventory,0,1,700).ok||physicalInventory.teams[0].cash!==cashBeforeRedeem+700||physicalInventory.teams[0].items.g1!==1)throw new Error('實體物品兌換未正確入帳或扣除背包數量');
+if(physicalInventory._transactions[0]?.category!=='physical_redeem'||physicalInventory._transactions[0]?.entries[0]?.cashDelta!==700)throw new Error('實體物品兌換沒有建立專用金流');
+if(G.redeemPhysicalItem(physicalInventory,0,1,999).ok)throw new Error('不得兌換獎池以外的金額');
+const allIn=G.freshState('all-in-limit-test',2);allIn.teams[0].pts=100;
+if(!G.buyGamble(allIn,0,3).ok)throw new Error('首次購買全押失敗');
+allIn._transactions=[];const zeroCash=allIn.teams[0].cash;
+if(!G.redeemPhysicalItem(allIn,0,3,0).ok||allIn.teams[0].cash!==zeroCash||!allIn._transactions[0]?.allowZero||!allIn._transactions[0]?.entries[0]?.displayCash)throw new Error('$0 全押兌換應保留零元正式收據資料');
+allIn.round=2;
+if(G.buyGamble(allIn,0,3).ok)throw new Error('全押每隊整場最多購買一次');
+
+if(G.CARD_REWARD_LEVELS[1].success!==350||G.CARD_REWARD_LEVELS[4].failure!==250)throw new Error('機會／命運卡平衡獎金未套用');
+if(!/禁止跑動/.test(G.CHANCE_CARDS[2].task)||!/60 秒/.test(G.CHANCE_CARDS[14].task)||G.FATE_CARDS[16].name!=='定格訓練')throw new Error('高風險卡片的安全規則未更新');
 
 const shieldFeedback = G.freshState('shield-feedback-test', 2);
 shieldFeedback.round = 2;

@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.09.05.66';
+const APP_BUILD_VERSION = '2026.09.07.67';
 
 
 
@@ -540,6 +540,7 @@ export function normalizeGameState(state){
   Object.keys(s.cardCursors).forEach(kind=>{const length=G.CARD_DECKS?.[kind]?.length||1;s.cardCursors[kind]=Math.max(0,Math.floor(Number(s.cardCursors[kind])||0))%length;});
   s.cardSeq=Math.max(0,Math.floor(Number(s.cardSeq)||0));
   if(!('lastPurchase' in s))s.lastPurchase=null;
+  if(!('lastRedemption' in s))s.lastRedemption=null;
   if(!('lastForeclosure' in s))s.lastForeclosure=null;
   if(!('lastJailBattle' in s))s.lastJailBattle=null;
   if(!('ceremonyStep' in s))s.ceremonyStep=['settle','ended'].includes(s.phase)?5:0;
@@ -552,6 +553,8 @@ export function normalizeGameState(state){
   }
   s.settings.stages=Array.isArray(s.settings.stages)?s.settings.stages:G.clone(G.DEFAULTS.stages);
   s.settings.stages=G.DEFAULTS.stages.map((fallback,index)=>({...fallback,...(s.settings.stages[index]||{})}));
+  s.settings.gambles=G.DEFAULTS.gambles.map((fallback,index)=>({...fallback,...(s.settings.gambles?.[index]||{}),rewards:[...(fallback.rewards||[])],maxPerGame:Number(fallback.maxPerGame)||0}));
+  s.settings.economyVersion=Math.max(3,Number(s.settings.economyVersion)||0);
   if(!Number.isFinite(Number(s.settings.battleLossMultiplier)))s.settings.battleLossMultiplier=G.DEFAULTS.battleLossMultiplier;
   s.unlocked=Array.isArray(s.unlocked)?s.unlocked.filter(index=>G.STAGE_IDX.includes(Number(index))).map(Number):[];
   s.publicFeed=Array.isArray(s.publicFeed)?s.publicFeed:[];
@@ -566,7 +569,7 @@ export function normalizeGameState(state){
   s.rollDiceCounts = s.rollDiceCounts && typeof s.rollDiceCounts === 'object' ? s.rollDiceCounts : {};
   ensureTeamAccessCodes(s,(s.teams||[]).length);
   if(!Number.isFinite(Number(s.settings.diceCount)))s.settings.diceCount=1;
-  (s.teams||[]).forEach(t=>{
+  (s.teams||[]).forEach((t,teamIndex)=>{
     t.buffs={pass:0,reroll:0,shield:0,...(t.buffs||{})};
     const hadInventory=t.items&&typeof t.items==='object';
     t.items=hadInventory?t.items:{};
@@ -577,6 +580,14 @@ export function normalizeGameState(state){
         if(count)t.items[`g${index}`]=count;
       });
     }
+    const physicalReceipts=(s.receipts||[]).filter(receipt=>Number(receipt.teamId)===teamIndex&&receipt.category==='physical_item');
+    t.itemPurchases=t.itemPurchases&&typeof t.itemPurchases==='object'?t.itemPurchases:{};
+    (s.settings.gambles||[]).forEach((item,index)=>{
+      const itemKey=`g${index}`,receiptCount=physicalReceipts.filter(receipt=>String(receipt.reason||'').includes(`「${item.name}」`)).length;
+      t.itemPurchases[itemKey]=Math.max(0,Number(t.itemPurchases[itemKey])||0,receiptCount,Number(t.items[itemKey])||0);
+    });
+    const latestPhysicalRound=physicalReceipts.reduce((latest,receipt)=>Math.max(latest,Number(receipt.round)||0),0);
+    t.physicalPurchaseRound=Math.max(0,Number(t.physicalPurchaseRound)||0,latestPhysicalRound);
     if(!('lastDice' in t))t.lastDice=null;
     if(!('cardIntel' in t))t.cardIntel=null;
     t.jail=0;
@@ -633,7 +644,7 @@ function publicCeremonyReveal(state){
 }
 
 function redactTeam(team){
-  return {...team,cash:null,pts:null,buffs:null,items:null,battles:null,discount:null,attackRounds:null,lastDice:null,cardIntel:null};
+  return {...team,cash:null,pts:null,buffs:null,items:null,itemPurchases:null,physicalPurchaseRound:null,battles:null,discount:null,attackRounds:null,lastDice:null,cardIntel:null};
 }
 
 export function projectStateForActor(fullState,actor={role:'viewer',teamId:null},onlineViewerIds=new Set()){
@@ -657,6 +668,7 @@ export function projectStateForActor(fullState,actor={role:'viewer',teamId:null}
   projected.teams=(fullState.teams||[]).map((team,index)=>{if(canSeeOwn&&index===teamId)return G.clone(team);const safe=redactTeam(G.clone(team));if(resultsPublic){safe.cash=team.cash;safe.pts=team.pts;}return safe;});
   if(projected.lastRoll&&Number(projected.lastRoll.team)!==teamId)projected.lastRoll={...projected.lastRoll,note:'完成移動'};
   if(projected.lastPurchase&&Number(projected.lastPurchase.team)!==teamId)projected.lastPurchase=null;
+  if(projected.lastRedemption&&Number(projected.lastRedemption.team)!==teamId)projected.lastRedemption=null;
   return projected;
 }
 
@@ -688,9 +700,10 @@ function appendReceipts(previous,next,action,actionId=''){
   transactions.forEach((tx,txIndex)=>{
     const transactionId=`${actionId||`rev-${Number(next.rev||0)+1}`}-${txIndex+1}`;
     (tx.entries||[]).forEach(entry=>{
-      const teamId=Number(entry.teamId),cashDelta=Number(entry.cashDelta)||0,ptsDelta=Number(entry.ptsDelta)||0;if(!next.teams?.[teamId]||(!cashDelta&&!ptsDelta))return;
+      const teamId=Number(entry.teamId),cashDelta=Number(entry.cashDelta)||0,ptsDelta=Number(entry.ptsDelta)||0;if(!next.teams?.[teamId]||((!cashDelta&&!ptsDelta)&&!tx.allowZero&&!entry.displayCash))return;
       const beforeCash=runningCash[teamId],beforePts=runningPts[teamId];runningCash[teamId]+=cashDelta;runningPts[teamId]+=ptsDelta;
-      newReceipts.push({id:++next.receiptSeq,transactionId,teamId,actorTeam:tx.actorTeam!==null&&tx.actorTeam!==undefined&&Number.isInteger(Number(tx.actorTeam))?Number(tx.actorTeam):null,counterpartyTeamId:entry.counterpartyTeamId!==null&&entry.counterpartyTeamId!==undefined&&Number.isInteger(Number(entry.counterpartyTeamId))?Number(entry.counterpartyTeamId):null,round:Number(next.round)||1,phase:next.phase,cashDelta,ptsDelta,beforeCash,afterCash:runningCash[teamId],beforePts,afterPts:runningPts[teamId],reason:String(entry.reason||'資源異動').slice(0,220),category:String(tx.category||'other'),tileIndex:tx.tileIndex!==null&&tx.tileIndex!==undefined&&Number.isInteger(Number(tx.tileIndex))?Number(tx.tileIndex):null,attackKind:tx.attackKind||null,action,createdAt});
+      if(!cashDelta&&!ptsDelta&&!tx.allowZero&&!entry.displayCash)return;
+      newReceipts.push({id:++next.receiptSeq,transactionId,teamId,actorTeam:tx.actorTeam!==null&&tx.actorTeam!==undefined&&Number.isInteger(Number(tx.actorTeam))?Number(tx.actorTeam):null,counterpartyTeamId:entry.counterpartyTeamId!==null&&entry.counterpartyTeamId!==undefined&&Number.isInteger(Number(entry.counterpartyTeamId))?Number(entry.counterpartyTeamId):null,round:Number(next.round)||1,phase:next.phase,cashDelta,ptsDelta,displayCash:Boolean(entry.displayCash),beforeCash,afterCash:runningCash[teamId],beforePts,afterPts:runningPts[teamId],reason:String(entry.reason||'資源異動').slice(0,220),category:String(tx.category||'other'),tileIndex:tx.tileIndex!==null&&tx.tileIndex!==undefined&&Number.isInteger(Number(tx.tileIndex))?Number(tx.tileIndex):null,attackKind:tx.attackKind||null,action,createdAt});
     });
   });
   next.receipts=[...newReceipts.reverse(),...next.receipts];
@@ -698,7 +711,7 @@ function appendReceipts(previous,next,action,actionId=''){
   return null;
 }
 
-const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','testRoll','setPresetRoll','clearPresetRoll','resolveBattle','resolveCard','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
+const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','nextPhase','settleGame','setCeremonyStep','endGame','setMarket','allowRoll','testRoll','setPresetRoll','clearPresetRoll','resolveBattle','resolveCard','redeemPhysical','unlock','regenerateAccessCode','adjustCash','adjustPts','renameTeams','setConfig','setConfigs']);
 
 const TEAM_ADMIN_ACTIONS=new Set(['approveViewer','rejectViewer','removeViewer','regenerateOwnViewerCode']);
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack',...TEAM_ADMIN_ACTIONS]);
@@ -739,6 +752,7 @@ function safePublicEvent(state,eventType,actor,payload={}){
   if(eventType==='resolveLanding'&&/逃漏稅|挑戰主持人/.test(String(state.log?.[0]||'')))return String(state.log[0]);
   if(eventType==='resolveBattle')return /挑戰主持人|逃漏稅法拍|逃過追查/.test(String(state.log?.[0]||''))?String(state.log[0]):'BATTLE 已完成裁決';
   if(eventType==='resolveCard'){const result=state.lastCardResult,card=G.cardById(result?.cardType,result?.cardId),team=state.teams?.[result?.teamId];return `${team?.name||'隊伍'} 完成${result?.cardType==='chance'?'機會':'命運'}卡「${card?.name||'挑戰'}」`;}
+  if(eventType==='redeemPhysical'){const team=state.teams?.[Number(payload.teamId)],item=state.settings.gambles?.[Number(payload.itemIndex)];return `${team?.name||'隊伍'} 完成實體物品「${item?.name||'獎項'}」兌換`;}
   if(eventType==='settleGame')return '活動進入最終頒獎典禮';
   if(eventType==='setCeremonyStep')return '主持人推進了頒獎典禮';
   if(eventType==='endGame'||eventType==='forceEnd'||eventType==='idleTimeout')return '活動已正式結束';
@@ -1024,6 +1038,7 @@ export class GameRoom {
     }
     if(action==='resolveBattle'){const r=G.adjudicateBattle(s,String(p.outcome||''));return r.ok?undefined:{error:r.msg};}
     if(action==='resolveCard'){const r=G.resolveCard(s,String(p.outcome||''));return r.ok?undefined:{error:r.msg};}
+    if(action==='redeemPhysical'){const r=G.redeemPhysicalItem(s,Number(p.teamId),Number(p.itemIndex),Number(p.reward));return r.ok?undefined:{error:r.msg};}
     if(action==='unlock'){const i=Number(p.index),stageIndex=G.STAGE_IDX.indexOf(i),stage=s.settings.stages?.[stageIndex];if(stageIndex<0||!stage)return {error:'關卡格錯誤'};if(!s.unlocked.includes(i)){s.unlocked.push(i);s.stageNoticeSeq=Number(s.stageNoticeSeq||0)+1;s.stageNotices=[...(s.stageNotices||[]),{id:s.stageNoticeSeq,stageIndex,tileIndex:i,stage:G.clone(stage),createdAt:now()}].slice(-20);}s.log.unshift(`${stage.name}關卡解封（第 ${i+1} 格）`);return;}
     if(action==='regenerateAccessCode'){const i=Number(p.teamId),kind=String(p.kind||'');if(!s.teams[i]||!['team','viewer'].includes(kind))return {error:'登入代碼設定錯誤'};ensureTeamAccessCodes(s,s.teams.length);const key=kind==='team'?'teamCode':'viewerCode',used=new Set(s.accessCodes.map(entry=>entry[key]));let code='';do{code=randomAccessCode(kind==='team'?'T':'V');}while(used.has(code));s.accessCodes[i][key]=code;if(kind==='viewer')revokeTeamViewers(s,i);s.log.unshift(`主持人重新產生 ${s.teams[i].name} 的${kind==='team'?'隊輔':'觀眾'}代碼`);return;}
     if(action==='adjustCash'||action==='adjustPts'){const i=Number(p.teamId),amount=Number(p.amount);if(!s.teams[i]||!Number.isFinite(amount)||Math.abs(amount)>1000000)return {error:'調整值錯誤'};if(action==='adjustCash'){if(amount>=0)G.creditCash(s,i,amount,'主持人調整本隊現金',{category:'host_adjust'});else{const before=s.teams[i].cash;s.teams[i].cash+=amount;G.recordTransaction(s,{category:'host_adjust',entries:[{teamId:i,cashDelta:s.teams[i].cash-before,reason:'主持人調整本隊現金'}]});}}else G.changePoints(s,i,amount,'主持人調整本隊諂媚點數',{category:'host_adjust'});s.log.unshift(`${s.teams[i].name} ${action==='adjustCash'?'現金':'點數'} ${amount>0?'+':''}${amount}`);return;}

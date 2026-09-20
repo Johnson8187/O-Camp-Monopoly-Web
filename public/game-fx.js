@@ -57,9 +57,16 @@ export function movementStepDelay(totalSteps,completedSteps){
   const total=Math.max(1,Math.floor(Number(totalSteps)||1));
   const completed=Math.max(1,Math.min(total,Math.floor(Number(completedSteps)||1)));
   if(total<=10)return 520;
-  if(completed<=2)return 440;
-  if(total-completed<=3)return 460;
-  return total<=18?360:260;
+  if(total<=24){
+    if(completed<=2)return 440;
+    if(total-completed<=3)return 460;
+    return total<=18?360:260;
+  }
+  if(completed<=2)return total>60?240:320;
+  if(total-completed<=3)return total>60?260:340;
+  if(total>80)return 75;
+  if(total>50)return 110;
+  return 170;
 }
 
 export function pawnFacingForStep(fromTile,toTile,fallback='front'){

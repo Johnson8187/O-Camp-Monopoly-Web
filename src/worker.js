@@ -3,7 +3,7 @@ import { G } from './game-core.js';
 const json = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const now = () => new Date().toISOString();
 const text = (v, fallback='') => String(v ?? fallback).trim();
-const APP_BUILD_VERSION = '2026.09.07.67';
+const APP_BUILD_VERSION = '2026.09.20.68';
 
 
 
@@ -716,7 +716,7 @@ const HOST_ACTIONS=new Set(['assignBases','startGame','pauseGame','resumeGame','
 const TEAM_ADMIN_ACTIONS=new Set(['approveViewer','rejectViewer','removeViewer','regenerateOwnViewerCode']);
 const TEAM_ACTIONS=new Set(['roll','reroll','battle','resolveLanding','leaveTeam','attack','gamble','buff','upgrade','sell','buyBack',...TEAM_ADMIN_ACTIONS]);
 const TEAM_ACTION_PHASES=new Map([['roll','roll'],['reroll','roll'],['battle','roll'],['resolveLanding','roll'],['attack','roll'],['gamble','shop'],['buff','shop'],['upgrade','sell'],['sell','sell'],['buyBack','sell']]);
-const CONFIG_RANGES={lapBonus:[0,1000000],taxAmount:[0,1000000],casinoCost:[0,1000000],blackDiscount:[1,100],bankShare:[0,100],diceSides:[2,20],diceCount:[1,10],passRatio:[0,100],battleLossMultiplier:[100,300]};
+const CONFIG_RANGES={lapBonus:[0,1000000],taxAmount:[0,1000000],casinoCost:[0,1000000],blackDiscount:[1,100],bankShare:[0,100],diceSides:[2,20],diceCount:[1,30],passRatio:[0,100],battleLossMultiplier:[100,300]};
 function configRange(path){ if(CONFIG_RANGES[path])return CONFIG_RANGES[path];if(/^stages\.\d+\.(cash|pts)$/.test(path))return [-1000000,1000000];return /^(levels\.\d+\.(stay|up|sell|tax)|attacks\.(quake|missile|typhoon|wildfire)\.(cost|repair)|attacks\.typhoon\.eyeBonus|buffs\.(pass|reroll|shield)\.cost|gambles\.\d+\.cost)$/.test(path)?[0,1000000]:null; }
 function updateConfig(settings,path,rawValue){
   const range=configRange(path),value=Number(rawValue);
@@ -974,7 +974,7 @@ export class GameRoom {
           dice = [total];
           delete s.presetRolls[i];
         } else {
-          const count=Math.max(1,Math.min(10,Number(s.rollDiceCounts?.[i])||Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
+          const count=Math.max(1,Math.min(30,Number(s.rollDiceCounts?.[i])||Number(s.settings.diceCount)||1)),sides=Math.max(2,Number(s.settings.diceSides)||6);
           dice=Array.from({length:count},()=>1+Math.floor(Math.random()*sides));
           total=dice.reduce((sum,n)=>sum+n,0);
         }
@@ -1001,8 +1001,8 @@ export class GameRoom {
     if(action==='allowRoll'){
       if(s.phase!=='roll')return {error:'目前不是擲骰階段'};
       if(s.pendingBattle||s.pendingCard)return {error:'請先完成停留事件、BATTLE 或卡片結算'};
-      const i=Number(p.teamId),t=s.teams[i],diceCount=Number(p.diceCount??s.settings.diceCount);if(!Number.isInteger(i)||!t)return {error:'隊伍編號錯誤'};
-      if(!Number.isInteger(diceCount)||diceCount<1||diceCount>10)return {error:'骰子顆數必須為 1～10 顆'};
+      const i=Number(p.teamId),t=s.teams[i],rawDice=p.diceCount!==undefined?p.diceCount:s.settings.diceCount,diceCount=rawDice===null?NaN:Number(rawDice);if(!Number.isInteger(i)||!t)return {error:'隊伍編號錯誤'};
+      if(!Number.isInteger(diceCount)||diceCount<1||diceCount>30)return {error:'骰子顆數必須為 1～30 顆'};
       if(t.rolled)return {error:'這一隊本回合不能再擲骰'};
       s.rollDiceCounts={...(s.rollDiceCounts||{}),[i]:diceCount};s.activeTeamId=i;s.log.unshift(`主持人允許 ${t.name} 使用 ${diceCount} 顆骰子`);return;
     }

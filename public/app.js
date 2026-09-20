@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.09.07.67';
-import { G } from './game-core.js?v=2026.09.07.67';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.07.67';
+const BUILD_VERSION = '2026.09.20.68';
+import { G } from './game-core.js?v=2026.09.20.68';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.20.68';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -64,6 +64,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫」把';
 const RELEASE_NOTES = [
+  {date:'2026.09.20',version:'v2026.09.20.68',title:'30顆骰子與觀戰動畫修復',items:['骰子上限提升至 30 顆並新增多階層視覺縮放','修復大螢幕公開觀戰缺少擲骰及移動動畫問題','最佳化長程移動步頻巡航與 Watchdog 防護']},
   {date:'2026.09.07',version:'v2026.09.07.67',title:'卡片經濟與實體兌獎',items:['重新平衡 40 張機會／命運卡獎金，失敗保留安慰獎','新增紅包、戳戳樂、樂透與全押獎池，以及主持人兌換櫃台與專用收據','每隊每回合限購一件實體物品，全押每隊整場限一次']},
   {date:'2026.09.05',version:'v2026.09.05.66',title:'監獄挑戰主持人',items:['踩到監獄可消耗一次 BATTLE 挑戰主持人，小隊獲勝即可撤銷法拍','主持人獲勝才執行原房產降級或 LV1 無償法拍，失敗懲罰不加倍']},
   {date:'2026.09.05',version:'v2026.09.05.65',title:'十骰物理投擲與逃漏稅法拍',items:['每隊最多可配置 10 顆骰子，加入散射、翻滾、撞地與回彈演出','監獄改為房產降一級；LV1 基地直接法拍且不返還現金，不再扣留回合']},
@@ -295,7 +296,8 @@ function runNextFx(){
     clearTimeout(watchdog);
     runNextFx();
   };
-  watchdog=task.type==='battlePrompt'?null:setTimeout(done,14000);
+  const watchdogDuration=task.type==='roll'?Math.max(14000,4500+(Number(task.rollVal)||1)*220):14000;
+  watchdog=task.type==='battlePrompt'?null:setTimeout(done,watchdogDuration);
 
   try{
     switch(task.type){
@@ -692,11 +694,7 @@ function executeRollFx(task,done){
   const {teamId,team,beforePos,targetPos,rollVal}=task;
   if(!team){done();return;}
 
-  const values=Array.isArray(task.diceValues)&&task.diceValues.length?task.diceValues:[rollVal];
-  App.fx.dice={teamId,teamName:team.name,value:rollVal,values,rolling:!reducedMotion};
-  SoundFX.playDiceTumble();
-  renderFx();
-
+  App.fx.positions[teamId]=beforePos;
   const isJail=Number(rollVal)===0||(beforePos===targetPos&&(task.landPos===undefined||task.landPos===targetPos));
   const walkSteps=isJail?0:Math.max(0,Math.floor(Number(rollVal)||0));
   const walkPath=[];
@@ -706,6 +704,13 @@ function executeRollFx(task,done){
   const landPos=task.landPos ?? (walkPath.length?walkPath[walkPath.length-1]:beforePos);
   const isTeleport=!isJail&&(targetPos!==landPos);
 
+  App.fx.stepText=`0 / ${walkPath.length}`;
+  ensureMovingToken(teamId,beforePos,team);
+
+  const values=Array.isArray(task.diceValues)&&task.diceValues.length?task.diceValues:[rollVal];
+  App.fx.dice={teamId,teamName:team.name,value:rollVal,values,rolling:!reducedMotion};
+  SoundFX.playDiceTumble();
+  renderFx();
 
   if(reducedMotion||(!walkPath.length&&!isTeleport)){
     revealRollFx();
@@ -720,10 +725,6 @@ function executeRollFx(task,done){
 
   fxTimeout('diceReveal',revealRollFx,1550);
   fxTimeout('diceDismiss',()=>{App.fx.dice=null;removeRollFx();},3100);
-
-  App.fx.positions[teamId]=beforePos;
-  App.fx.stepText=`0 / ${walkPath.length}`;
-  ensureMovingToken(teamId,beforePos,team);
 
   let step=0;
   const moveNext=()=>{
@@ -925,6 +926,9 @@ function processGameFx(previous,next){
       const landPos = next.lastRoll.landPos ?? ((beforePos + rollVal) % G.N);
       const targetPos = next.lastRoll.targetPos ?? team.pos;
       if (rollVal > 0 || beforePos !== targetPos) {
+        if (App.fx.positions[teamId] === undefined || App.fx.positions[teamId] === null) {
+          App.fx.positions[teamId] = beforePos;
+        }
         enqueueFx({type:'roll',teamId,team,beforePos,landPos,targetPos,rollVal,diceValues:Array.isArray(next.lastRoll.dice)?next.lastRoll.dice:[rollVal]});
         const tileKind=G.TRACK[targetPos]?.[0]||G.TRACK[landPos]?.[0]||'safe',stageIndex=tileKind==='stage'?G.STAGE_IDX.indexOf(targetPos):-1,stage=stageIndex>=0?next.settings?.stages?.[stageIndex]:null,stageUnlocked=stageIndex>=0&&next.unlocked?.includes(targetPos);
         if(stageUnlocked&&stage){enqueueFx({type:'stageLanding',team,tileIndex:targetPos,stageIndex,stage});stageLandingQueued=true;}
@@ -936,6 +940,9 @@ function processGameFx(previous,next){
     const before=previous.teams?.[i];
     if(before && before.pos!==team.pos && team.id!==lastRollTeam){
       const rollVal=(team.pos-before.pos+G.N)%G.N||1;
+      if (App.fx.positions[team.id] === undefined || App.fx.positions[team.id] === null) {
+        App.fx.positions[team.id] = before.pos;
+      }
       enqueueFx({type:'roll',teamId:team.id,team,beforePos:before.pos,landPos:team.pos,targetPos:team.pos,rollVal});
     }
   });
@@ -976,6 +983,8 @@ function processGameFx(previous,next){
       if(/發動「/.test(logMsg)&&attackChanged)return;
       if(/抽籤/.test(logMsg)&&assignmentChanged)return;
       if(/骰出/.test(logMsg))return;
+      if(/主持人允許.*使用.*顆骰子/.test(logMsg))return;
+      if(/完成移動，抵達第|完成「.*」/.test(logMsg))return;
       if(/買了(?:實體物品)?「|取得「/.test(logMsg)&&purchaseChanged)return;
       if(battlePresentation&&/BATTLE/.test(logMsg))return;
       if(/頒獎典禮進度/.test(logMsg))return;
@@ -1150,10 +1159,36 @@ function sprite(type,size){
 }
 const diceGlyphs=['⚀','⚁','⚂','⚃','⚄','⚅'];
 function dicePhysicsStyle(index,count){
-  const rows=count<=3?1:2,firstRow=count<=3?count:Math.ceil(count/2),row=index<firstRow?0:1,rowCount=row===0?firstRow:count-firstRow,col=row===0?index:index-firstRow;
-  const x=rowCount<=1?50:14+(72*col/Math.max(1,rowCount-1)),y=rows===1?51:(row===0?39:65),jitterX=((index*17+count*7)%9)-4,jitterY=((index*11+count*3)%7)-3;
-  const rotation=((index*47+count*13)%31)-15,delay=index*38,duration=1040+((index*73)%170),launchX=-38-((index*7)%11),apexX=((index*19)%13)-6,spinX=720+index*93,spinY=650+index*117;
-  return `--die-x:${Math.max(7,Math.min(93,x+jitterX))}%;--die-y:${Math.max(24,Math.min(78,y+jitterY))}%;--die-r:${rotation}deg;--die-delay:${delay}ms;--die-flight:${duration}ms;--die-launch-x:${launchX}vw;--die-apex-x:${apexX}vw;--die-spin-x:${spinX}deg;--die-spin-y:${spinY}deg;--die-index:${index}`;
+  let rows=1;
+  if(count>24)rows=5;
+  else if(count>15)rows=4;
+  else if(count>8)rows=3;
+  else if(count>3)rows=2;
+
+  const baseCols=Math.floor(count/rows),rem=count%rows;
+  let row=0,col=0,rowCount=1,currentStart=0;
+  for(let r=0;r<rows;r++){
+    const itemsInRow=r<rem?(baseCols+1):baseCols;
+    if(index>=currentStart&&index<currentStart+itemsInRow){
+      row=r;col=index-currentStart;rowCount=itemsInRow;break;
+    }
+    currentStart+=itemsInRow;
+  }
+  const yStep=rows===1?0:54/(rows-1);
+  const y=rows===1?50:23+row*yStep;
+  const x=rowCount<=1?50:12+(76*col/Math.max(1,rowCount-1));
+  const jitterSpread=count>20?3:count>10?5:8,jitterHalf=Math.floor(jitterSpread/2);
+  const jitterX=((index*17+count*7)%jitterSpread)-jitterHalf;
+  const jitterY=((index*11+count*3)%jitterSpread)-jitterHalf;
+  const rotation=((index*47+count*13)%25)-12;
+  const delayStep=count>20?16:count>10?24:38;
+  const delay=Math.min(520,index*delayStep);
+  const duration=960+((index*61)%150);
+  const launchX=-36-((index*7)%9);
+  const apexX=((index*19)%11)-5;
+  const spinX=720+index*(count>15?45:93);
+  const spinY=650+index*(count>15?55:117);
+  return `--die-x:${Math.max(6,Math.min(94,x+jitterX))}%;--die-y:${Math.max(18,Math.min(82,y+jitterY))}%;--die-r:${rotation}deg;--die-delay:${delay}ms;--die-flight:${duration}ms;--die-launch-x:${launchX}vw;--die-apex-x:${apexX}vw;--die-spin-x:${spinX}deg;--die-spin-y:${spinY}deg;--die-index:${index}`;
 }
 function diceCubeHTML(value=1,style=''){
   const val=Math.max(1,Math.min(20,Number(value)||1)),numeric=val>6,face=numeric?val:diceGlyphs[val-1];
@@ -1161,8 +1196,19 @@ function diceCubeHTML(value=1,style=''){
 }
 function diceSetHTML(values,total=null,{physics=false,preview=false,showTotal=true}={}){
   const list=Array.isArray(values)&&values.length?values:[1],sum=total??list.reduce((n,v)=>n+Number(v||0),0);
-  const classes=['dice-set',physics?'physics':'',preview?'preview':'',list.length>5?'dice-many':''].filter(Boolean).join(' '),cubes=list.map((v,index)=>diceCubeHTML(v,physics?dicePhysicsStyle(index,list.length):`--die-delay:${index*22}ms;--die-index:${index}`)).join(''),formula=list.length>6?`${list.length} DICE`:list.join(' + ');
-  return `<div class="${classes}" style="--dice-count:${list.length};--dice-columns:${Math.min(5,list.length)}">${cubes}</div>${showTotal&&list.length>1?`<div class="dice-total">${formula} = <b>${sum}</b></div>`:''}`;
+  const tier=list.length>24?'tier-5':list.length>15?'tier-4':list.length>8?'tier-3':list.length>3?'tier-2':'tier-1';
+  const classes=['dice-set',physics?'physics':'',preview?'preview':'',list.length>5?'dice-many':'',`dice-${tier}`].filter(Boolean).join(' ');
+  const cubes=list.map((v,index)=>diceCubeHTML(v,physics?dicePhysicsStyle(index,list.length):`--die-delay:${Math.min(480,index*16)}ms;--die-index:${index}`)).join('');
+  const cols=preview?Math.min(6,list.length):Math.min(10,Math.max(5,Math.ceil(list.length/Math.min(5,Math.ceil(list.length/6)))));
+  let totalHTML='';
+  if(showTotal&&list.length>1){
+    if(list.length<=8){
+      totalHTML=`<div class="dice-total">${list.join(' + ')} = <b>${sum}</b></div>`;
+    }else{
+      totalHTML=`<div class="dice-total dice-total-large"><span class="dice-total-count">${list.length} 顆骰子</span><span class="dice-total-sum">總計 <b>${sum}</b> 步</span><small class="dice-total-audit">（${list.join('+')}）</small></div>`;
+    }
+  }
+  return `<div class="${classes}" style="--dice-count:${list.length};--dice-columns:${cols}">${cubes}</div>${totalHTML}`;
 }
 
 function baseBuildingHTML(owner){const level=Math.max(1,Math.min(3,Number(owner.level)||1)),names=['營地','商店','豪華賭場'];return `<div class="base-building lv${level}" style="--owner:${owner.color}" aria-label="${names[level-1]}"><i class="base-roof"></i><i class="base-body"><b></b><b></b><b></b></i><em>LV${level}</em></div>`;}
@@ -2104,20 +2150,24 @@ function fitBoard(){
   const wrap=$('bwrap'),bd=$('board');
   if(!wrap||!bd)return;
   if(App.fx.camera){
-    const height=Math.min(580,Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18)),
+    const stage=window.innerWidth>=860,
+          publicViewer=App.role==='viewer'&&App.teamId===null&&document.body.classList.contains('viewer-live-mode'),
+          viewerContent=publicViewer?wrap.closest('.board-card')?.querySelector('.cb'):null,
+          availableHeight=publicViewer&&viewerContent?Math.max(260,viewerContent.clientHeight-10):Math.max(390,window.innerHeight-wrap.getBoundingClientRect().top-18),
+          height=Math.min(580,availableHeight),
           scale=window.innerWidth<600?1.35:window.innerWidth<1000?1.55:1.75,
           point=pos=>{const tile=G.TRACK[pos]||G.TRACK[0];return {x:tile[1]*50+23,y:tile[2]*50+23};},
           from=point(App.fx.camera.from ?? App.fx.camera.pos),to=point(App.fx.camera.pos),
-          centerX=wrap.clientWidth*.5,centerY=height*.52,
+          centerX=wrap.clientWidth*.5,centerY=height*.5,
           dx=to.x-from.x,dy=to.y-from.y,
 
-          rotX=32,
+          rotX=30,
           rotY=dx>0?-4:dx<0?4:0,
           rotZ=dx>0?-1.5:dx<0?1.5:0,
           tx=centerX-to.x,ty=centerY-to.y;
     wrap.style.height=`${height}px`;
     wrap.classList.remove('compact-board');
-    bd.style.transformOrigin='275px 250px';
+    bd.style.transformOrigin=`${to.x}px ${to.y}px`;
     bd.style.transform=`translate3d(${tx}px, ${ty}px, 0) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`;
     return;
   }
@@ -2404,7 +2454,7 @@ function attackSceneHTML(kind, attack){
 function cfgHTML(){
   const S=App.state,f=(label,path,val,suf='',min=0,max=null)=>`<label class="fl"><span>${label}</span><input class="cfg" data-p="${path}" type="number" min="${min}" ${max===null?'':`max="${max}"`} value="${val}"><span class="u">${suf}</span></label>`;
   let h='<div class="cfgbox"><div class="note">修改完成後請按最下方的「儲存全部遊戲設定」，所有數值會一次驗證並套用。</div>';
-  h+=f('繞圈獎勵','lapBonus',S.settings.lapBonus)+f('稅收扣款','taxAmount',S.settings.taxAmount)+f('賭場花費','casinoCost',S.settings.casinoCost)+f('黑市折扣','blackDiscount',S.settings.blackDiscount,'%')+f('銀行密道取走','bankShare',S.settings.bankShare,'%')+f('每顆骰子面數','diceSides',S.settings.diceSides,'面')+f('各隊預設骰子顆數','diceCount',S.settings.diceCount||1,'顆',1,10)+f('通行費佔過夜費','passRatio',S.settings.passRatio,'%')+f('基地 BATTLE 敗方支付','battleLossMultiplier',S.settings.battleLossMultiplier||150,'%');
+  h+=f('繞圈獎勵','lapBonus',S.settings.lapBonus)+f('稅收扣款','taxAmount',S.settings.taxAmount)+f('賭場花費','casinoCost',S.settings.casinoCost)+f('黑市折扣','blackDiscount',S.settings.blackDiscount,'%')+f('銀行密道取走','bankShare',S.settings.bankShare,'%')+f('每顆骰子面數','diceSides',S.settings.diceSides,'面')+f('各隊預設骰子顆數','diceCount',S.settings.diceCount||1,'顆',1,30)+f('通行費佔過夜費','passRatio',S.settings.passRatio,'%')+f('基地 BATTLE 敗方支付','battleLossMultiplier',S.settings.battleLossMultiplier||150,'%');
   h+='<div class="sub">特殊操作費用與修繕費</div>';
   Object.entries(S.settings.attacks).forEach(([k,a])=>{h+=`<div class="grp"><b>${esc(a.name)}</b>`+f('所需諂媚點數',`attacks.${k}.cost`,a.cost,'點')+f('修繕費',`attacks.${k}.repair`,a.repair,'元')+(k==='typhoon'?f('颱風眼補助（0 為只免傷）',`attacks.${k}.eyeBonus`,a.eyeBonus,'元'):'')+'</div>';});
   h+='<div class="sub">增益道具價格</div><div class="grp">';Object.entries(S.settings.buffs).forEach(([k,b])=>{h+=f(`${b.name}所需諂媚點數`,`buffs.${k}.cost`,b.cost,'點');});h+='</div>';
@@ -2487,9 +2537,9 @@ function hostPanel(){
         h+=`<div class="host-test-bar"><div class="host-test-bar-header"><span>🎯 指定步數：<b>${testSteps} 步</b></span><small>⚡代擲：全場同步跳格；🎯預設：隊輔手機骰出該點數</small></div><div class="host-test-quick-steps">${[1,2,3,4,5,6,10,12].map(n=>`<button type="button" class="btn xs step-btn ${testSteps===n?'gold':'outline'}" data-step="${n}">${n}</button>`).join('')}<div class="host-test-custom-step"><input type="number" min="1" max="48" class="host-test-step-input" value="${testSteps}"><span>步</span></div></div></div>`;
       }
       h+=`<div class="host-turn-status ${active?'active':''}">${active?`現在輪到 <b>${esc(active.name)}</b> 操作`:'點選下方隊伍開放擲骰'}</div><div class="host-roll-grid ${App.hostTestMode?'test-mode':''}">${S.teams.map((t,i)=>{
-        const isPreset=S.presetRolls&&S.presetRolls[i]!==undefined,diceCount=Math.max(1,Math.min(10,Number(App.hostDrafts[`dice:${i}`]??S.rollDiceCounts?.[i]??S.settings.diceCount)||1));
+        const isPreset=S.presetRolls&&S.presetRolls[i]!==undefined,diceCount=Math.max(1,Math.min(30,Number(App.hostDrafts[`dice:${i}`]??S.rollDiceCounts?.[i]??S.settings.diceCount)||1));
         const status=t.rolled?`已完成 · ${Array.isArray(t.lastDice)?t.lastDice.length:diceCount} 顆`:isPreset?`🎯 已預設 ${S.presetRolls[i]} 步`:S.activeTeamId===i?`操作中 · ${diceCount} 顆`:'等待開放';
-        const dicePicker=`<label class="host-team-dice-picker"><span>骰子</span><select class="team-dice-count" data-i="${i}" ${t.rolled||S.pendingBattle||S.pendingCard?'disabled':''}>${Array.from({length:10},(_,n)=>n+1).map(n=>`<option value="${n}" ${diceCount===n?'selected':''}>${n} 顆</option>`).join('')}</select></label>`;
+        const dicePicker=`<label class="host-team-dice-picker"><span>骰子</span><select class="team-dice-count" data-i="${i}" ${t.rolled||S.pendingBattle||S.pendingCard?'disabled':''}>${Array.from({length:30},(_,n)=>n+1).map(n=>`<option value="${n}" ${diceCount===n?'selected':''}>${n} 顆</option>`).join('')}</select></label>`;
         if(App.hostTestMode){
           return `<div class="host-test-team-card ${t.rolled?'completed':''}"><div class="host-test-team-info"><span class="sw" style="background:${t.color}">${i+1}</span><div class="host-test-team-name"><b>${esc(t.name)}</b><small>${status}</small></div></div><div class="host-test-team-actions"><button class="btn xs green test-roll-btn" data-i="${i}" ${t.rolled||S.pendingBattle||S.pendingCard?'disabled':''} title="主持人直接替該隊擲出 ${testSteps} 步">⚡ 代擲 ${testSteps}</button><button class="btn xs ${isPreset?'gold':'outline'} test-preset-btn" data-i="${i}" ${t.rolled||S.pendingBattle||S.pendingCard?'disabled':''} title="預設該隊下次擲骰為 ${testSteps} 步">${isPreset?`✓ 預設 ${S.presetRolls[i]}`:`🎯 預設 ${testSteps}`}</button>${isPreset?`<button class="btn xs dark test-clear-preset-btn" data-i="${i}" title="清除預設">×</button>`:''}${dicePicker}<button class="btn xs ${S.activeTeamId===i?'green':'outline'} allow-roll" data-i="${i}" ${t.rolled||S.pendingBattle||S.pendingCard?'disabled':''} title="允許隊輔使用 ${diceCount} 顆骰子">${S.activeTeamId===i?'開放中':'允許'}</button></div></div>`;
         }
@@ -2557,7 +2607,9 @@ function renderGame(){
   const attackRoleLabel=App.role!=='team'?'SPECIAL OPERATION':App.fx.attack?.teamId===App.teamId?'本隊發動':App.fx.attack?.victims?.some(team=>Number(team.id)===Number(App.teamId))?'本隊遭遇':'戰況速報';
   const attackFx=App.fx.attack?`<div class="attack-overlay with-characters attack-${App.fx.attack.kind} ${App.role==='team'?'team-perspective':''} attack-phase-${App.fx.attack.phase||'cast'}" aria-live="assertive">${attackSceneHTML(App.fx.attack.kind, App.fx.attack)}${attackCharacterStageHTML()}<div class="attack-cinematic">⚠ LIFE EVENT // SPECIAL OPERATION ⚠</div><div class="attack-card"><div class="attack-symbol">${esc(App.fx.attack.symbol)}</div><div class="attack-kicker">${attackRoleLabel}</div><div class="attack-title">${esc(App.fx.attack.title)}</div><div class="attack-subtitle">【${esc(App.fx.attack.teamName)}】發動｜${esc(App.fx.attack.subtitle)}</div><div class="attack-message">${esc(App.fx.attack.message)}</div></div></div>`:'';
   const diceTeam=App.fx.dice?S.teams?.[Number(App.fx.dice.teamId)]:null;
-  const diceFx=App.fx.dice?`<div class="dice-flight ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-character-hero">${battlePawnHTML(diceTeam,{direction:'right',pose:App.fx.dice.rolling?'ready':'celebrate',extraClass:'dice-signature-pawn',scale:2.6})}</div><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${App.fx.dice.values?.length||1} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value,{physics:true})}<strong>${App.fx.dice.rolling?'PHYSICS ROLL…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
+  const diceCount=App.fx.dice?.values?.length||1;
+  const diceTier=diceCount>24?'tier-5':diceCount>15?'tier-4':diceCount>8?'tier-3':diceCount>3?'tier-2':'tier-1';
+  const diceFx=App.fx.dice?`<div class="dice-flight dice-${diceTier} ${App.fx.dice.rolling?'tumbling':'revealed'}" aria-live="assertive"><div class="dice-character-hero">${battlePawnHTML(diceTeam,{direction:'right',pose:App.fx.dice.rolling?'ready':'celebrate',extraClass:'dice-signature-pawn',scale:2.6})}</div><div class="dice-flight-name">${esc(App.fx.dice.teamName)} 擲出 ${diceCount} 顆骰子</div>${diceSetHTML(App.fx.dice.values||[App.fx.dice.value],App.fx.dice.value,{physics:true})}<strong>${App.fx.dice.rolling?'PHYSICS ROLL…':`總和 ${App.fx.dice.value}`}</strong></div>`:'';
   const assignmentFx=assignmentFxHTML();
   const purchaseFx=purchaseFxHTML();
   const teamMomentFx=teamMomentFxHTML();
@@ -2700,8 +2752,8 @@ function bindGame(){
     document.querySelectorAll('.test-preset-btn').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.i),steps=Math.max(1,Math.min(48,Number(App.hostTestSteps)||1));send('setPresetRoll',{teamId:i,steps},{preserveView:true});});
     document.querySelectorAll('.test-clear-preset-btn').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.i);send('clearPresetRoll',{teamId:i},{preserveView:true});});
 
-    document.querySelectorAll('.team-dice-count').forEach(select=>{select.onchange=()=>{App.hostDrafts[`dice:${select.dataset.i}`]=Math.max(1,Math.min(10,Number(select.value)||1));};});
-    document.querySelectorAll('.allow-roll').forEach(b=>b.onclick=()=>{const teamId=Number(b.dataset.i),select=document.querySelector(`.team-dice-count[data-i="${teamId}"]`),diceCount=Math.max(1,Math.min(10,Number(select?.value??App.hostDrafts[`dice:${teamId}`]??S.settings.diceCount)||1));App.hostDrafts[`dice:${teamId}`]=diceCount;send('allowRoll',{teamId,diceCount},{preserveView:true});});
+    document.querySelectorAll('.team-dice-count').forEach(select=>{select.onchange=()=>{App.hostDrafts[`dice:${select.dataset.i}`]=Math.max(1,Math.min(30,Number(select.value)||1));};});
+    document.querySelectorAll('.allow-roll').forEach(b=>b.onclick=()=>{const teamId=Number(b.dataset.i),select=document.querySelector(`.team-dice-count[data-i="${teamId}"]`),diceCount=Math.max(1,Math.min(30,Number(select?.value??App.hostDrafts[`dice:${teamId}`]??S.settings.diceCount)||1));App.hostDrafts[`dice:${teamId}`]=diceCount;send('allowRoll',{teamId,diceCount},{preserveView:true});});
     document.querySelectorAll('.battle-result').forEach(b=>b.onclick=()=>{const outcome=b.dataset.outcome,p=S.pendingBattle,isCard=p?.kind==='card',isJail=p?.kind==='jail',label=isJail?(outcome==='attacker'?'小隊挑戰主持人成功：撤銷法拍，房產完整保留。':'主持人獲勝：執行原房產降級／LV1 無償法拍，不加倍。'):isCard?(outcome==='attacker'?'攻方獲勝，卡片交由守方執行':'守方獲勝，卡片仍由原攻方執行'):(outcome==='attacker'?'攻方獲勝並免付過夜費':`守方獲勝並收取 ${Number(S.settings.battleLossMultiplier)||150}% 過夜費懲罰`);ask('確認 BATTLE 裁決？',label,()=>send('resolveBattle',{outcome}));});
     document.querySelectorAll('.card-result').forEach(b=>b.onclick=()=>{const outcome=b.dataset.outcome,p=S.pendingCard,card=G.cardById(p?.cardType,p?.cardId),team=S.teams[p?.executorId],amount=card?.[outcome]||0;ask(`確認「${card?.name||'卡片'}」${outcome==='success'?'成功':'失敗'}？`,`將替 ${esc(team?.name||'執行隊伍')} 入帳 ${G.money(amount)}，並建立一張正式收據。`,()=>send('resolveCard',{outcome}));});
 

@@ -210,6 +210,22 @@ assert.match(stylesSource, /\.shop-policy-banner/, 'CSS for shop-policy-banner m
 assert.match(stylesSource, /\.host-block-warning/, 'CSS for host-block-warning must exist');
 console.log('  ✔ CSS rules, pixel aesthetic, and >= 44px touch targets verified.');
 
+// ===========================================================================
+// SUITE 8: Team-only task console without server rule changes
+// ===========================================================================
+console.log('\n[SUITE 8] Verifying team task console, board preview, and guided navigation...');
+assert.match(appSource,/function teamTaskCardHTML\(\)/);
+assert.match(appSource,/function teamBoardExpanded\(\)/);
+assert.match(appSource,/\['main','⚔️ 行動'\],\['backpack','🎒 背包'\],\['receipts','🧾 收據'\],\['more','☰ 更多'\]/);
+assert.match(appSource,/id="teamBoardToggle" aria-controls="bwrap" aria-expanded="false"/);
+assert.match(appSource,/id="nextTeamTutorial"/);
+assert.match(appSource,/id="skipTeamTutorial"/);
+assert.match(appSource,/teamMoreSection|App\.moreSection/);
+assert.match(stylesSource,/\.team-task-card/);
+assert.match(stylesSource,/\.team-more-button/);
+assert.match(stylesSource,/\.team-tutorial-card \.tutorial-step-item\[hidden\]\{display:none!important\}/);
+console.log('  ✔ Four primary entries, contextual task card, one board instance, and skippable guide verified.');
+
 console.log('\n======================================================================');
-console.log('🎉 ALL 7 ONBOARDING & UI SIMPLIFICATION TEST SUITES PASSED!');
+console.log('🎉 ALL 8 ONBOARDING & UI SIMPLIFICATION TEST SUITES PASSED!');
 console.log('======================================================================');

@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026.09.23.01';
-import { G } from './game-core.js?v=2026.09.23.01';
-import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.23.01';
+const BUILD_VERSION = '2026.09.23.02';
+import { G } from './game-core.js?v=2026.09.23.02';
+import { PHASE_FX, ATTACK_FX, CEREMONY_STEPS, ceremonyStep, SoundFX, isSoundEnabled, toggleSound, classifyEvent, movementPath, movementStepDelay, presentationTier, isPresentationTaskRelevant, isPurchaseReceipt, renderPawnSprite, renderTileGarrison, PAWN_ARCHETYPES, pawnFacingForStep, battlePresentationTransition, landingReactionForTile, attackCharacterTargets, stagePresentationFor } from './game-fx.js?v=2026.09.23.02';
 
 // Disable iOS / PWA pinch-zoom and gesture zooming
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
@@ -40,6 +40,7 @@ const App = {
   screen: 'home', entry: 'home', role: null, gameId: null, state: null, teamId: null,
   token: null, gameMeta: null, socket: null, connected: false,
   tab: 'main', zoom: false, dice: null, rolling: false, busy: false,
+  teamBoardMode:'auto', moreSection:'settings', tutorialStep:0, tutorialReplay:false,
   highlight: [], cfg: false, history: [], lobbyTimer: null, homeIntroTimer:null,
   access: {host: '', team: '', viewer:'', dev: ''}, installPrompt: null,
   pendingAction: null, pendingTimer: null, pendingExpiryTimer:null, actionSeq: 0, updateReady: false, applyingUpdate: false,
@@ -64,6 +65,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAMP_NAME = '不「管」別人「工」蝦毀 都來「電」惦賭「醫」把';
 const RELEASE_NOTES = [
+  {date:'2026.09.23',version:'v2026.09.23.02',title:'隊輔人生旅程任務台',items:['手機首屏呈現當前任務與清楚的等待／操作狀態','棋盤可縮成戰況預覽，擲骰移動時自動放大','底部導覽整合成四入口，設定與紀錄收至更多','四階段教學改為可逐步閱讀與隨時重播']},
   {date:'2026.09.23',version:'v2026.09.23.01',title:'新手指引與操作介面簡化',items:['新增隊輔 4 步快速上手指引與各階段即時提示','收合進階特殊操作並加強擲骰與等待真實狀態','重命名基地經營階段與實體兌換清楚標註','主持人端突顯待處理對決，大螢幕顯示輕量階段橫幅']},
   {date:'2026.09.20',version:'v2026.09.20.68',title:'30顆骰子與觀戰動畫修復',items:['骰子上限提升至 30 顆並新增多階層視覺縮放','修復大螢幕公開觀戰缺少擲骰及移動動畫問題','最佳化長程移動步頻巡航與 Watchdog 防護']},
   {date:'2026.09.07',version:'v2026.09.07.67',title:'卡片經濟與實體兌獎',items:['重新平衡 40 張機會／命運卡獎金，失敗保留安慰獎','新增紅包、戳戳樂、樂透與全押獎池，以及主持人兌換櫃台與專用收據','每隊每回合限購一件實體物品，全押每隊整場限一次']},
@@ -160,36 +162,37 @@ function phaseContextTipHTML(phase){
 }
 
 function teamTutorialCardHTML(){
+  const step=Math.max(0,Math.min(3,Number(App.tutorialStep)||0));
   return `<section class="card team-tutorial-card" id="teamTutorialCard" aria-label="新手指引">
-    <div class="ch">📖 隊輔新手指引 · 20 秒快速上手</div>
+    <div class="ch">📖 人生旅程指南 · 第 ${step+1} / 4 步</div>
     <div class="cb">
       <div class="tutorial-summary">
         <div class="tutorial-rule-pill">🏆 <b>勝利條件</b>：最終結算揭曉時，以全隊「總資產」（現金＋房產市值）決定全場排名與特別榮譽。</div>
         <div class="tutorial-rule-pill">💰 <b>雙幣制度</b>：現金用來付通行費、過夜費、稅金及買回基地，也計入總資產；諂媚點用來升級基地、買道具與發動特殊操作。</div>
       </div>
       <div class="tutorial-steps-grid">
-        <div class="tutorial-step-item">
+        <div class="tutorial-step-item" ${step!==0?'hidden':''}>
           <span class="step-badge">1</span>
           <div class="step-content">
             <b>1. 房市看局勢</b>
             <p>看房市倍率，等主持人進入下一步。</p>
           </div>
         </div>
-        <div class="tutorial-step-item">
+        <div class="tutorial-step-item" ${step!==1?'hidden':''}>
           <span class="step-badge">2</span>
           <div class="step-content">
             <b>2. 基地經營</b>
             <p>升級、賣出基地，或選擇不操作。</p>
           </div>
         </div>
-        <div class="tutorial-step-item">
+        <div class="tutorial-step-item" ${step!==2?'hidden':''}>
           <span class="step-badge">3</span>
           <div class="step-content">
             <b>3. 商店與道具</b>
             <p>用諂媚點買道具；實體券要找主持人兌獎。</p>
           </div>
         </div>
-        <div class="tutorial-step-item">
+        <div class="tutorial-step-item" ${step!==3?'hidden':''}>
           <span class="step-badge">4</span>
           <div class="step-content">
             <b>4. 擲骰移動</b>
@@ -198,8 +201,10 @@ function teamTutorialCardHTML(){
         </div>
       </div>
       <div class="tutorial-actions">
-        <button type="button" class="btn sm gold" id="ackTeamTutorial">我知道了</button>
-        <span class="tutorial-help-note">可隨時在「⚙️ 設定」中點選「玩法」重新查閱。</span>
+        <button type="button" class="btn sm outline" id="prevTeamTutorial" ${step===0?'disabled':''}>← 上一步</button>
+        ${step<3?'<button type="button" class="btn sm gold" id="nextTeamTutorial">下一步 →</button>':'<button type="button" class="btn sm gold" id="ackTeamTutorial">我知道了</button>'}
+        <button type="button" class="btn sm dark" id="skipTeamTutorial">先跳過</button>
+        <span class="tutorial-help-note">可隨時在「更多 → 玩法」重新查閱。</span>
       </div>
     </div>
   </section>`;
@@ -1419,7 +1424,7 @@ function go(path){ App.socket?.close(); App.socket=null;clearPendingAction();res
 function setHome(){ App.socket?.close(); App.socket=null;clearPendingAction();resetGameFx();App.screen='home'; App.role=null; App.gameId=null; App.state=null; App.teamId=null; App.token=null; App.gameMeta=null; App.connected=false;App.connectionState='connecting';App.teamPresence={}; App.history=[]; render(true); }
 function entryURL(path){ return `${location.origin}${path}`; }
 function openGame(game, role, token='', teamId=null, accessToken='',identity={}){
-  clearInterval(App.lobbyTimer);clearPendingAction(false);resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId;App.viewerId=identity.viewerId||null;App.viewerSessionToken=identity.viewerSessionToken||'';App.viewerName=identity.viewerName||''; App.access[role]=accessToken||App.access[role]||''; App.screen=role==='viewer_request'?'viewer-waiting':'game'; App.tab=role==='host'?'host':'main'; App.state=null; App.connected=false;App.connectionState=navigator.onLine===false?'offline':'connecting';App.lastMessageAt=0;App.lastSyncAt=0;App.teamPresence={};restorePendingAction();
+  clearInterval(App.lobbyTimer);clearPendingAction(false);resetGameFx();App.gameId=game.id; App.gameMeta=game; App.role=role; App.token=token; App.teamId=teamId;App.viewerId=identity.viewerId||null;App.viewerSessionToken=identity.viewerSessionToken||'';App.viewerName=identity.viewerName||''; App.access[role]=accessToken||App.access[role]||''; App.screen=role==='viewer_request'?'viewer-waiting':'game'; App.tab=role==='host'?'host':'main'; App.teamBoardMode='auto';App.moreSection='settings';App.tutorialStep=0;App.tutorialReplay=false; App.state=null; App.connected=false;App.connectionState=navigator.onLine===false?'offline':'connecting';App.lastMessageAt=0;App.lastSyncAt=0;App.teamPresence={};restorePendingAction();
   if(role==='team'||role==='viewer')App.audioReady=SoundFX.unlockAudio();else App.audioReady=SoundFX.isAudioReady();
   preloadAttackArt();
   App.socket?.close(); App.socket=new LiveSocket(game.id,role,token,teamId,App.access[role],identity); App.socket.connect(); render(true);
@@ -2351,15 +2356,24 @@ function fitBoard(){
     wrap.classList.remove('compact-board');
     bd.style.transformOrigin=`${to.x}px ${to.y}px`;
     bd.style.transform=`translate3d(${tx}px, ${ty}px, 0) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`;
+    const toggle=$('teamBoardToggle');if(toggle){toggle.setAttribute('aria-expanded','true');toggle.textContent='移動演出中';}
     return;
   }
-  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,mobileTeam=App.role==='team'&&!stage,teamPreview=mobileTeam&&App.tab!=='main',publicViewer=App.role==='viewer'&&App.teamId===null&&document.body.classList.contains('viewer-live-mode'),viewerMax=App.role==='viewer'?1.65:stage?1.35:1,mobileBoardHeight=window.innerHeight*(teamPreview?0.28:0.46),viewerContent=publicViewer?wrap.closest('.board-card')?.querySelector('.cb'):null,availableHeight=mobileTeam?mobileBoardHeight:publicViewer&&viewerContent?Math.max(220,viewerContent.clientHeight-10):stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
+  const max=Math.max(240,wrap.clientWidth-4),stage=window.innerWidth>=860,mobileTeam=App.role==='team'&&!stage,teamPreview=mobileTeam&&!teamBoardExpanded(),publicViewer=App.role==='viewer'&&App.teamId===null&&document.body.classList.contains('viewer-live-mode'),viewerMax=App.role==='viewer'?1.65:stage?1.35:1,mobileBoardHeight=teamPreview?Math.min(180,window.innerHeight*.24):Math.min(500,window.innerHeight*.46),viewerContent=publicViewer?wrap.closest('.board-card')?.querySelector('.cb'):null,availableHeight=mobileTeam?mobileBoardHeight:publicViewer&&viewerContent?Math.max(220,viewerContent.clientHeight-10):stage?Math.max(380,window.innerHeight-wrap.getBoundingClientRect().top-24):Infinity,scale=Math.min(viewerMax,max/bd.offsetWidth,availableHeight/bd.offsetHeight);
   bd.style.transformOrigin='top left';
   const centerOffset=App.role==='viewer'?Math.max(0,(wrap.clientWidth-bd.offsetWidth*scale)/2):0;
   bd.style.transform=`translateX(${centerOffset}px) scale(${scale})`;
   wrap.style.height=`${bd.offsetHeight*scale}px`;
   wrap.classList.toggle('compact-board',scale<.78);
   wrap.classList.toggle('team-board-preview',teamPreview);
+  const toggle=$('teamBoardToggle');if(toggle){const expanded=teamBoardExpanded()||Boolean(App.fx.camera);toggle.setAttribute('aria-expanded',String(expanded));toggle.textContent=expanded?'收合棋盤':'展開棋盤';}
+}
+
+function teamBoardExpanded(){
+  if(App.teamBoardMode==='open')return true;
+  if(App.teamBoardMode==='closed')return false;
+  const S=App.state,me=S?.teams?.[App.teamId];
+  return App.role==='team'&&App.tab==='main'&&S?.phase==='roll'&&S.activeTeamId===App.teamId&&!me?.rolled;
 }
 
 
@@ -2527,6 +2541,27 @@ function teamStatusHTML(){
   const prop=G.propertyValue(S,me),active=S.activeTeamId===me.id;
   return `<div class="team-command-hud" style="--team-color:${me.color}"><div class="team-command-id"><i>${me.id+1}</i><span><small>${App.role==='team'?'YOU ARE CONTROLLING':'PRIVATE TEAM VIEW'}</small><b>${esc(me.name)}</b></span></div><div class="team-command-stat"><small>現金</small><b>${G.money(me.cash)}</b></div><div class="team-command-stat"><small>房產</small><b>${G.money(prop)}</b></div><div class="team-command-stat"><small>諂媚</small><b>${me.pts} 點</b></div><div class="team-command-stat"><small>🏦 銀行</small><b>${G.money(S.bank||0)}</b></div><div class="team-command-turn ${active?'active':''}"><small>${phaseNames[S.phase]||S.phase}</small><b>${App.role==='viewer'?'觀眾模式':active?'輪到本組操作':S.phase==='roll'?'等待主持人':'進行中'}</b></div></div>`;
 }
+function teamTaskCardHTML(){
+  if(App.role!=='team'||App.teamId===null)return '';
+  const S=App.state,me=S?.teams?.[App.teamId];if(!me)return '';
+  const phases=[['market','房市'],['sell','基地'],['shop','商店'],['roll','移動']];
+  let title='等待活動開始',detail='隊伍已連線，等待主持人安排人生起點。',action='';
+  if(S.phase==='market'){title='看看本回合房市';detail=`${S.settings.marketNames[S.market]||S.market} ×${(S.settings.market[S.market]||100)/100}；等待主持人推進階段。`;}
+  if(S.phase==='sell'){title='經營你們的基地';detail='可以升級、賣出或買回；也可以保留資源，等待下一階段。';action='查看基地選項';}
+  if(S.phase==='shop'){title='挑選補給道具';detail='看清用途和點數價格，確認購買後才會扣點。';action='前往商店';}
+  if(S.phase==='roll'){
+    const pending=S.pendingBattle,ownedPending=pending&&Number(pending.attackerId)===me.id;
+    if(ownedPending){title=pending.status==='awaiting_host'?'等待 BATTLE 裁決':'落格選擇待處理';detail=pending.status==='awaiting_host'?'主持人裁決後才會結算。':'移動演出完成後，依畫面選擇處理方式。';}
+    else if(S.pendingCard&&Number(S.pendingCard.executorId)===me.id){title='實體卡挑戰進行中';detail='完成後等待主持人判定成功或失敗。';}
+    else if(me.rolled){title='本回合已擲骰';detail='留意落格結果與收據，等待主持人安排下一步。';}
+    else if(S.activeTeamId===me.id){title='輪到本隊擲骰！';detail=`主持人已允許 ${Math.max(1,Number(S.rollDiceCounts?.[me.id])||Number(S.settings.diceCount)||1)} 顆骰子；向上滑動擲出。`;action='前往擲骰';}
+    else{title='等待主持人允許擲骰';detail=S.activeTeamId!==null&&S.activeTeamId!==undefined?`目前由 ${S.teams[S.activeTeamId]?.name||'其他隊伍'} 操作。`:'主持人尚未指定操作隊伍。';}
+  }
+  if(S.paused){title='活動暫停中';detail='主持人恢復後才能繼續操作。';action='';}
+  if(App.busy){title=App.pendingWaiting?'操作已保留，等待連線確認':'操作送出中';detail='請勿重複按下；系統會安全補送並同步結果。';action='';}
+  if(S.phase==='settle'||S.phase==='ended'){title='進入頒獎結算';detail='遊戲操作已關閉，等待主持人公布結果。';action='';}
+  return `<section class="team-task-card" style="--team-color:${me.color}" aria-label="目前任務"><div class="team-task-heading"><span>第 ${S.round} 回合 · ${esc(phaseNames[S.phase]||S.phase)}</span><small>${App.connected?'● 即時連線':'○ 同步中'}</small></div><div class="team-task-main"><div><small>現在該做什麼？</small><h2>${esc(title)}</h2><p>${esc(detail)}</p></div><div class="team-task-actions">${action?`<button type="button" class="btn gold team-task-jump" id="teamJumpAction">${esc(action)} ↓</button>`:''}${!isTutorialAcknowledged(App.gameId,App.teamId)&&!isTutorialBlocked()?'<button type="button" class="team-guide-jump" id="teamOpenQuickGuide">📖 20 秒玩法指引</button>':''}</div></div><div class="team-task-steps" aria-label="四階段流程">${phases.map(([key,label],i)=>`<span class="${S.phase===key?'on':''}" title="第 ${i+1} 階段：${label}">${i+1} ${label}</span>`).join('')}</div></section>`;
+}
 const BUFF_INFO={pass:{icon:'🎫',title:'通行證',rarity:'RARE',desc:'經過或停在他人基地時，自動抵銷一次通行費或過夜費。'},reroll:{icon:'🎲',title:'重骰卡',rarity:'MAGIC',desc:'本回合擲完後使用，重新取得一次擲骰權限。'},shield:{icon:'🛡️',title:'防災卡',rarity:'EPIC',desc:'遭受地震、飛彈、颱風或野火時，自動抵銷一次修繕費。'}};
 const PHYSICAL_ITEM_INFO=[{icon:'🧧',rarity:'COMMON',desc:'保證有獎的實體紅包，由主持人核對券面後兌換。'},{icon:'🎯',rarity:'COMMON',desc:'中低波動的實體戳戳樂，依現場戳出的金額兌換。'},{icon:'🎟️',rarity:'RARE',desc:'高波動實體樂透券，可能落空，也可能獲得高額獎金。'},{icon:'💎',rarity:'EPIC',desc:'50% 機率落空的高風險獎項，每隊整場最多購買一次。'}];
 function physicalRewards(item){return (item?.rewards||[]).map(Number).filter(value=>Number.isInteger(value)&&value>=0);}
@@ -2540,13 +2575,13 @@ function rpgSlot({icon,name,count,desc,rarity='COMMON',active=false}){const owne
 function backpackHTML(me){const S=App.state,physical=S.settings.gambles.map((g,i)=>{const info=PHYSICAL_ITEM_INFO[i]||{icon:'🎁',rarity:'COMMON',desc:'活動現場發放的實體物品。'},count=Number(me.items?.[`g${i}`]||0),state=count>0?'等待主持人核對實體券面並兌換':'尚未持有';return rpgSlot({icon:info.icon,name:g.name,count,desc:`${info.desc} ${physicalRewardSummary(g)}；${state}。`,rarity:info.rarity});}).join(''),buffs=Object.entries(BUFF_INFO).map(([k,info])=>rpgSlot({icon:info.icon,name:info.title,count:me.buffs?.[k]||0,desc:info.desc,rarity:info.rarity,active:k==='shield'&&Number(me.buffs?.shield)>0})).join(''),usedSlots=Object.values(me.buffs||{}).filter(n=>Number(n)>0).length+Object.values(me.items||{}).filter(n=>Number(n)>0).length+(me.battles>0?1:0)+(me.discount?1:0);return `<div class="card backpack-card rpg-backpack"><div class="ch">🎒 PIXEL ADVENTURER INVENTORY</div><div class="cb"><div class="bag-hero" style="--team-color:${me.color}"><div class="bag-avatar">${me.id+1}</div><div><small>PARTY INVENTORY</small><b>${esc(me.name)}</b><span>LV${me.level} · 第 ${S.round} 回合</span></div><div class="bag-wallet"><span>💰 ${G.money(me.cash)}</span><span>✨ ${me.pts} 點</span><span>▦ ${usedSlots}/10 格</span></div></div><div class="bag-section"><div class="bag-section-title"><span>◆ 冒險道具</span><small>BUFF & SKILL</small></div><div class="rpg-grid">${buffs}${rpgSlot({icon:'⚔️',name:'BATTLE',count:me.battles,desc:`基地攻方勝免付、敗方支付 ${Number(S.settings.battleLossMultiplier)||150}%；機會／命運格可把挑戰押給另一隊；監獄可挑戰主持人，勝利免除法拍。`,rarity:'LEGEND'})}${rpgSlot({icon:'🏴',name:'黑市折扣',count:0,active:Boolean(me.discount),desc:me.discount?'下一次商店消費會自動套用折扣。':'目前沒有啟用中的黑市折扣。',rarity:'RARE'})}</div></div><div class="bag-section physical"><div class="bag-section-title"><span>◆ 實體物品</span><small>PHYSICAL LOOT</small></div><div class="rpg-grid">${physical}</div></div><div class="inventory-note">每隊每回合最多購買一件實體物品，「全押」整場限一次。獎金只由主持人兌換入帳，包含 $0 結果也會產生正式收據。</div></div></div>`;}
 function teamControls(){
   const S=App.state, me=App.teamId!==null?S.teams[App.teamId]:null; if(App.role==='viewer') return stagePanelHTML(); if(!me) return `<div class="viewer-note">目前沒有可操作的隊伍。</div>`;
-  if(S.phase==='setup')return `${!isTutorialAcknowledged(App.gameId,App.teamId)&&!isTutorialBlocked()?teamTutorialCardHTML():''}<div class="viewer-note">隊伍已連線，請等待主持人抽籤並開始遊戲。</div>`;
+  if(S.phase==='setup')return `${(!isTutorialAcknowledged(App.gameId,App.teamId)||App.tutorialReplay)&&!isTutorialBlocked()?teamTutorialCardHTML():''}<div class="viewer-note">隊伍已連線，請等待主持人抽籤並開始遊戲。</div>`;
   if(S.phase==='settle')return `<div class="viewer-note" style="border-left:4px solid #ffd700;background:#fffdf0;color:#7c5800;">🏆 <strong>活動已進入最終結算！</strong><br>請點選上方「🏆 結算頒獎」頁籤查看全場名次與頒獎典禮。</div>`;
   if(S.phase==='ended')return `<div class="viewer-note">活動已結束，操作功能已關閉。請點選上方「🏆 結算頒獎」頁籤瀏覽最終成績。</div>`;
   if(S.paused)return `<div class="viewer-note">主持人已暫停活動，恢復後才能繼續操作。</div>`;
 
   let h='';
-  const tutorialOpen = !isTutorialAcknowledged(App.gameId, App.teamId) && !isTutorialBlocked();
+  const tutorialOpen = (!isTutorialAcknowledged(App.gameId, App.teamId)||App.tutorialReplay) && !isTutorialBlocked();
   if(tutorialOpen){
     h+=teamTutorialCardHTML();
   }
@@ -2793,11 +2828,11 @@ function renderGame(){
   const S=App.state;if(!S){$('app').innerHTML='<div class="card"><div class="cb">正在建立即時連線…</div></div>';return;}
   const isSettled = S.phase === 'settle' || S.phase === 'ended';
   const privateViewer=App.role==='viewer'&&App.teamId!==null;
-  const tabs = App.role==='team'?[['main','🎮 遊戲'],['backpack','🎒 背包'],['receipts','🧾 收據'],['settings','⚙️ 設定']]:privateViewer?[['main','👁️ 本隊'],['backpack','🎒 背包'],['receipts','🧾 收據']]:App.role==='host'?[['host','🎛️ 主控'],['main','🗺️ 棋盤'],['receipts','🧾 收據']]:[];
-  if (isSettled) {
+  const tabs = App.role==='team'?(isSettled?[['settle','🏆 頒獎'],['backpack','🎒 背包'],['receipts','🧾 收據'],['more','☰ 更多']]:[['main','⚔️ 行動'],['backpack','🎒 背包'],['receipts','🧾 收據'],['more','☰ 更多']]):privateViewer?[['main','👁️ 本隊'],['backpack','🎒 背包'],['receipts','🧾 收據']]:App.role==='host'?[['host','🎛️ 主控'],['main','🗺️ 棋盤'],['receipts','🧾 收據']]:[];
+  if (isSettled && App.role!=='team') {
     tabs.push(['settle', '🏆 結算頒獎']);
   }
-  if(App.role!=='viewer')tabs.push(['log', '📜 紀錄']);
+  if(App.role==='host')tabs.push(['log', '📜 紀錄']);
 
   if (isSettled && App.role !== 'host' && !App._hasSwitchedSettleTab) {
     App.tab = 'settle';
@@ -2810,12 +2845,12 @@ function renderGame(){
   if (tabs.length&&!tabs.some(x => x[0] === App.tab)) App.tab = App.role==='host'?'host':'main';
 
   const flow=[['market','房市'],['sell','基地'],['shop','商店'],['roll','移動']];const phaseTrack=S.phase==='setup'||S.phase==='ended'||S.phase==='settle'?'':`<div class="phase-track">${flow.map(([k,n],i)=>`<div class="phase-step ${S.phase===k?'on':''} ${flow.findIndex(x=>x[0]===S.phase)>i?'done':''}"><span>${i+1}</span>${n}</div>`).join('')}</div>`;
-  const boardCard=`<div class="game-primary"><div class="card board-card"><div class="ch">★ 人生道路 — 點格子查看說明</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div>`;
+  const boardCard=`<div class="game-primary"><div class="card board-card"><div class="ch"><span>★ 人生道路 — 點格子查看說明</span>${App.role==='team'?'<button type="button" class="team-board-toggle" id="teamBoardToggle" aria-controls="bwrap" aria-expanded="false">展開棋盤</button>':''}</div><div class="cb">${boardHTML()}<div class="note board-legend">🚩＝領地　立體方塊＝駐留隊伍　綠色遮罩＝未解封</div></div></div></div>`;
   let body='';
   if(App.role==='viewer'&&!privateViewer&&App.tab==='main'){
     body=`<div class="viewer-dashboard">${boardCard}<aside class="viewer-live-rail">${stagePanelHTML()}${activeTurnHTML()}${rankingHTML()}${viewerActivityHTML()}</aside></div>`;
-  }else if((App.role==='team'||privateViewer)&&['main','backpack','receipts','settings','log'].includes(App.tab)){
-    body=`<div class="game-layout team-persistent-layout team-tab-${App.tab}">${boardCard}<aside class="game-sidebar team-tab-panel" data-team-tab="${App.tab}">${teamSideHTML(App.tab)}</aside></div>`;
+  }else if((App.role==='team'||privateViewer)&&['main','backpack','receipts','more','settings','log'].includes(App.tab)){
+    body=`<div class="game-layout team-persistent-layout team-tab-${App.tab}">${teamTaskCardHTML()}${boardCard}<aside class="game-sidebar team-tab-panel" data-team-tab="${App.tab}">${teamSideHTML(App.tab)}</aside></div>`;
   }else if(App.tab==='main') body=`${stageTickerHTML()}<div class="game-layout">${boardCard}<aside class="game-sidebar">${teamControls()}${rankingHTML()}</aside></div>`;
   if(App.tab==='settle') body=settleHTML();
   if(App.tab==='receipts'&&App.role!=='team') body=receiptsHTML();
@@ -2885,14 +2920,21 @@ function teamSideHTML(tab){
   if(tab==='backpack')return me?backpackHTML(me):'<div class="viewer-note">尚未選擇隊伍</div>';
   if(tab==='receipts')return receiptsHTML(true);
   if(tab==='settings'&&App.role==='team')return viewerManagementHTML();
+  if(tab==='more'&&App.role==='team')return `<section class="team-more-menu"><div class="team-more-switch"><button type="button" class="team-more-button ${App.moreSection==='settings'?'on':''}" data-section="settings">⚙️ 設定與觀眾</button><button type="button" class="team-more-button ${App.moreSection==='log'?'on':''}" data-section="log">📜 遊戲紀錄</button></div>${App.moreSection==='log'?logHTML():viewerManagementHTML()}</section>`;
   if(tab==='log')return logHTML();
   return App.role==='viewer'?privateViewerOverviewHTML():`${teamControls()}${rankingHTML()}`;
 }
+function openTeamTutorial(){
+  if(App.role!=='team'){showGameplayTutorialModal();return;}
+  if(isTutorialBlocked()){toast('目前有操作或動畫進行中，結束後再開啟玩法指引');return;}
+  App.tutorialReplay=true;App.tutorialStep=0;App.tab='main';render(true);
+  requestAnimationFrame(()=>$('teamTutorialCard')?.scrollIntoView({block:'center',behavior:'smooth'}));
+}
 function switchTeamPanel(tab){
-  if(!['team','viewer'].includes(App.role)||App.teamId===null||!['main','backpack','receipts','settings','log'].includes(tab)||(tab==='settings'&&App.role!=='team'))return false;
+  if(!['team','viewer'].includes(App.role)||App.teamId===null||!['main','backpack','receipts','more','settings','log'].includes(tab)||(['settings','more'].includes(tab)&&App.role!=='team'))return false;
   const panel=document.querySelector('.team-tab-panel'),layout=document.querySelector('.team-persistent-layout');if(!panel)return false;
   App.tab=tab;panel.dataset.teamTab=tab;panel.innerHTML=teamSideHTML(tab);
-  if(layout){layout.classList.remove('team-tab-main','team-tab-backpack','team-tab-receipts','team-tab-settings','team-tab-log');layout.classList.add(`team-tab-${tab}`);}
+  if(layout){layout.classList.remove('team-tab-main','team-tab-backpack','team-tab-receipts','team-tab-more','team-tab-settings','team-tab-log');layout.classList.add(`team-tab-${tab}`);}
   document.querySelectorAll('.tb').forEach(b=>b.classList.toggle('on',b.dataset.k===tab));
   bindGame();fitBoard();
   if(window.innerWidth<860)requestAnimationFrame(()=>layout?.scrollIntoView({block:'start',behavior:'smooth'}));
@@ -2901,6 +2943,10 @@ function switchTeamPanel(tab){
 function bindGame(){
   const S=App.state, bind=(id,fn)=>{const e=$(id);if(e)e.onclick=fn;};
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{const tab=b.dataset.k;if(!switchTeamPanel(tab)){App.tab=tab;render(true);}});
+  document.querySelectorAll('.team-more-button').forEach(b=>b.onclick=()=>{App.moreSection=b.dataset.section==='log'?'log':'settings';switchTeamPanel('more');});
+  bind('teamBoardToggle',()=>{if(App.fx.camera)return;App.teamBoardMode=teamBoardExpanded()?'closed':'open';fitBoard();});
+  bind('teamJumpAction',()=>{if(App.tab!=='main')switchTeamPanel('main');requestAnimationFrame(()=>{const phase=App.state?.phase,target=phase==='roll'?$('diceThrow'):phase==='sell'?$('bUp'):document.querySelector('.shop-policy-banner');(target||document.querySelector('.team-tab-panel'))?.scrollIntoView({block:'center',behavior:'smooth'});});});
+  bind('teamOpenQuickGuide',()=>{if(App.tab!=='main')switchTeamPanel('main');requestAnimationFrame(()=>$('teamTutorialCard')?.scrollIntoView({block:'center',behavior:'smooth'}));});
   document.querySelectorAll('.receipt-scope').forEach(b=>b.onclick=()=>{App.receiptScope=b.dataset.scope==='all'?'all':'mine';if(!switchTeamPanel('receipts'))render(true);});
   bind('leaveGame',()=>{if(confirm('離開目前活動？'))requestLeaveGame();});
   bind('retryConnection',()=>{setConnectionState(navigator.onLine===false?'offline':'degraded');App.socket?.reconnectNow();});
@@ -2908,9 +2954,13 @@ function bindGame(){
   bind('bAudioWake',()=>{App.audioReady=SoundFX.unlockAudio();if(App.audioReady)SoundFX.playFestivalIntro();render(true);toast(App.audioReady?'♪ 像素音效已啟動':'瀏覽器仍阻擋音效，請再點一次',!App.audioReady);});
   bind('replayStageFanfare',()=>{App.audioReady=SoundFX.unlockAudio();SoundFX.playStageFanfare();toast('♪ 夜教頒獎奏樂！');});
   bind('ackStageNotice',()=>{const button=$('ackStageNotice');try{localStorage.setItem(stageNoticeAckKey(button?.dataset.id),'1');}catch{}render(true);});
-  bind('ackTeamTutorial',()=>{ackTutorial(App.gameId,App.teamId);render(true);});
+  bind('nextTeamTutorial',()=>{App.tutorialStep=Math.min(3,App.tutorialStep+1);render(true);});
+  bind('prevTeamTutorial',()=>{App.tutorialStep=Math.max(0,App.tutorialStep-1);render(true);});
+  const finishTutorial=()=>{ackTutorial(App.gameId,App.teamId);App.tutorialReplay=false;App.tutorialStep=0;render(true);};
+  bind('ackTeamTutorial',finishTutorial);
+  bind('skipTeamTutorial',finishTutorial);
   document.querySelectorAll('.ack-phase-tip').forEach(b=>b.onclick=()=>{ackPhaseTip(App.gameId,App.teamId,b.dataset.phase);render(true);});
-  bind('btnOpenGameplayGuide',showGameplayTutorialModal);
+  bind('btnOpenGameplayGuide',openTeamTutorial);
   const advDetails=$('advAttackDetails');
   if(advDetails){advDetails.ontoggle=()=>{App._advAttackOpen=advDetails.open;};}
 

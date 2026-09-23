@@ -1107,3 +1107,45 @@ body.fx-lite .stage-camera-flashes>i:nth-child(n+4),body.fx-lite .stage-gold-con
   .tutorial-steps-grid{grid-template-columns:1fr}
   .guide-card-row{flex-direction:column;align-items:flex-start}
 }
+
+/* Team aide task console: existing game actions, clearer presentation. */
+.team-task-card{min-width:0;padding:11px 13px;border:4px solid #14110f;border-left:9px solid var(--team-color,#f2c12e);background:#fff8d8;box-shadow:5px 5px 0 #1a2340}
+.team-task-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:6px;border-bottom:2px dashed #c8b889;color:#654726;font-size:11px;font-weight:900}
+.team-task-heading small{font-size:10px;color:#268346;white-space:nowrap}
+.team-task-main{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0}
+.team-task-main>div{min-width:0}.team-task-main small{color:#8d1e2f;font:7px/1.4 'Press Start 2P',monospace}.team-task-main h2{margin:4px 0;font-size:clamp(17px,2vw,23px);line-height:1.25}.team-task-main p{margin:0;color:#554b3c;font-size:12px;line-height:1.5}
+.team-task-actions{display:grid;gap:5px;flex:0 0 auto}.team-task-actions:empty{display:none}.team-guide-jump{min-height:36px;padding:5px;border:2px solid #14110f;background:#fffef5;color:#14110f;font-size:11px;font-weight:bold;cursor:pointer}
+.team-task-jump{flex:0 0 auto;min-height:44px;margin:0;padding:8px 11px;font-size:12px;white-space:nowrap}
+.team-task-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}.team-task-steps span{padding:5px 2px;border:2px solid #796d55;background:#ece4c8;color:#655b48;font-size:10px;font-weight:bold;text-align:center}.team-task-steps span.on{border-color:#14110f;background:#f2c12e;color:#14110f;box-shadow:inset 0 -3px 0 #d88828}
+.team-persistent-layout .board-card>.ch{display:flex;align-items:center;justify-content:space-between;gap:8px}.team-persistent-layout .board-card>.ch>span{min-width:0}.team-board-toggle{display:none;flex:0 0 auto;min-height:36px;padding:5px 9px;border:2px solid #14110f;background:#f2c12e;color:#14110f;font:11px 'Zpix','Microsoft JhengHei',sans-serif;font-weight:bold;cursor:pointer}
+.team-more-menu{display:grid;gap:10px}.team-more-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:5px;border:3px solid #14110f;background:#1a2340}.team-more-button{min-height:44px;border:2px solid #14110f;background:#efe9d4;font:12px 'Zpix','Microsoft JhengHei',sans-serif;font-weight:bold;cursor:pointer}.team-more-button.on{background:#f2c12e;box-shadow:inset 0 -4px 0 #d97621}
+.team-tutorial-card .tutorial-step-item[hidden]{display:none!important}.team-tutorial-card .tutorial-steps-grid{grid-template-columns:1fr}.team-tutorial-card .tutorial-actions{flex-wrap:wrap}.team-tutorial-card .tutorial-actions .btn{min-height:44px}
+.team-board-toggle:focus-visible,.team-more-button:focus-visible,.team-task-jump:focus-visible{outline:3px solid #3f86e0;outline-offset:2px}
+@media (min-width:860px){
+  body.role-team .team-persistent-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);grid-template-rows:auto 1fr;align-items:start;gap:12px}
+  body.role-team .team-persistent-layout>.game-primary{grid-column:1;grid-row:1/span 2;position:sticky;top:72px}
+  body.role-team .team-persistent-layout>.team-task-card{grid-column:2;grid-row:1}
+  body.role-team .team-persistent-layout>.team-tab-panel{grid-column:2;grid-row:2}
+}
+@media (max-width:859px){
+  body.role-team .team-persistent-layout{display:flex!important;flex-direction:column;gap:7px}
+  body.role-team .team-persistent-layout>.team-task-card{order:0;align-self:stretch}
+  body.role-team .team-persistent-layout>.game-primary{order:1;position:sticky;top:0;align-self:stretch}
+  body.role-team .team-persistent-layout>.team-tab-panel{order:2;align-self:stretch}
+  body.role-team .phase-track,body.role-team .active-turn-banner{display:none}
+  body.role-team .team-command-hud>.team-command-stat:nth-child(5),body.role-team .team-command-hud>.team-command-turn{display:none}
+  body.role-team .team-command-hud{grid-template-columns:minmax(84px,1.25fr) repeat(3,minmax(52px,.65fr));gap:3px;margin-bottom:8px}
+  body.role-team .team-persistent-layout .board-card>.ch::after{content:none}
+  body.role-team .team-board-toggle{display:block}
+  body.role-team .team-persistent-layout .board-card>.ch{min-height:42px;padding:4px 7px;font-size:11px}
+  body.role-team .team-persistent-layout .board-card>.cb{padding:4px}
+  body.role-team .team-task-main{align-items:stretch}
+}
+@media (max-width:520px){
+  .team-task-card{padding:8px 9px;border-width:3px;border-left-width:7px;box-shadow:3px 3px 0 #1a2340}
+  .team-task-main{flex-wrap:wrap;gap:6px}.team-task-main h2{font-size:18px}.team-task-main p{font-size:12px}.team-task-actions{width:100%}.team-task-jump{width:100%}
+  .team-task-steps span{font-size:9px}
+  body.role-team .team-command-hud>.team-command-id{min-width:0}.team-command-id b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body.role-team .game-head .tabs .tg{font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){.team-persistent-layout .bwrap{transition:none!important}}

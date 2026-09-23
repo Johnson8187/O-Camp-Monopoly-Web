@@ -1050,3 +1050,60 @@ body.fx-lite .stage-camera-flashes>i:nth-child(n+4),body.fx-lite .stage-gold-con
 .receipt-item.neutral{border-left:7px solid #f2c12e;background:#fff8d8}.receipt-item.neutral .receipt-stamp,.receipt-item.neutral .receipt-amount strong{color:#8a6500}.receipt-item.neutral .receipt-icon{background:#fff0a8}.team-settlement li.neutral{border-left:8px solid #f2c12e;background:#fff8d8}.team-settlement li.neutral strong{color:#8a6500}
 .loot-redemption-desk{background:linear-gradient(180deg,#fff8d8,#efe2b5)}.loot-redemption-team{display:grid;gap:8px;padding:9px;margin-top:8px;border:3px solid #14110f;background:#fffef5;box-shadow:3px 3px 0 #b9ab83}.loot-redemption-team-head{display:flex;align-items:center;gap:8px}.loot-redemption-team-head>div{min-width:0}.loot-redemption-team-head b,.loot-redemption-team-head small{display:block}.loot-redemption-team-head small{margin-top:2px;color:#766d62;font-size:9px}.loot-redemption-items{display:grid;gap:6px}.loot-redemption-item{display:grid;grid-template-columns:38px minmax(140px,1fr) minmax(130px,.7fr) auto;align-items:center;gap:7px;padding:7px;border:2px solid #d8cfae;background:#fffaf0}.loot-redemption-icon{width:36px;height:36px;display:grid;place-items:center;border:2px solid #14110f;background:#f2c12e;font-size:20px}.loot-redemption-copy{min-width:0}.loot-redemption-copy b,.loot-redemption-copy small{display:block}.loot-redemption-copy b{font-size:12px}.loot-redemption-copy small{margin-top:3px;color:#766d62;font-size:9px;line-height:1.35}.loot-redemption-item label{display:grid;gap:2px}.loot-redemption-item label>span{color:#766d62;font-size:8px}.loot-redemption-item select{height:34px;border:2px solid #14110f;background:#fff;padding:2px 5px;font-weight:bold}.physical-shop-item.sold-out{opacity:.62}.physical-shop-item.sold-out>span{color:#766d62}.receipt-empty.compact{padding:18px}.receipt-empty.compact i{font-size:28px}
 @media (max-width:760px){.loot-redemption-item{grid-template-columns:36px minmax(0,1fr) auto}.loot-redemption-item label{grid-column:2/4}.loot-redemption-item .btn{grid-column:3;grid-row:1}}
+
+/* Gameplay onboarding, simplified UI, contextual hints & details styling */
+.team-tutorial-card{border:3px solid #14110f;background:#fffdf5;box-shadow:4px 4px 0 #14110f;margin-bottom:14px}
+.team-tutorial-card .ch{background:#14110f;color:#ffd700;font-family:'Press Start 2P',monospace;font-size:11px;padding:8px 12px}
+.tutorial-summary{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.tutorial-rule-pill{padding:8px 10px;background:#fff8d6;border:2px solid #14110f;border-radius:4px;font-size:12px;line-height:1.5;color:#14110f}
+.tutorial-steps-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.tutorial-step-item{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:#fff;border:2px solid #d8cfae;border-radius:4px}
+.tutorial-step-item .step-badge{width:22px;height:22px;border-radius:50%;background:#14110f;color:#ffd700;display:grid;place-items:center;font-family:'Press Start 2P',monospace;font-size:10px;flex-shrink:0;margin-top:1px}
+.tutorial-step-item .step-content b{display:block;font-size:12px;color:#14110f;margin-bottom:3px}
+.tutorial-step-item .step-content p{margin:0;font-size:11px;line-height:1.4;color:#554e3d}
+.tutorial-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #d8cfae}
+.tutorial-help-note{font-size:11px;color:#766d62}
+
+/* Phase Contextual Tip */
+.phase-context-tip{border:3px solid #14110f;background:#fff9d6;box-shadow:3px 3px 0 #d8cfae;padding:10px 12px;margin-bottom:12px}
+.phase-tip-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.phase-tip-badge{font-weight:bold;font-size:13px;color:#8d1e2f;display:flex;align-items:center;gap:4px}
+.phase-tip-body{font-size:12px;line-height:1.5;color:#14110f}
+
+/* Advanced attack section (<details>) */
+.advanced-attack-section{border:2px solid #14110f;background:#f7f4ec;border-radius:4px;margin-top:12px;box-shadow:2px 2px 0 #14110f}
+.advanced-attack-summary{cursor:pointer;padding:10px 12px;font-size:12px;font-weight:bold;background:#eae4d3;color:#14110f;user-select:none;display:flex;align-items:center;gap:6px;min-height:44px}
+.advanced-attack-summary:hover{background:#dfd8c4}
+.advanced-attack-section[open] .advanced-attack-summary{border-bottom:2px solid #14110f;background:#ded6bf}
+.advanced-attack-section .attack-list{padding:10px}
+
+/* Market status box & Truthful waiting */
+.market-status-box{border:3px solid #14110f;background:#eef6ff;padding:12px;margin-bottom:12px;box-shadow:3px 3px 0 #14110f}
+.market-status-head small{display:block;font:7px/1.3 'Press Start 2P',monospace;color:#1e40af}
+.market-status-head b{font-size:15px;color:#1e3a8a;display:block;margin:4px 0 6px}
+.market-status-box p{margin:0 0 8px;font-size:12px;line-height:1.5;color:#334155}
+.truthful-waiting-badge{display:inline-flex;align-items:center;gap:6px;background:#dbeafe;padding:4px 10px;border:2px solid #2563eb;border-radius:4px;font-size:11px;font-weight:bold;color:#1e40af}
+.truthful-connection-status{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#665c40}
+.truthful-connection-status .status-dot.online{background:#16a34a}
+.truthful-connection-status .status-dot.offline{background:#dc2626}
+
+/* Shop policy banner */
+.shop-policy-banner{border:2px solid #7c3aed;background:#f5f0ff;padding:10px 12px;border-radius:4px;margin-bottom:12px}
+.shop-policy-title{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.shop-policy-title b{font-size:14px;color:#5b21b6}
+.physical-shop-tag{font-size:10px;font-weight:bold;background:#7c3aed;color:#fff;padding:2px 7px;border-radius:3px}
+.shop-policy-banner p{margin:0;font-size:11px;line-height:1.45;color:#4c1d95}
+
+/* Host blocker alert banner */
+.host-block-warning{border:3px solid #e11d48;background:#ffe4e6;color:#9f1239;padding:8px 12px;font-weight:bold;font-size:12px;margin-bottom:10px;box-shadow:3px 3px 0 #14110f}
+
+/* Team settings gameplay guide entry */
+.team-gameplay-guide-card{margin-bottom:12px}
+.guide-card-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.guide-card-row b{display:block;font-size:13px}
+.guide-card-row span{display:block;font-size:11px;color:#766d62;margin-top:2px}
+
+@media (max-width:600px){
+  .tutorial-steps-grid{grid-template-columns:1fr}
+  .guide-card-row{flex-direction:column;align-items:flex-start}
+}

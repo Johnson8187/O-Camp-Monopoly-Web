@@ -13,17 +13,17 @@ const stylesSource = readFileSync(new URL('./public/styles.css', import.meta.url
 // ===========================================================================
 console.log('\n[SUITE 1] Verifying 4-Step Team Aide Tutorial & Settings Reopen Entry...');
 
-// 1.1 Source inspection: 4 steps, win condition, dual currencies, CTA
-assert.match(appSource, /const TUTORIAL_VERSION\s*=\s*'v1'/, 'TUTORIAL_VERSION must be defined as v1');
+// 1.1 Source inspection: five short screens covering goal, currencies, four steps, live play and the screen
+assert.match(appSource, /const TUTORIAL_VERSION\s*=\s*'v2'/, 'TUTORIAL_VERSION must be bumped to v2 for the new guide');
 assert.match(appSource, /life-tutorial-ack:\$\{gameId\}:\$\{teamId\}:\$\{version\}/, 'Storage key must be partitioned by room, team, and version');
 assert.match(appSource, /function teamTutorialCardHTML\(\)/, 'teamTutorialCardHTML must be implemented');
-assert.match(appSource, /房市看局勢/, 'Tutorial must include: 房市看局勢');
-assert.match(appSource, /基地經營/, 'Tutorial must include: 基地經營');
-assert.match(appSource, /商店與道具|商店補給/, 'Tutorial must include: 商店與道具 / 商店補給');
-assert.match(appSource, /擲骰移動/, 'Tutorial must include: 擲骰移動');
-assert.match(appSource, /總資產/, 'Tutorial must include win condition: 總資產');
-assert.match(appSource, /雙幣制度|雙幣制/, 'Tutorial must include dual currency explanation');
-assert.match(appSource, /我知道了/, 'Tutorial CTA must be "我知道了"');
+const onboardingSource = appSource.slice(appSource.indexOf('const AIDE_ONBOARDING'), appSource.indexOf('function teamTutorialCardHTML'));
+assert.equal((onboardingSource.match(/\{icon:/g) || []).length, 5, 'Onboarding must stay five short screens');
+assert.match(onboardingSource, /總資產 = 💰 現金 \+ 🏠 基地市值/, 'Guide must state the win formula');
+assert.match(onboardingSource, /諂媚點<\/b>不算總資產/, 'Guide must say flattery points are not counted');
+assert.match(onboardingSource, /完成主持人給的任務就會加點/, 'Guide must say how flattery points are earned');
+assert.match(onboardingSource, /房市[\s\S]*基地[\s\S]*商店[\s\S]*擲骰/, 'Guide must list the four steps in order');
+assert.match(appSource, /我知道了，開始！/, 'Tutorial CTA must be "我知道了"');
 assert.match(appSource, /btnOpenGameplayGuide/, 'Persistent reopen button must be available');
 assert.match(appSource, /showGameplayTutorialModal/, 'showGameplayTutorialModal must be implemented for reopening guide');
 
@@ -36,14 +36,14 @@ const fakeLocalStorage = {
   clear: () => mockStorage.clear()
 };
 
-function tutorialAckKey(gameId, teamId, version = 'v1') {
+function tutorialAckKey(gameId, teamId, version = 'v2') {
   return `life-tutorial-ack:${gameId}:${teamId}:${version}`;
 }
-function isTutorialAcknowledged(storage, gameId, teamId, version = 'v1') {
+function isTutorialAcknowledged(storage, gameId, teamId, version = 'v2') {
   if (!gameId || teamId === null || teamId === undefined) return false;
   return storage.getItem(tutorialAckKey(gameId, teamId, version)) === '1';
 }
-function ackTutorial(storage, gameId, teamId, version = 'v1') {
+function ackTutorial(storage, gameId, teamId, version = 'v2') {
   if (!gameId || teamId === null || teamId === undefined) return;
   storage.setItem(tutorialAckKey(gameId, teamId, version), '1');
 }
@@ -53,7 +53,7 @@ ackTutorial(fakeLocalStorage, 'ROOM-A', 0);
 assert.equal(isTutorialAcknowledged(fakeLocalStorage, 'ROOM-A', 0), true, 'Team 0 acknowledged in ROOM-A');
 assert.equal(isTutorialAcknowledged(fakeLocalStorage, 'ROOM-A', 1), false, 'Team 1 in ROOM-A remains unacknowledged (team isolation)');
 assert.equal(isTutorialAcknowledged(fakeLocalStorage, 'ROOM-B', 0), false, 'Team 0 in ROOM-B remains unacknowledged (room isolation)');
-assert.equal(isTutorialAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'v2'), false, 'Version isolation preserved (v1 vs v2)');
+assert.equal(isTutorialAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'v1'), false, 'Version isolation preserved (v1 vs v2)');
 console.log('  ✔ Tutorial storage key, per-room/team/version isolation and dismiss CTA verified.');
 
 // ===========================================================================
@@ -65,35 +65,23 @@ console.log('\n[SUITE 2] Verifying Contextual Phase Tips & Phase Name Standardiz
 assert.match(appSource, /sell:\s*'基地經營'/, "phaseNames.sell must be changed to '基地經營'");
 assert.doesNotMatch(appSource, /sell:\s*'出售基地'/, "'出售基地' must not be in phaseNames");
 
-// 2.2 Phase tips definition and accuracy
+// 2.2 Phase copy stays accurate
 assert.match(appSource, /PHASE_TIPS\s*=\s*\{/, 'PHASE_TIPS map must be defined');
 assert.match(appSource, /第 1 回合免房屋稅|首回合免房屋稅/, 'Market tip must accurately note round 1 tax exemption');
-assert.match(appSource, /function phaseContextTipHTML/, 'phaseContextTipHTML must be implemented');
+assert.match(appSource, /function strategyTips\(S,me,phase\)/, 'Phase strategy tips must be implemented');
 
-function phaseTipAckKey(gameId, teamId, phase) {
-  return `life-phase-tip-ack:${gameId}:${teamId}:${phase}`;
+// 2.3 The next-market forecast shown on the aide screen mirrors G.nextPhase()
+const forecastSource = appSource.match(/function forecastMarket\(S\)\{[^\n]*\}/)?.[0];
+assert.ok(forecastSource, 'forecastMarket must exist');
+const forecastMarket = new Function(`${forecastSource};return forecastMarket;`)();
+for (let disasters = 0; disasters <= 12; disasters++) {
+  const state = G.freshState('FORECAST', 2);
+  state.phase = 'roll';
+  state.disasters = disasters;
+  const expected = G.nextPhase(G.clone(state)).market;
+  assert.equal(forecastMarket(state), expected, `Forecast for ${disasters} disasters must match the core rule`);
 }
-function isPhaseTipAcknowledged(storage, gameId, teamId, phase) {
-  if (!gameId || teamId === null || teamId === undefined || !phase) return false;
-  return storage.getItem(phaseTipAckKey(gameId, teamId, phase)) === '1';
-}
-function ackPhaseTip(storage, gameId, teamId, phase) {
-  if (!gameId || teamId === null || teamId === undefined || !phase) return;
-  storage.setItem(phaseTipAckKey(gameId, teamId, phase), '1');
-}
-
-// 2.3 One-time acknowledgment and persistence across rounds
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'market'), false);
-ackPhaseTip(fakeLocalStorage, 'ROOM-A', 0, 'market');
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'market'), true);
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'sell'), false, 'Acknowledging market does not ack sell');
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'shop'), false, 'Acknowledging market does not ack shop');
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'roll'), false, 'Acknowledging market does not ack roll');
-
-// Round 2 check: tip remains acknowledged and will not repeat
-const simulatedRound2 = 2;
-assert.equal(isPhaseTipAcknowledged(fakeLocalStorage, 'ROOM-A', 0, 'market'), true, `Tip remains dismissed in round ${simulatedRound2}`);
-console.log('  ✔ Contextual tips one-time per phase verified; display label changed to 基地經營.');
+console.log('  ✔ Phase names, phase copy and market forecast (0–12 disasters) match the core rules.');
 
 // ===========================================================================
 // SUITE 3: Non-blocking Postponement & Live Action Safety (Step A & B)
@@ -126,6 +114,8 @@ assert.equal(isTutorialBlocked(cardState, {}, false), true, 'Blocked when card t
 // Postponement when game is settled
 const settledState = { ...idleState, phase: 'settle' };
 assert.equal(isTutorialBlocked(settledState, {}, false), true, 'Blocked during settlement');
+assert.match(appSource, /&&!turnWaiting&&!isTutorialAcknowledged/, 'Auto guide must wait while it is this team\'s turn to roll');
+assert.match(appSource, /App\.teamId!==null&&App\.teamId!==undefined&&S\.teams\?\.\[App\.teamId\]&&!App\.tutorialOpen/, 'Auto guide must wait until the team is known');
 console.log('  ✔ Non-blocking postponement verified: tutorial never interrupts rolling, battle, card, or awards.');
 
 // ===========================================================================
@@ -144,9 +134,8 @@ const team0BaseBefore = gameState.teams[0].baseIdx;
 const roundBefore = gameState.round;
 const revBefore = gameState.rev;
 
-// Client acknowledges tutorial and all phase tips
+// Client acknowledges the onboarding guide
 ackTutorial(fakeLocalStorage, 'TUTORIAL-AUDIT', 0);
-['market', 'sell', 'shop', 'roll'].forEach(p => ackPhaseTip(fakeLocalStorage, 'TUTORIAL-AUDIT', 0, p));
 
 // Verify backend state is 100% untouched
 assert.equal(gameState.teams[0].cash, team0CashBefore, 'Cash must be unchanged');
@@ -168,13 +157,22 @@ assert.match(appSource, /App\._advAttackOpen/, 'App._advAttackOpen must track op
 assert.match(appSource, /advDetails\.ontoggle\s*=\s*\(\)\s*=>\s*\{[\s\S]*App\._advAttackOpen\s*=\s*advDetails\.open/, 'advDetails.ontoggle must sync open state to App._advAttackOpen');
 
 // 5.2 Truthful waiting status without fake queue numbers
-assert.match(appSource, /truthful-waiting-badge/, 'Truthful waiting badge must be implemented');
 assert.match(appSource, /等待主持人允許本組擲骰|等待主持人指定隊伍/, 'Waiting message must state waiting for host truthfully');
 assert.match(appSource, /truthful-connection-status/, 'Truthful connection status indicator must be shown');
 assert.doesNotMatch(appSource, /排隊第\s*\d+\s*順位|前面還有\s*\d+\s*隊/, 'Invented queue numbers must NOT be present');
 
 // 5.3 Physical shop clearly labeled
 assert.match(appSource, /購買後入背包，持實體券由主持人兌換/, 'Physical shop must clearly specify redemption condition');
+
+// 5.4 Unavailable actions say why instead of only greying out
+assert.match(appSource, /還差 \$\{need-me\.pts\} 點/, 'Upgrade must show how many points are missing');
+assert.match(appSource, /還差 \$\{cost-pts\} 點/, 'Shop items must show how many points are missing');
+assert.match(appSource, /下一回合才能買回/, 'Buy-back must explain the one-round wait');
+
+// 5.5 Base actions confirm with before/after numbers and still send the original actions
+assert.match(appSource, /'確定升級'\);/, 'Upgrade must be confirmed');
+assert.match(appSource, /ask\('賣出基地？'[\s\S]*?\(\)=>send\('sell'\),'確定賣出'\)/, 'Sell must be confirmed and send the original action');
+assert.match(appSource, /ask\('買回基地？'[\s\S]*?\(\)=>send\('buyBack'\),'確定買回'\)/, 'Buy-back must be confirmed and send the original action');
 console.log('  ✔ Advanced attack <details> persistence, physical shop label, and truthful waiting verified.');
 
 // ===========================================================================
@@ -200,12 +198,12 @@ console.log('  ✔ Host foregrounding and public screen privacy projection verif
 // ===========================================================================
 console.log('\n[SUITE 7] Verifying Responsive CSS & Touch Target Accessibility (styles.css)...');
 
-assert.match(stylesSource, /\.team-tutorial-card/, 'CSS for team-tutorial-card must exist');
-assert.match(stylesSource, /\.phase-context-tip/, 'CSS for phase-context-tip must exist');
+assert.match(stylesSource, /\.aide-onboarding-card\{/, 'CSS for the onboarding card must exist');
+assert.match(stylesSource, /\.aide-card\{/, 'CSS for the decision card must exist');
+assert.match(stylesSource, /\.aide-rules\{/, 'CSS for the rules tab must exist');
 assert.match(stylesSource, /\.advanced-attack-section/, 'CSS for advanced-attack-section must exist');
 assert.match(stylesSource, /\.advanced-attack-summary/, 'CSS for advanced-attack-summary must exist');
 assert.match(stylesSource, /min-height:\s*44px/, 'Touch target must support 44px min-height');
-assert.match(stylesSource, /\.truthful-waiting-badge/, 'CSS for truthful-waiting-badge must exist');
 assert.match(stylesSource, /\.shop-policy-banner/, 'CSS for shop-policy-banner must exist');
 assert.match(stylesSource, /\.host-block-warning/, 'CSS for host-block-warning must exist');
 console.log('  ✔ CSS rules, pixel aesthetic, and >= 44px touch targets verified.');
@@ -213,18 +211,29 @@ console.log('  ✔ CSS rules, pixel aesthetic, and >= 44px touch targets verifie
 // ===========================================================================
 // SUITE 8: Team-only task console without server rule changes
 // ===========================================================================
-console.log('\n[SUITE 8] Verifying team task console, board preview, and guided navigation...');
+console.log('\n[SUITE 8] Verifying team task console, one board instance, and guided navigation...');
 assert.match(appSource,/function teamTaskCardHTML\(\)/);
-assert.match(appSource,/function teamBoardExpanded\(\)/);
-assert.match(appSource,/\['main','⚔️ 行動'\],\['backpack','🎒 背包'\],\['receipts','🧾 收據'\],\['more','☰ 更多'\]/);
-assert.match(appSource,/id="teamBoardToggle" aria-controls="bwrap" aria-expanded="false"/);
+assert.match(appSource,/function teamBoardView\(\)/);
+assert.match(appSource,/\['map','🗺️ 地圖'\],\['backpack','🎒 背包'\],\['rules','📖 規則'\]/, 'Dock must be action / map / backpack / rules');
+assert.match(appSource,/aide-layout aide-tab-\$\{App\.tab\}[^`]*\$\{boardCard\}/, 'The team layout renders exactly one board instance');
+assert.match(appSource,/document\.body\.classList\.toggle\('aide-board-staging',view==='stage'\)/, 'Movement promotes the same board to full screen');
+assert.match(appSource,/id="teamMenuButton"/, 'Settings, log and leave live behind the top menu');
 assert.match(appSource,/id="nextTeamTutorial"/);
 assert.match(appSource,/id="skipTeamTutorial"/);
-assert.match(appSource,/teamMoreSection|App\.moreSection/);
-assert.match(stylesSource,/\.team-task-card/);
+assert.match(appSource,/App\.moreSection/);
+assert.match(appSource,/App\.backpackSection/, 'Receipts live inside the backpack tab');
+assert.match(stylesSource,/\.aide-hud\{/);
+assert.match(stylesSource,/\.aide-phasebar\{/);
 assert.match(stylesSource,/\.team-more-button/);
-assert.match(stylesSource,/\.team-tutorial-card \.tutorial-step-item\[hidden\]\{display:none!important\}/);
-console.log('  ✔ Four primary entries, contextual task card, one board instance, and skippable guide verified.');
+console.log('  ✔ Four primary entries, decision card, one board instance, full-screen movement and skippable guide verified.');
+
+// The four-button phone dock and 10-30 dice receipts must stay inside the card.
+assert.doesNotMatch(stylesSource,/body\.role-team \.game-head \.tabs\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/, 'Phone dock must not reserve a fifth empty column');
+assert.match(stylesSource,/body\.aide-mode \.game-head \.tabs\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/, 'Phone dock must use four equal columns');
+assert.match(stylesSource,/\.dice-result-panel \.dice-total\{[^}]*max-width:100%/, 'Dice total must be bounded by its card, not viewport width');
+assert.match(stylesSource,/\.dice-result-panel \.dice-total-audit\{[^}]*overflow-wrap:anywhere/, 'Long dice audit sums must wrap inside the card');
+assert.match(stylesSource,/body\.aide-mode\.in-game\{[^}]*padding-bottom:calc\(96px \+ var\(--safe-bottom\)\)/, 'Team pages need clearance above the fixed phone dock');
+console.log('  ✔ Phone dock and long dice-result containment verified.');
 
 console.log('\n======================================================================');
 console.log('🎉 ALL 8 ONBOARDING & UI SIMPLIFICATION TEST SUITES PASSED!');
